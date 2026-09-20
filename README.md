@@ -202,7 +202,7 @@ Focused developer launchers are grouped under `tools\bat\tests`, `tools\bat\home
 Generated runners create session logs named like:
 
 ```text
-DreamcastRecomp_v0.1.1_session_YYYYMMDD-HHMMSS.log
+DreamcastRecomp_v0.1_session_YYYYMMDD-HHMMSS.log
 ```
 
 When reporting a failure, include:
@@ -218,18 +218,40 @@ Do **not** upload copyrighted CDI/BIOS files to public bug reports.
 
 ## Credits and technical references
 
-DreamcastRecomp is an independent project. Its implementation and debugging benefited heavily from public Dreamcast documentation, open-source hardware models and homebrew ecosystems, especially:
+DreamcastRecomp is an independent project. Its implementation and debugging benefited heavily from public Dreamcast documentation, open-source hardware models, recompilation prior art and homebrew ecosystems, especially:
 
-- **Flycast** — major reference for Dreamcast hardware behavior and parity audits: https://github.com/flyinghead/flycast
-- **KallistiOS** — Dreamcast homebrew OS, headers, examples and the compatibility corpus used throughout development: https://github.com/KallistiOS/KallistiOS
+- **[dcrecomp](https://github.com/sp00nznet/dcrecomp)** by **sp00nznet** — an important source of inspiration and prior art for expanding DreamcastRecomp's SH-4 analysis/recompilation system and pushing its SH-4 coverage toward a more complete implementation. dcrecomp is a separate MIT-licensed project and remains the work of its own authors.
+- **[Flycast](https://github.com/flyinghead/flycast)** — major reference for Dreamcast hardware behavior and parity audits.
+- **[KallistiOS](https://github.com/KallistiOS/KallistiOS)** — Dreamcast homebrew OS, headers, examples and the compatibility corpus used throughout development.
 - **Marcus Comstedt's Dreamcast technical documentation** — low-level hardware documentation: https://mc.pp.se/dc/
 - **Dreamcast Wiki / community documentation** — hardware and software-development reference material: https://dreamcast.wiki/
 
-Reference does not imply code ownership, endorsement or affiliation. Current release validation is in `docs/release/`; historical milestone evidence is grouped under `docs/archive/`.
+These references and inspirations do not imply code ownership, endorsement, affiliation, or relicensing. Third-party projects retain their own copyright and license terms. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for a concise attribution/licensing summary. Current release validation is in `docs/release/`; historical milestone evidence is grouped under `docs/archive/`.
+
+## License
+
+DreamcastRecomp's original project code is released under the **MIT License**. See [`LICENSE`](LICENSE).
+
+```text
+Copyright (c) 2026 Duw0ng
+```
+
+The MIT license applies to code and documentation authored for this repository unless a file explicitly states otherwise. It allows use, modification, redistribution and commercial use under the conditions of the MIT license, including preservation of the copyright and license notice.
+
+**Important scope notes:**
+
+- Third-party projects, source code, documentation and assets referenced by DreamcastRecomp keep their original licenses and copyright ownership. DreamcastRecomp's MIT license does not relicense Flycast, KallistiOS, dcrecomp or any other external project.
+- References to external implementations are for technical research, compatibility work and prior-art acknowledgement. Any reused third-party code must continue to satisfy that code's original license and attribution requirements.
+- The license does **not** grant rights to Sega firmware, Dreamcast BIOS/flash data, commercial games, game assets, extracted executables or other copyrighted third-party material.
+- Recompiled or generated output derived from commercial software may still contain or represent copyrighted material belonging to the original rights holders; users are responsible for ensuring they have the legal right to use the input and resulting output.
+
+See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for external-project attribution notes.
 
 ## Legal
 
 DreamcastRecomp does not include Sega firmware, commercial games, or copyrighted game assets. Users are responsible for supplying any software/firmware they are legally entitled to use and for complying with applicable law.
+
+Dreamcast is a trademark of SEGA. DreamcastRecomp is an independent project and is not affiliated with, authorized by, sponsored by, or endorsed by SEGA.
 
 ## Release
 
