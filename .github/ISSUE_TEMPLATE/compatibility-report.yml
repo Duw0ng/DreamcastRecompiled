@@ -1,0 +1,45 @@
+name: Compatibility report
+description: Report a Dreamcast title validation result for Dreamcast Recompiled.
+title: "[Compatibility] "
+labels: ["compatibility"]
+body:
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      placeholder: "Crazy Taxi 2"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Dreamcast Recompiled version / commit
+      placeholder: "v0.1 / abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Overall status
+      options: [Playable, Ingame, Menu, Intro, Bootable, Nothing]
+    validations:
+      required: true
+  - type: textarea
+    id: checkpoint
+    attributes:
+      label: Last verified checkpoint
+      description: Describe the furthest point reached and any blockers.
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: Host system
+      description: CPU, GPU and Windows version.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log / notes
+      description: Attach the session log if possible. Do not upload CDI or BIOS files.

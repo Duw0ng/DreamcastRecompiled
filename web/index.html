@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Dreamcast Recompiled — static SH-4 recompilation for PC with a pragmatic hybrid Dreamcast runtime.">
+  <title>Dreamcast Recompiled</title>
+  <link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<nav class="nav"><div class="shell nav-inner">
+  <a class="brand" href="index.html"><span class="brand-mark"></span><span>Dreamcast Recompiled<small>Recompiler-first runtime</small></span></a>
+  <div class="nav-links" id="navLinks"><a class="active" href="index.html">Home</a><a href="compatibility.html">Compatibility</a><a href="download.html">Download</a><a href="#architecture">Architecture</a><a href="#development">Development</a></div>
+  <div class="nav-actions"><a class="btn btn-sm" data-repo-link target="_blank" rel="noreferrer"><span class="github-text">GitHub</span> ↗</a><button class="menu-btn" id="menuBtn">☰</button></div>
+</div></nav>
+
+<header class="hero"><div class="shell hero-grid">
+  <div>
+    <div class="kicker">v0.1 Official · Open development</div>
+    <h1>Dreamcast,<br><span>recompiled.</span></h1>
+    <p class="lead">A static SH-4 recompilation project for PC, backed by a pragmatic hybrid runtime while native coverage grows. Analyze Dreamcast code, emit native C++, and run it against host-side Dreamcast hardware models.</p>
+    <div class="hero-actions"><a class="btn btn-primary" href="download.html">Download latest</a><a class="btn" href="compatibility.html">View compatibility</a><a class="btn" data-repo-link target="_blank">Source code ↗</a></div>
+    <div class="hero-meta"><div><strong data-total-games>239</strong>tracked titles</div><div><strong data-gh-stars>—</strong>GitHub stars</div><div><strong data-gh-updated>—</strong>last push</div></div>
+  </div>
+  <div class="dc-orbit">
+    <div class="orbit-core"><div class="orbit-logo"></div></div>
+    <div class="float-card one"><span>Core path</span><strong>SH-4 → C++</strong></div>
+    <div class="float-card two"><span>Renderer</span><strong>PVR / D3D11</strong></div>
+    <div class="float-card three"><span>Audio</span><strong>AICA / ARM7</strong></div>
+  </div>
+</div></header>
+
+<section class="section compact"><div class="shell"><div class="live-strip">
+  <div class="live-item"><span>Latest release</span><strong data-release-name>v0.1 Official</strong></div>
+  <div class="live-item"><span>Default branch</span><strong data-gh-branch>main</strong></div>
+  <div class="live-item"><span>Open issues</span><strong data-gh-issues>—</strong></div>
+  <div class="live-item"><span>Forks</span><strong data-gh-forks>—</strong></div>
+</div></div></section>
+
+<section class="section" id="homeCompatibility"><div class="shell">
+  <div class="section-title"><div><div class="eyebrow">Compatibility</div><h2>What runs today</h2><p>Project validation checkpoints, not blanket promises across every game region or revision.</p></div><a class="btn" href="compatibility.html">Open full list →</a></div>
+  <div class="status-grid">
+    <a class="status-card" href="compatibility.html?status=Playable"><div class="count" data-home-status="Playable">1</div><div class="status-label"><i class="dot playable"></i>Playable</div></a>
+    <a class="status-card" href="compatibility.html?status=Ingame"><div class="count" data-home-status="Ingame">3</div><div class="status-label"><i class="dot ingame"></i>Ingame / partial</div></a>
+    <a class="status-card" href="compatibility.html?status=Menu"><div class="count" data-home-status="Menu">0</div><div class="status-label"><i class="dot menu"></i>Menu</div></a>
+    <a class="status-card" href="compatibility.html?status=Untested"><div class="count" data-home-status="Untested">235</div><div class="status-label"><i class="dot untested"></i>Untested</div></a>
+  </div>
+</div></section>
+
+<section class="section" id="architecture"><div class="shell">
+  <div class="section-title"><div><div class="eyebrow">Architecture</div><h2>Native where it matters.<br>Hybrid where it helps.</h2><p>The long-term direction is increasing host-native execution without trading correctness for a superficial “native percentage.”</p></div></div>
+  <div class="arch">
+    <div class="arch-node"><strong>CDI / ELF</strong><span>Input & boot extraction</span></div>
+    <div class="arch-node"><strong>SH-4 analysis</strong><span>Reachability & closure</span></div>
+    <div class="arch-node"><strong>DCIR</strong><span>Intermediate representation</span></div>
+    <div class="arch-node"><strong>Native C++</strong><span>Host compiler output</span></div>
+    <div class="arch-node"><strong>DC runtime</strong><span>PVR · AICA · Maple · Holly</span></div>
+  </div>
+</div></section>
+
+<section class="section"><div class="shell">
+  <div class="section-title"><div><div class="eyebrow">Project</div><h2>Built for iteration</h2></div></div>
+  <div class="grid-3">
+    <article class="card"><div class="feature-icon">SH4</div><h3>Static recompilation</h3><p>Control-flow discovery, SH-4 decoding, DCIR generation, native C++ emission and runtime dispatch for dynamic behavior.</p></article>
+    <article class="card"><div class="feature-icon">PVR</div><h3>Dreamcast hardware models</h3><p>Host-side PVR/TA, AICA/ARM7, Maple/VMU, Holly/TMU and GD-ROM paths used by current commercial validation.</p></article>
+    <article class="card"><div class="feature-icon">LOG</div><h3>Validation first</h3><p>Regression tests, session logs, function maps, profilers and title checkpoints turn one-off successes into reproducible progress.</p></article>
+  </div>
+</div></section>
+
+<section class="section" id="development"><div class="shell"><div class="section-title"><div><div class="eyebrow">GitHub</div><h2>Recent development</h2><p>Loaded directly from the public GitHub API. No client-side token required.</p></div></div><div class="card"><div class="commit-list" id="commitList"><div class="skeleton">Loading recent commits…</div></div></div></div></section>
+
+<footer class="footer"><div class="shell footer-grid"><div class="brand"><span class="brand-mark"></span><span>Dreamcast Recompiled<small>Independent project</small></span></div><small>Dreamcast Recompiled does not include Sega firmware, commercial games, or copyrighted game assets. Dreamcast is a trademark of SEGA. This project is not affiliated with or endorsed by SEGA.</small></div></footer>
+<script src="config.js"></script><script src="assets/app.js"></script>
+</body></html>
