@@ -1,0 +1,17 @@
+DreamcastRecomp 0.0.27 - real homebrew probes
+
+Copy the raytris.elf from the supplied KallistiOS/raylib corpus here as:
+
+    samples\raytris.elf
+
+Then run:
+
+    run_homebrew_raytris_pixeldata.bat
+    run_homebrew_raytris_color.bat
+    run_homebrew_raytris_main_probe.bat
+
+The project does not redistribute raytris.elf.
+
+Or run all three in sequence:
+
+    run_homebrew_raytris_suite.bat

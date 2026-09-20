@@ -1,0 +1,5 @@
+DreamcastRecomp 0.0.40 corpus emission
+ELF: 155
+Emitted OK: 155
+RAW_SH4=0: 155
+Elapsed: 19.92s

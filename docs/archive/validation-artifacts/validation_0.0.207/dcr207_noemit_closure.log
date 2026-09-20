@@ -1,0 +1,63 @@
+[SH4 closure] pass 1/64 entries=22/6144
+[SH4 closure] pass 2/64 entries=1006/6144
+[SH4 closure] pass 3/64 entries=1786/6144
+[SH4 closure] pass 4/64 entries=2343/6144
+[SH4 closure] pass 5/64 entries=2708/6144
+[SH4 closure] pass 6/64 entries=2925/6144
+[SH4 closure] pass 7/64 entries=3065/6144
+[SH4 closure] pass 8/64 entries=3206/6144
+[SH4 closure] pass 9/64 entries=3262/6144
+[SH4 closure] pass 10/64 entries=3266/6144
+[SH4 closure] pass 11/64 entries=3270/6144
+DreamcastRecomp Raw Commercial Recompiler 0.0.207
+=============================================
+Input:                  /mnt/data/daytona_work/BOOTSTRAP.BIN
+Image bytes:            2043488
+Load base:              0x8C008000
+Entry:                  0x8C008300
+Manual seed entries:    21
+Closure passes:         11
+Closure entry budget:   6144 / 8192
+Synthetic entries:      3270
+Reachable functions:    3270
+Call-graph edges:       7586
+External/unresolved:    547
+Reachable instructions: 258737
+Known SH-4:             258737
+Unknown SH-4:           0
+CFG blocks:             46629
+DCIR ops:               265285
+RAW_SH4:                0
+Closure resolved calls: 104525
+Closure unresolved:     4051
+Rejected nonlocal:      528
+Inline BSRF thunks:      22
+Literal callback targets:     0
+Stored callback targets:    49
+Direct literal targets:       2
+CFG literal call targets:    2
+Returned literal targets:     0
+Callback-object targets:   38
+Anchored dense callbacks:   60
+Long dense callbacks:      789
+Strided callback targets:    0
+Relocatable templates:       3
+Argument callbacks:         68
+Promoted CFG fragments:    153
+VBR vector callbacks:        1
+Sparse callback targets:     0
+Dense dispatch targets:     168
+Indexed tail dispatchers:    0
+Indexed tail targets:        0
+Scaled-index targets:         0
+Branch-selected calls:        0
+Packed BRA selectors:         4
+Rejected dirty fragments:     0
+Rejected dirty sources:       0
+Rejected dirty candidates:   24
+Address-taken candidates:  1115
+Address-taken proven:         96
+SH-4 evidence map:       generated/commercial_raw/sh4_address_taken_evidence.csv
+
+[OK] Reachable commercial closure emitted without RAW_SH4.
+[NEXT] Runtime execution will identify the first unresolved dynamic/hardware dependency.

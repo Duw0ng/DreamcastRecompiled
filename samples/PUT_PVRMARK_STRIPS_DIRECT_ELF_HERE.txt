@@ -1,0 +1,11 @@
+DreamcastRecomp 0.0.27 real PVR probe
+
+Copy the KallistiOS example ELF here as:
+
+    samples\pvrmark_strips_direct.elf
+
+Then run:
+
+    run_kos_pvrmark_direct_probe.bat
+
+The ELF is intentionally not redistributed by DreamcastRecomp.

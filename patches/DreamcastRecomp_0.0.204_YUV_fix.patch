@@ -1,0 +1,277 @@
+--- src/codegen/cpp_emitter.cpp.before_yuv	2026-09-16 07:14:44.422940666 +0000
++++ src/codegen/cpp_emitter.cpp	2026-09-16 07:14:44.426799799 +0000
+@@ -2738,6 +2738,7 @@
+ constexpr std::uint32_t kAsicEventRenderVideoBit = 1u << 0; // End of render: video
+ constexpr std::uint32_t kAsicEventRenderIspBit   = 1u << 1; // End of render: ISP
+ constexpr std::uint32_t kAsicEventRenderTspBit   = 1u << 2; // End of render: TSP
++constexpr std::uint32_t kAsicEventPvrYuvBit      = 1u << 6; // ASIC_EVT_PVR_YUV_DONE = 0x0006
+ constexpr std::uint32_t kAsicEventPvrOpaqueBit   = 1u << 7; // End of opaque list transfer
+ constexpr std::uint32_t kAsicEventPvrOpaqueModBit= 1u << 8; // End of opaque modifier list
+ constexpr std::uint32_t kAsicEventPvrTransBit    = 1u << 9; // End of translucent list transfer
+@@ -4756,6 +4757,8 @@
+     return static_cast<std::uint32_t>(pos);
+ }
+ 
++std::uint32_t pvr_yuv_to_argb(std::uint8_t y, std::uint8_t u, std::uint8_t v);
++
+ std::uint32_t pvr_sample_texture_texel(const DCRuntime& runtime,
+                                        std::uint32_t x, std::uint32_t y) {
+     const auto& st = runtime.pvr_state;
+@@ -4829,6 +4832,25 @@
+         byte_offset64 = static_cast<std::uint64_t>(st.texture_offset) +
+             pvr_mip_base_offset_bytes(st) + static_cast<std::uint64_t>(texel_index) * 2ull;
+     }
++    if (st.pixel_mode == 3u) {
++        // Native PVR YUV422 textures are packed UYVY: one chroma pair for two
++        // horizontal luma samples. Recompute the pair base so either texel can
++        // recover the shared U/V values. Converter output is non-twiddled; the
++        // stride bit permits video widths such as 320 inside a 512-wide surface.
++        if (!st.nontwiddled) return 0xFFFF00FFu;
++        const std::uint32_t stride = pvr_texture_stride_pixels(runtime, st);
++        const std::uint32_t pair_x = x & ~1u;
++        const std::uint64_t pair_off64 = static_cast<std::uint64_t>(st.texture_offset) +
++            pvr_mip_base_offset_bytes(st) +
++            (static_cast<std::uint64_t>(y) * stride + pair_x) * 2ull;
++        if (pair_off64 + 3ull >= runtime.vram.size()) return 0xFFFF00FFu;
++        const std::size_t pair_off = static_cast<std::size_t>(pair_off64);
++        const std::uint8_t u = runtime.vram[pair_off + 0u];
++        const std::uint8_t y0 = runtime.vram[pair_off + 1u];
++        const std::uint8_t v = runtime.vram[pair_off + 2u];
++        const std::uint8_t y1 = runtime.vram[pair_off + 3u];
++        return pvr_yuv_to_argb((x & 1u) ? y1 : y0, u, v);
++    }
+     if (byte_offset64 + 1ull >= runtime.vram.size()) return 0xFFFF00FFu;
+     const std::size_t off = static_cast<std::size_t>(byte_offset64);
+     const std::uint16_t texel = static_cast<std::uint16_t>(runtime.vram[off]) |
+@@ -10579,30 +10601,152 @@
+     }
+ }
+ 
++std::uint8_t pvr_yuv_clamp8(int value) {
++    return static_cast<std::uint8_t>(std::clamp(value, 0, 255));
++}
++
++std::uint32_t pvr_yuv_to_argb(std::uint8_t y, std::uint8_t u, std::uint8_t v) {
++    // BT.601 studio-range conversion. The PVR stores YUV422 as UYVY and
++    // performs the equivalent conversion while sampling the texture.
++    const int c = std::max(0, static_cast<int>(y) - 16);
++    const int d = static_cast<int>(u) - 128;
++    const int e = static_cast<int>(v) - 128;
++    const std::uint8_t r = pvr_yuv_clamp8((298 * c + 409 * e + 128) >> 8);
++    const std::uint8_t g = pvr_yuv_clamp8((298 * c - 100 * d - 208 * e + 128) >> 8);
++    const std::uint8_t b = pvr_yuv_clamp8((298 * c + 516 * d + 128) >> 8);
++    return 0xFF000000u | (static_cast<std::uint32_t>(r) << 16u) |
++           (static_cast<std::uint32_t>(g) << 8u) | b;
++}
++
++void pvr_yuv_convert_macroblock_420(DCRuntime& runtime, std::uint32_t src,
++                                    std::size_t dst_base, std::uint32_t mb_index,
++                                    std::uint32_t mb_width) {
++    // PVR YUV420 macroblock input is U(8x8), V(8x8), then Y as four 8x8
++    // quadrants (TL, TR, BL, BR): 64 + 64 + 256 = 384 bytes.
++    const std::uint32_t mb_x = mb_index % mb_width;
++    const std::uint32_t mb_y = mb_index / mb_width;
++    const std::uint32_t width_px = mb_width * 16u;
++    const std::size_t stride_bytes = static_cast<std::size_t>(width_px) * 2u;
++    for (std::uint32_t y = 0u; y < 16u; ++y) {
++        for (std::uint32_t x = 0u; x < 16u; x += 2u) {
++            const std::uint32_t uv_index = (y >> 1u) * 8u + (x >> 1u);
++            const std::uint8_t u = dc_read8(runtime, src + uv_index);
++            const std::uint8_t v = dc_read8(runtime, src + 64u + uv_index);
++            auto y_index = [y](std::uint32_t px) -> std::uint32_t {
++                const std::uint32_t quadrant = (y >= 8u ? 2u : 0u) + (px >= 8u ? 1u : 0u);
++                return 128u + quadrant * 64u + (y & 7u) * 8u + (px & 7u);
++            };
++            const std::uint8_t y0 = dc_read8(runtime, src + y_index(x));
++            const std::uint8_t y1 = dc_read8(runtime, src + y_index(x + 1u));
++            const std::size_t out = (dst_base +
++                (static_cast<std::size_t>(mb_y) * 16u + y) * stride_bytes +
++                (static_cast<std::size_t>(mb_x) * 16u + x) * 2u) &
++                (DCRuntime::kVramSize - 1u);
++            runtime.vram[out] = u;
++            runtime.vram[(out + 1u) & (DCRuntime::kVramSize - 1u)] = y0;
++            runtime.vram[(out + 2u) & (DCRuntime::kVramSize - 1u)] = v;
++            runtime.vram[(out + 3u) & (DCRuntime::kVramSize - 1u)] = y1;
++        }
++    }
++}
++
++void pvr_yuv_convert_macroblock_422(DCRuntime& runtime, std::uint32_t src,
++                                    std::size_t dst_base, std::uint32_t mb_index,
++                                    std::uint32_t mb_width) {
++    // YUV422 planar macroblock: U(16x8), V(16x8), Y four 8x8 quadrants.
++    const std::uint32_t mb_x = mb_index % mb_width;
++    const std::uint32_t mb_y = mb_index / mb_width;
++    const std::uint32_t width_px = mb_width * 16u;
++    const std::size_t stride_bytes = static_cast<std::size_t>(width_px) * 2u;
++    for (std::uint32_t y = 0u; y < 16u; ++y) {
++        for (std::uint32_t x = 0u; x < 16u; x += 2u) {
++            const std::uint32_t uv_index = y * 8u + (x >> 1u);
++            const std::uint8_t u = dc_read8(runtime, src + uv_index);
++            const std::uint8_t v = dc_read8(runtime, src + 128u + uv_index);
++            auto y_index = [y](std::uint32_t px) -> std::uint32_t {
++                const std::uint32_t quadrant = (y >= 8u ? 2u : 0u) + (px >= 8u ? 1u : 0u);
++                return 256u + quadrant * 64u + (y & 7u) * 8u + (px & 7u);
++            };
++            const std::uint8_t y0 = dc_read8(runtime, src + y_index(x));
++            const std::uint8_t y1 = dc_read8(runtime, src + y_index(x + 1u));
++            const std::size_t out = (dst_base +
++                (static_cast<std::size_t>(mb_y) * 16u + y) * stride_bytes +
++                (static_cast<std::size_t>(mb_x) * 16u + x) * 2u) &
++                (DCRuntime::kVramSize - 1u);
++            runtime.vram[out] = u;
++            runtime.vram[(out + 1u) & (DCRuntime::kVramSize - 1u)] = y0;
++            runtime.vram[(out + 2u) & (DCRuntime::kVramSize - 1u)] = v;
++            runtime.vram[(out + 3u) & (DCRuntime::kVramSize - 1u)] = y1;
++        }
++    }
++}
++
++void pvr_yuv_dma_execute(DCRuntime& runtime, std::uint32_t& src, std::uint32_t len) {
++    const auto cfg_it = runtime.mmio32.find(DCRuntime::kPvrRegsPhysicalBase + 0x014Cu);
++    const auto addr_it = runtime.mmio32.find(DCRuntime::kPvrRegsPhysicalBase + 0x0148u);
++    const std::uint32_t cfg = cfg_it == runtime.mmio32.end() ? 0u : cfg_it->second;
++    const std::uint32_t addr = addr_it == runtime.mmio32.end() ? 0u : addr_it->second;
++    const bool input_422 = ((cfg >> 24u) & 1u) != 0u;
++    const std::uint32_t mb_width = (cfg & 0x3Fu) + 1u;
++    const std::uint32_t mb_height = ((cfg >> 8u) & 0x3Fu) + 1u;
++    const std::uint32_t total_mbs = std::max(1u, mb_width * mb_height);
++    const std::uint32_t mb_bytes = input_422 ? 512u : 384u;
++    std::uint32_t converted = runtime.mmio32[DCRuntime::kPvrRegsPhysicalBase + 0x0150u];
++    converted %= total_mbs;
++    const std::size_t dst_base = static_cast<std::size_t>(addr & 0x007FFFFFu);
++    const std::uint32_t full_blocks = len / mb_bytes;
++    const std::uint32_t tail = len % mb_bytes;
++
++    for (std::uint32_t i = 0u; i < full_blocks; ++i) {
++        if (input_422)
++            pvr_yuv_convert_macroblock_422(runtime, src, dst_base, converted, mb_width);
++        else
++            pvr_yuv_convert_macroblock_420(runtime, src, dst_base, converted, mb_width);
++        src += mb_bytes;
++        ++converted;
++        if (converted >= total_mbs) {
++            converted = 0u;
++            holly_raise_event(runtime, 0u, kAsicEventPvrYuvBit);
++        }
++    }
++    // CH2 transfers are 32-byte granular. A partial macroblock is invalid input
++    // to the hardware converter; consume it so DMA state still completes, but
++    // do not fabricate output pixels.
++    src += tail;
++    runtime.mmio32[DCRuntime::kPvrRegsPhysicalBase + 0x0150u] = converted;
++    const std::size_t out_bytes = static_cast<std::size_t>(mb_width) * mb_height * 16u * 16u * 2u;
++    pvr_mark_vram_write(runtime, dst_base, out_bytes);
++}
++
+ void ch2_dma_execute(DCRuntime& runtime) {
+     if ((runtime.sb_c2dst & 1u) == 0u) return;
+-    if ((runtime.dmac_dmaor & 0x00008307u) != 0x00008201u) {
+-        // Keep the start bit asserted so guest code can observe that the DMA did
+-        // not complete. This mirrors the hardware's invalid-DMAOR failure mode.
+-        return;
+-    }
++    if ((runtime.dmac_dmaor & 0x00008307u) != 0x00008201u) return;
+ 
+     std::uint32_t src = runtime.dmac_sar2 & 0x1FFFFFE0u;
+-    std::uint32_t dst = runtime.sb_c2dstat & 0x01FFFFE0u;
++    const std::uint32_t raw_dst = runtime.sb_c2dstat & 0x1FFFFFE0u;
+     std::uint32_t len = runtime.sb_c2dlen;
+     if (len == 0u) {
+         runtime.sb_c2dst = 0u;
+-        runtime.dmac_chcr2 |= 0x2u; // TE
++        runtime.dmac_chcr2 |= 0x2u;
+         holly_raise_event(runtime, 0u, kAsicEventCh2DmaBit);
+         return;
+     }
+ 
+     ++runtime.ch2_dma_runs;
+     runtime.ch2_dma_bytes += len;
++    const bool is_ta = raw_dst >= kTaFifoPhysicalBase && raw_dst < kTaFifoPhysicalEnd;
++    const bool is_yuv = raw_dst >= kPvrYuvFifoPhysicalBase && raw_dst < kPvrYuvFifoPhysicalEnd;
++    const bool is_tex64 = raw_dst >= kPvrTexDirect64Base && raw_dst < kPvrTexDirect64Base + kPvrTexDirectSize;
++    const bool is_tex32 = raw_dst >= kPvrTexDirect32Base && raw_dst < kPvrTexDirect32Base + kPvrTexDirectSize;
++
++    if (runtime.ch2_dma_runs <= 24u) {
++        std::cerr << "[CH2] run=" << runtime.ch2_dma_runs
++                  << " src=0x" << std::hex << std::uppercase << src
++                  << " dst=0x" << raw_dst << " len=0x" << len
++                  << std::dec << " kind=" << (is_ta ? "TA" : is_yuv ? "YUV" : (is_tex64 || is_tex32) ? "TEX" : "OTHER") << "\n";
++    }
+ 
+-    if ((dst & 0x01000000u) == 0u) {
+-        // Direct display-list DMA into the TA FIFO. The hardware transfers in
+-        // 32-byte SQ-sized bursts; preserve partial tails conservatively.
++    if (is_ta) {
+         ++runtime.ch2_dma_ta;
+         std::array<std::uint8_t, 32> packet{};
+         std::uint32_t remaining = len;
+@@ -10612,8 +10756,6 @@
+             for (std::uint32_t i = 0; i < chunk; ++i) packet[i] = dc_read8(runtime, src + i);
+             if (chunk == 32u) pvr_submit_packet(runtime, packet.data(), PVRPacketSource::Ch2Dma, runtime.current_pc);
+             else {
+-                // Tail writes are uncommon for CH2 but route bytewise into the
+-                // existing TA partial-packet accumulator so semantics stay exact.
+                 for (std::uint32_t i = 0; i < chunk; ++i) {
+                     runtime.ta_partial[runtime.ta_partial_size++] = packet[i];
+                     if (runtime.ta_partial_size == 32u) {
+@@ -10625,20 +10767,27 @@
+             src += chunk;
+             remaining -= chunk;
+         }
+-    } else {
+-        // Direct texture DMA. LMMODE chooses the 64/32-bit VRAM aperture on
+-        // hardware; both aliases share the same flat 8 MiB backing here.
++    } else if (is_yuv) {
++        pvr_yuv_dma_execute(runtime, src, len);
++        // The converter aperture is a FIFO; C2DSTAT remains the FIFO address.
++        runtime.sb_c2dstat = raw_dst;
++    } else if (is_tex64 || is_tex32) {
+         ++runtime.ch2_dma_texture;
+-        std::size_t vram_off = static_cast<std::size_t>(dst & 0x007FFFFFu);
++        std::size_t vram_off = static_cast<std::size_t>(raw_dst & 0x007FFFFFu);
+         for (std::uint32_t i = 0; i < len; ++i)
+             runtime.vram[(vram_off + i) & (DCRuntime::kVramSize - 1u)] = dc_read8(runtime, src + i);
+         pvr_mark_vram_write(runtime, vram_off, len);
+-        runtime.sb_c2dstat = (dst + len) & 0x01FFFFFE0u;
++        src += len;
++        runtime.sb_c2dstat = (raw_dst + len) & 0x1FFFFFE0u;
++    } else {
++        // Preserve DMA progress for currently unmodelled Channel-2 apertures.
++        src += len;
++        runtime.sb_c2dstat = (raw_dst + len) & 0x1FFFFFE0u;
+     }
+ 
+     runtime.dmac_sar2 = src;
+     runtime.dmac_dmatcr2 = 0u;
+-    runtime.dmac_chcr2 |= 0x2u; // TE = transfer end
++    runtime.dmac_chcr2 |= 0x2u;
+     runtime.sb_c2dlen = 0u;
+     runtime.sb_c2dst = 0u;
+     holly_raise_event(runtime, 0u, kAsicEventCh2DmaBit);
+@@ -10823,6 +10972,10 @@
+     if (physical == DCRuntime::kPvrRegsPhysicalBase + 0x0138u) {
+         return runtime.pvr_ta_current_pointer;
+     }
++    if (physical == DCRuntime::kPvrRegsPhysicalBase + 0x0150u) {
++        const auto it = runtime.mmio32.find(physical);
++        return it == runtime.mmio32.end() ? 0u : it->second;
++    }
+     if (physical == kSystemBusRevisionPhysical) {
+         // SB_SBREV (System Bus revision). Katana/Ninja rejects revision values
+         // below 10 during njInitSystem and enters its fatal reset loop. Retail
+@@ -10949,7 +11102,13 @@
+             if (((old_value ^ value) & (1u << 23u)) != 0u) pvr_spg_resync(runtime);
+             return;
+         }
+-        if (pvr_off == 0x0108u) {
++        if (pvr_off == 0x0148u) {
++            runtime.mmio32[physical & ~3u] = value & 0x00FFFFFFu;
++            runtime.mmio32[DCRuntime::kPvrRegsPhysicalBase + 0x0150u] = 0u;
++        } else if (pvr_off == 0x014Cu) {
++            runtime.mmio32[physical & ~3u] = value;
++            runtime.mmio32[DCRuntime::kPvrRegsPhysicalBase + 0x0150u] = 0u;
++        } else if (pvr_off == 0x0108u) {
+             runtime.pvr_palette_format = static_cast<std::uint8_t>(value & 3u);
+             ++runtime.pvr_palette_write_epoch;
+             runtime.pvr_deferred_cached_state_index = 0xFFFFFFFFu;

@@ -1,0 +1,24 @@
+[ 15%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/common/function_analysis.cpp.o
+[ 15%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/common/elf32.cpp.o
+[ 23%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/common/program_analysis.cpp.o
+[ 30%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/common/cfg.cpp.o
+[ 38%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/common/corpus_scan.cpp.o
+[ 46%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/common/raw_data.cpp.o
+[ 53%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/ir/dcir.cpp.o
+/mnt/data/DreamcastRecomp_0.0.207_DaytonaPressStart/src/ir/dcir.cpp:19:22: warning: 'const dcrecomp::CallReference* dcrecomp::{anonymous}::call_for(const dcrecomp::FunctionAnalysis&, uint32_t)' defined but not used [-Wunused-function]
+   19 | const CallReference* call_for(const FunctionAnalysis& a, std::uint32_t address) {
+      |                      ^~~~~~~~
+[ 61%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/codegen/cpp_emitter.cpp.o
+[ 69%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/sh4/decoder.cpp.o
+[ 76%] Building CXX object CMakeFiles/dcrecomp_core.dir/src/aica/arm7.cpp.o
+[ 84%] Linking CXX static library libdcrecomp_core.a
+[ 84%] Built target dcrecomp_core
+[ 92%] Building CXX object CMakeFiles/dc_raw_recomp.dir/src/disc/raw_recompiler.cpp.o
+gmake[3]: *** [CMakeFiles/dc_raw_recomp.dir/build.make:79: CMakeFiles/dc_raw_recomp.dir/src/disc/raw_recompiler.cpp.o] Terminated
+gmake[2]: *** [CMakeFiles/Makefile2:1041: CMakeFiles/dc_raw_recomp.dir/all] Terminated
+gmake[1]: *** [CMakeFiles/Makefile2:1048: CMakeFiles/dc_raw_recomp.dir/rule] Terminated
+gmake: *** [Makefile:485: dc_raw_recomp] Terminated
+[ 84%] Built target dcrecomp_core
+[ 92%] Building CXX object CMakeFiles/dc_raw_recomp.dir/src/disc/raw_recompiler.cpp.o
+[100%] Linking CXX executable dc_raw_recomp
+[100%] Built target dc_raw_recomp

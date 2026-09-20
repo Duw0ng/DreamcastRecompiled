@@ -1,0 +1,702 @@
+#include "dcrecomp/elf32.hpp"
+#include "dcrecomp/function_analysis.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <vector>
+
+void require(bool condition, const char* message) {
+    if (!condition) {
+        std::cerr << "FAIL: " << message << '\n';
+        std::exit(1);
+    }
+}
+
+
+namespace {
+void put16(dcrecomp::Elf32Image& elf, std::uint32_t address, std::uint16_t value) {
+    const auto off = static_cast<std::size_t>(address - elf.sections[0].address);
+    elf.bytes[off] = static_cast<std::uint8_t>(value & 0xFFu);
+    elf.bytes[off + 1u] = static_cast<std::uint8_t>(value >> 8u);
+}
+
+void put32(dcrecomp::Elf32Image& elf, std::uint32_t address, std::uint32_t value) {
+    put16(elf, address, static_cast<std::uint16_t>(value & 0xFFFFu));
+    put16(elf, address + 2u, static_cast<std::uint16_t>(value >> 16u));
+}
+
+dcrecomp::Elf32Image make_dynamic_branch_fixture() {
+    dcrecomp::Elf32Image elf;
+    elf.machine = 42u;
+    elf.entry = 0x1000u;
+    elf.bytes.resize(0xC00u, 0u);
+
+    dcrecomp::ElfSection text;
+    text.name = ".text";
+    text.type = 1u;
+    text.flags = 0x4u;
+    text.address = 0x1000u;
+    text.offset = 0u;
+    text.size = static_cast<std::uint32_t>(elf.bytes.size());
+    elf.sections.push_back(text);
+
+    dcrecomp::ElfSymbol word;
+    word.name = "_wordjump";
+    word.value = 0x1000u;
+    word.size = 0x60u;
+    word.info = 2u; // STT_FUNC, local binding is sufficient for named analysis.
+    word.section_index = 0u;
+    elf.symbols.push_back(word);
+
+    dcrecomp::ElfSymbol constant;
+    constant.name = "_constbraf";
+    constant.value = 0x1100u;
+    constant.size = 0x30u;
+    constant.info = 2u;
+    constant.section_index = 0u;
+    elf.symbols.push_back(constant);
+
+    dcrecomp::ElfSymbol bsrf;
+    bsrf.name = "_bsrf";
+    bsrf.value = 0x1140u;
+    bsrf.size = 0x20u;
+    bsrf.info = 2u;
+    bsrf.section_index = 0u;
+    elf.symbols.push_back(bsrf);
+
+    dcrecomp::ElfSymbol bsrf_target;
+    bsrf_target.name = "_bsrf_target";
+    bsrf_target.value = 0x1180u;
+    bsrf_target.size = 0x10u;
+    bsrf_target.info = 2u;
+    bsrf_target.section_index = 0u;
+    elf.symbols.push_back(bsrf_target);
+
+    dcrecomp::ElfSymbol p2jmp;
+    p2jmp.name = "_p2jmp";
+    p2jmp.value = 0x11A0u;
+    p2jmp.size = 0x20u;
+    p2jmp.info = 2u;
+    p2jmp.section_index = 0u;
+    elf.symbols.push_back(p2jmp);
+
+    dcrecomp::ElfSymbol copied_wordjump;
+    copied_wordjump.name = "_copiedwordjump";
+    copied_wordjump.value = 0x1200u;
+    copied_wordjump.size = 0x80u;
+    copied_wordjump.info = 2u;
+    copied_wordjump.section_index = 0u;
+    elf.symbols.push_back(copied_wordjump);
+
+    dcrecomp::ElfSymbol dense_dispatch;
+    dense_dispatch.name = "_dense_dispatch";
+    dense_dispatch.value = 0x1280u;
+    dense_dispatch.size = 0x20u;
+    dense_dispatch.info = 2u;
+    dense_dispatch.section_index = 0u;
+    elf.symbols.push_back(dense_dispatch);
+
+    dcrecomp::ElfSymbol dense_dispatch_r0base;
+    dense_dispatch_r0base.name = "_dense_dispatch_r0base";
+    dense_dispatch_r0base.value = 0x12A0u;
+    dense_dispatch_r0base.size = 0x20u;
+    dense_dispatch_r0base.info = 2u;
+    dense_dispatch_r0base.section_index = 0u;
+    elf.symbols.push_back(dense_dispatch_r0base);
+
+    dcrecomp::ElfSymbol nested_dispatch;
+    nested_dispatch.name = "_nested_dispatch";
+    nested_dispatch.value = 0x1400u;
+    nested_dispatch.size = 0x20u;
+    nested_dispatch.info = 2u;
+    nested_dispatch.section_index = 0u;
+    elf.symbols.push_back(nested_dispatch);
+
+    dcrecomp::ElfSymbol branch_selected_jsr;
+    branch_selected_jsr.name = "_branch_selected_jsr";
+    branch_selected_jsr.value = 0x1820u;
+    branch_selected_jsr.size = 0x30u;
+    branch_selected_jsr.info = 2u;
+    branch_selected_jsr.section_index = 0u;
+    elf.symbols.push_back(branch_selected_jsr);
+
+    dcrecomp::ElfSymbol filebacked_indirect;
+    filebacked_indirect.name = "_filebacked_indirect";
+    filebacked_indirect.value = 0x18C0u;
+    filebacked_indirect.size = 0x20u;
+    filebacked_indirect.info = 2u;
+    filebacked_indirect.section_index = 0u;
+    elf.symbols.push_back(filebacked_indirect);
+
+    dcrecomp::ElfSymbol filebacked_target;
+    filebacked_target.name = "_filebacked_target";
+    filebacked_target.value = 0x18E0u;
+    filebacked_target.size = 0x10u;
+    filebacked_target.info = 2u;
+    filebacked_target.section_index = 0u;
+    elf.symbols.push_back(filebacked_target);
+
+    dcrecomp::ElfSymbol long_braf;
+    long_braf.name = "_longbraf";
+    long_braf.value = 0x1900u;
+    long_braf.size = 0x90u;
+    long_braf.info = 2u;
+    long_braf.section_index = 0u;
+    elf.symbols.push_back(long_braf);
+
+    dcrecomp::ElfSymbol masked_braf;
+    masked_braf.name = "_masked_braf";
+    masked_braf.value = 0x1A00u;
+    masked_braf.size = 0x80u;
+    masked_braf.info = 2u;
+    masked_braf.section_index = 0u;
+    elf.symbols.push_back(masked_braf);
+
+    dcrecomp::ElfSymbol inline_bra_braf;
+    inline_bra_braf.name = "_inline_bra_braf";
+    inline_bra_braf.value = 0x1B00u;
+    inline_bra_braf.size = 0x80u;
+    inline_bra_braf.info = 2u;
+    inline_bra_braf.section_index = 0u;
+    elf.symbols.push_back(inline_bra_braf);
+
+    // Signed 16-bit switch table:
+    //   mov #1,r2; cmp/hi r2,r1
+    //   mov.l @(literal,pc),r0; add r1,r1
+    //   mov.w @(r0,r1),r1; braf r1; nop
+    put16(elf, 0x1000u, 0xE201u);
+    put16(elf, 0x1002u, 0x3126u);
+    put16(elf, 0x1004u, 0xD006u); // literal @ 0x1020
+    put16(elf, 0x1006u, 0x311Cu);
+    put16(elf, 0x1008u, 0x011Du);
+    put16(elf, 0x100Au, 0x0123u);
+    put16(elf, 0x100Cu, 0x0009u);
+    put16(elf, 0x1010u, 0x000Bu);
+    put16(elf, 0x1012u, 0x0009u);
+    put16(elf, 0x1014u, 0x000Bu);
+    put16(elf, 0x1016u, 0x0009u);
+    put32(elf, 0x1020u, 0x00001040u);
+    put16(elf, 0x1040u, 0x0002u); // BRAF PC+4 (0x100E) -> 0x1010
+    put16(elf, 0x1042u, 0x0006u); // -> 0x1014
+
+    // Long-range constant BRAF materialized through MOV.W @(disp,PC),Rn.
+    put16(elf, 0x1100u, 0x9C0Eu); // r12 = signed 0x000A from 0x1120
+    put16(elf, 0x1102u, 0x0C23u); // braf r12
+    put16(elf, 0x1104u, 0x0009u);
+    put16(elf, 0x1110u, 0x000Bu);
+    put16(elf, 0x1112u, 0x0009u);
+    put16(elf, 0x1120u, 0x000Au);
+
+    // Symbol-less commercial Katana code also uses BSRF Rn. The register stores
+    // a signed/unsigned PC-relative delta, not an absolute function address.
+    // At 0x1142, PC+4 + 0x3A = 0x1180.
+    put16(elf, 0x1140u, 0xE23Au); // mov #0x3a,r2
+    put16(elf, 0x1142u, 0x0203u); // bsrf r2
+    put16(elf, 0x1144u, 0x0009u); // delay slot
+    put16(elf, 0x1146u, 0x000Bu); // rts
+    put16(elf, 0x1148u, 0x0009u);
+    put16(elf, 0x1180u, 0x000Bu);
+    put16(elf, 0x1182u, 0x0009u);
+    // Katana cache-management helpers build a P2 code alias with OR:
+    //   r0 = 0x000011C0; r1 = 0xA0000000; or r0,r1; jmp @r1
+    // Constant propagation must retain the absolute alias target so the raw
+    // commercial closure can canonicalize it back to its P1 image address.
+    put16(elf, 0x11A0u, 0xD004u); // mov.l @(0x11B4,pc),r0
+    put16(elf, 0x11A2u, 0xD105u); // mov.l @(0x11B8,pc),r1
+    put16(elf, 0x11A4u, 0x210Bu); // or r0,r1
+    put16(elf, 0x11A6u, 0x412Bu); // jmp @r1
+    put16(elf, 0x11A8u, 0x0009u); // delay slot
+    put32(elf, 0x11B4u, 0x000011C0u);
+    put32(elf, 0x11B8u, 0xA0000000u);
+
+    // Katana switch dispatch with a copied/scaled table index:
+    //   mov #3,r1; cmp/hs r1,r0; shll r0; mov r0,r1
+    //   mov.l table,r0; mov.w @(r0,r1),r0; braf r0
+    // Valid indices are 0..2 and table entries are signed deltas from PC+4.
+    put16(elf, 0x1200u, 0xE103u); // mov #3,r1
+    put16(elf, 0x1202u, 0x3012u); // cmp/hs r1,r0
+    put16(elf, 0x1204u, 0x4000u); // shll r0
+    put16(elf, 0x1206u, 0x6103u); // mov r0,r1
+    put16(elf, 0x1208u, 0xD00Cu); // mov.l @(0x123C,pc),r0
+    put16(elf, 0x120Au, 0x001Du); // mov.w @(r0,r1),r0
+    put16(elf, 0x120Cu, 0x0023u); // braf r0
+    put16(elf, 0x120Eu, 0x0009u); // delay slot
+    put16(elf, 0x1220u, 0x000Bu); put16(elf, 0x1222u, 0x0009u);
+    put16(elf, 0x1228u, 0x000Bu); put16(elf, 0x122Au, 0x0009u);
+    put16(elf, 0x1230u, 0x000Bu); put16(elf, 0x1232u, 0x0009u);
+    put32(elf, 0x123Cu, 0x00001240u);
+    put16(elf, 0x1240u, 0x0010u); // 0x1210 + 0x10 -> 0x1220
+    put16(elf, 0x1242u, 0x0018u); // -> 0x1228
+    put16(elf, 0x1244u, 0x0020u); // -> 0x1230
+
+    // Dense absolute callable dispatch with JSR. The three targets deliberately
+    // contain no early return/branch in their first 32 bytes: table evidence plus
+    // a clean SH-4 prefix must be sufficient to identify them as callable entries.
+    put16(elf, 0x1280u, 0xD203u); // mov.l @(0x1290,pc),r2 -> table base
+    put16(elf, 0x1282u, 0x022Eu); // mov.l @(r0,r2),r2
+    put16(elf, 0x1284u, 0x420Bu); // jsr @r2
+    put16(elf, 0x1286u, 0x0009u); // delay slot
+    put16(elf, 0x1288u, 0x000Bu); // rts
+    put16(elf, 0x128Au, 0x0009u);
+    put32(elf, 0x1290u, 0x000012C0u);
+
+    // Same absolute table shape with the operands reversed: R0 holds the
+    // table base while R3 is a scaled index. MOV.L @(R0,R3),R1 then dispatches
+    // through JSR @R1. The loaded target register does not need to equal the
+    // index register; this mirrors another Katana commercial pattern.
+    put16(elf, 0x12A0u, 0xD003u); // mov.l @(0x12B0,pc),r0 -> table base
+    put16(elf, 0x12A2u, 0x6353u); // mov r5,r3
+    put16(elf, 0x12A4u, 0x4308u); // shll2 r3
+    put16(elf, 0x12A6u, 0x013Eu); // mov.l @(r0,r3),r1
+    put16(elf, 0x12A8u, 0x410Bu); // jsr @r1
+    put16(elf, 0x12AAu, 0x0009u); // delay slot
+    put16(elf, 0x12ACu, 0x000Bu); // rts
+    put16(elf, 0x12AEu, 0x0009u);
+    put32(elf, 0x12B0u, 0x000012C0u);
+
+    put32(elf, 0x12C0u, 0x00001300u);
+    put32(elf, 0x12C4u, 0x00001340u);
+    put32(elf, 0x12C8u, 0x00001380u);
+    put32(elf, 0x12CCu, 0x000013C0u);
+    put32(elf, 0x12D0u, 0u);
+    for (const auto target : {0x1300u, 0x1340u, 0x1380u}) {
+        for (std::uint32_t i = 0u; i < 16u; ++i) put16(elf, target + i * 2u, 0x0009u);
+        put16(elf, target + 0x20u, 0x000Bu);
+        put16(elf, target + 0x22u, 0x0009u);
+    }
+    // Compact return thunk followed immediately by zero/data. Dense-table
+    // evidence is strong enough to accept RTS plus a valid delay slot even
+    // though a 32-byte clean prefix is impossible.
+    put16(elf, 0x13C0u, 0x000Bu);
+    put16(elf, 0x13C2u, 0xE00Au);
+
+    // Two-level SDK dispatch: top table -> row table -> callable method. This
+    // mirrors retail code where R0 selects the row and a second scaled index
+    // selects the method before JSR @R0.
+    put16(elf, 0x1400u, 0xD30Eu); // selector-0 address literal
+    put16(elf, 0x1402u, 0xDE13u); // selector-1 address literal
+    put16(elf, 0x1404u, 0x6032u); // mov.l @r3,r0
+    put16(elf, 0x1406u, 0xD10Fu); // top-table pointer literal @ 0x1444
+    put16(elf, 0x1408u, 0x62E2u); // mov.l @r14,r2
+    put16(elf, 0x140Au, 0x4008u); // shll2 r0
+    put16(elf, 0x140Cu, 0x001Eu); // mov.l @(r0,r1),r0 -> row
+    put16(elf, 0x140Eu, 0x4208u); // shll2 r2
+    put16(elf, 0x1410u, 0x002Eu); // mov.l @(r0,r2),r0 -> method
+    put16(elf, 0x1412u, 0x400Bu); // jsr @r0
+    put16(elf, 0x1414u, 0x0009u);
+    put16(elf, 0x1416u, 0x000Bu);
+    put16(elf, 0x1418u, 0x0009u);
+    put32(elf, 0x143Cu, 0x000014E0u);
+    put32(elf, 0x1444u, 0x00001480u);
+    put32(elf, 0x1450u, 0x000014E4u);
+    put32(elf, 0x1480u, 0x000014A0u);
+    put32(elf, 0x1484u, 0x000014C0u);
+    put32(elf, 0x1488u, 0x00001500u);
+    put32(elf, 0x148Cu, 0u);
+    put32(elf, 0x14A0u, 0x00001600u);
+    put32(elf, 0x14A4u, 0x00001640u);
+    put32(elf, 0x14A8u, 0x00001680u);
+    put32(elf, 0x14ACu, 0x01000100u);
+    put32(elf, 0x14C0u, 0x000016C0u);
+    put32(elf, 0x14C4u, 0x00001700u);
+    put32(elf, 0x14C8u, 0x00001740u);
+    put32(elf, 0x14CCu, 0u);
+    // Third row mirrors a retail SDK pattern that defeated the original
+    // 32-byte-prefix rule: a normal method, a compact literal tail thunk, and
+    // a short wrapper that performs one call before tail-jumping.
+    put32(elf, 0x1500u, 0x00001780u);
+    put32(elf, 0x1504u, 0x000017C0u);
+    put32(elf, 0x1508u, 0x00001800u);
+    put32(elf, 0x150Cu, 0u);
+    for (const auto target : {0x1600u, 0x1640u, 0x1680u, 0x16C0u, 0x1700u, 0x1740u, 0x1780u}) {
+        for (std::uint32_t i = 0u; i < 16u; ++i) put16(elf, target + i * 2u, 0x0009u);
+        put16(elf, target + 0x20u, 0x000Bu);
+        put16(elf, target + 0x22u, 0x0009u);
+    }
+    put16(elf, 0x17C0u, 0xD301u); // mov.l @(pc),r3
+    put16(elf, 0x17C2u, 0x432Bu); // jmp @r3
+    put16(elf, 0x17C4u, 0x0009u); // nop delay slot
+    put32(elf, 0x17C8u, 0x00001600u);
+
+    put16(elf, 0x1800u, 0x4F22u); // sts.l pr,@-r15
+    put16(elf, 0x1802u, 0xD303u); // mov.l helper,r3
+    put16(elf, 0x1804u, 0x430Bu); // jsr @r3
+    put16(elf, 0x1806u, 0x0009u);
+    put16(elf, 0x1808u, 0xD202u); // mov.l tail,r2
+    put16(elf, 0x180Au, 0x422Bu); // jmp @r2
+    put16(elf, 0x180Cu, 0x4F26u); // lds.l @r15+,pr (delay)
+    put32(elf, 0x1810u, 0x00001600u);
+    put32(elf, 0x1814u, 0x00001640u);
+
+    // 0.0.90 regression: a delayed conditional branch selects between two
+    // PC-relative callback literals before one JSR @R3. Straight-line analysis
+    // sees callback B; the taken branch skips that override and must preserve A
+    // as a second possible native target. This mirrors retail result/win paths.
+    put16(elf, 0x1820u, 0xD307u); // callback A literal @ 0x1840
+    put16(elf, 0x1822u, 0x8F01u); // bf/s 0x1828
+    put16(elf, 0x1824u, 0x0009u); // delay slot
+    put16(elf, 0x1826u, 0xD307u); // callback B literal @ 0x1844
+    put16(elf, 0x1828u, 0x430Bu); // jsr @r3
+    put16(elf, 0x182Au, 0x0009u); // delay slot
+    put16(elf, 0x182Cu, 0x000Bu); // rts
+    put16(elf, 0x182Eu, 0x0009u);
+    put32(elf, 0x1840u, 0x00001860u);
+    put32(elf, 0x1844u, 0x00001880u);
+    for (const auto target : {0x1860u, 0x1880u}) {
+        for (std::uint32_t i = 0u; i < 8u; ++i) put16(elf, target + i * 2u, 0x0009u);
+        put16(elf, target + 0x10u, 0x000Bu);
+        put16(elf, target + 0x12u, 0x0009u);
+    }
+
+    // 0.0.170 regression: a commercial bootstrap/ops-table call can use one
+    // file-backed pointer indirection and a register copy before JSR. The pointer
+    // cell contains a P2 alias, which raw closure discovery later canonicalizes.
+    put16(elf, 0x18C0u, 0xD103u); // mov.l @(0x18D0,pc),r1 -> 0x18D4 pointer cell
+    put16(elf, 0x18C2u, 0x6212u); // mov.l @r1,r2
+    put16(elf, 0x18C4u, 0x6323u); // mov r2,r3
+    put16(elf, 0x18C6u, 0x430Bu); // jsr @r3
+    put16(elf, 0x18C8u, 0x0009u); // delay slot
+    put16(elf, 0x18CAu, 0x000Bu);
+    put16(elf, 0x18CCu, 0x0009u);
+    put32(elf, 0x18D0u, 0x000018D4u);
+    put32(elf, 0x18D4u, 0xA00018E0u);
+    put16(elf, 0x18E0u, 0x000Bu);
+    put16(elf, 0x18E2u, 0x0009u);
+
+    // 0.0.171 regression from Crazy Taxi 2 @ 0x8C07FF00.  The helper indexes
+    // a local table of signed 32-bit BRAF deltas without a nearby CMP bound.
+    // MOVA supplies the table base, MOV.L @(R0,R3),R0 loads one displacement,
+    // and BRAF R0 selects one of eight local unrolled-copy entries.
+    put16(elf, 0x1900u, 0x2F36u); // mov.l r3,@-r15
+    put16(elf, 0x1902u, 0x6303u); // mov r0,r3
+    put16(elf, 0x1904u, 0xC713u); // mova @(0x4c,pc),r0 -> 0x1954
+    put16(elf, 0x1906u, 0x73FCu); // add #-4,r3
+    put16(elf, 0x1908u, 0x4301u); // shlr r3
+    put16(elf, 0x190Au, 0x003Eu); // mov.l @(r0,r3),r0
+    put16(elf, 0x190Cu, 0x4300u); // shll r3
+    put16(elf, 0x190Eu, 0x332Cu); // add r2,r3
+    put16(elf, 0x1910u, 0x0023u); // braf r0
+    put16(elf, 0x1912u, 0x6332u); // delay slot (mov.l @r3,r3)
+    for (const auto target : {0x1916u, 0x191Eu, 0x1926u, 0x192Eu,
+                              0x1936u, 0x193Eu, 0x1946u, 0x194Eu}) {
+        put16(elf, target, 0x000Bu);      // rts
+        put16(elf, target + 2u, 0x0009u); // nop delay slot
+    }
+    // BRAF architectural base is 0x1914. Keep the same descending layout as
+    // the retail helper: copy sizes select 0x194E .. 0x1916.
+    for (std::uint32_t i = 0u; i < 8u; ++i)
+        put32(elf, 0x1954u + i * 4u, 0x3Au - i * 8u);
+    put32(elf, 0x1974u, 0xFFFFFFFFu); // terminates conservative table scan
+
+    // 0.0.174: finite masked-selector BRAF dispatch. The incoming R0 value is
+    // arbitrary, but AND #7 followed by SHLL2 proves exactly eight possible
+    // byte displacements from BRAF PC+4.
+    put16(elf, 0x1A00u, 0xC907u); // and #7,r0
+    put16(elf, 0x1A02u, 0x4008u); // shll2 r0
+    put16(elf, 0x1A04u, 0x0023u); // braf r0
+    put16(elf, 0x1A06u, 0x0009u); // delay slot
+    for (std::uint32_t i = 0u; i < 8u; ++i) {
+        const auto target = 0x1A08u + i * 4u;
+        put16(elf, target, 0x000Bu);
+        put16(elf, target + 2u, 0x0009u);
+    }
+
+    // 0.0.180: inline BRA/NOP trampoline table selected by scaled BRAF.
+    // BRAF architectural base is 0x1B06. Two NOPs precede a run of three
+    // four-byte trampolines, matching the retail CT2 shape at 0x8C08138A.
+    put16(elf, 0x1B00u, 0x4908u); // shll2 r9
+    put16(elf, 0x1B02u, 0x0923u); // braf r9
+    put16(elf, 0x1B04u, 0x0009u); // delay slot
+    put16(elf, 0x1B06u, 0x0009u); // padding
+    put16(elf, 0x1B08u, 0x0009u); // padding
+    put16(elf, 0x1B0Au, 0xA019u); // bra 0x1B40
+    put16(elf, 0x1B0Cu, 0x0009u);
+    put16(elf, 0x1B0Eu, 0xA01Fu); // bra 0x1B50
+    put16(elf, 0x1B10u, 0x0009u);
+    put16(elf, 0x1B12u, 0xA025u); // bra 0x1B60
+    put16(elf, 0x1B14u, 0x0009u);
+    put16(elf, 0x1B16u, 0x0009u); // terminates run
+    for (const auto target : {0x1B40u, 0x1B50u, 0x1B60u}) {
+        put16(elf, target, 0x000Bu);
+        put16(elf, target + 2u, 0x0009u);
+    }
+
+    return elf;
+}
+
+
+dcrecomp::Elf32Image make_p2_pointer_cell_fixture() {
+    dcrecomp::Elf32Image elf;
+    elf.machine = 42u;
+    elf.entry = 0x8C001000u;
+    elf.bytes.resize(0x200u, 0u);
+
+    dcrecomp::ElfSection text;
+    text.name = ".raw_boot";
+    text.type = 1u;
+    text.flags = 0x2u | 0x4u;
+    text.address = 0x8C001000u;
+    text.offset = 0u;
+    text.size = static_cast<std::uint32_t>(elf.bytes.size());
+    elf.sections.push_back(text);
+
+    dcrecomp::ElfSymbol caller;
+    caller.name = "sub_8C001000";
+    caller.value = 0x8C001000u;
+    caller.size = 0x200u;
+    caller.info = static_cast<std::uint8_t>((1u << 4u) | 2u);
+    caller.section_index = 0u;
+    elf.symbols.push_back(caller);
+
+    // Exact Crazy-Taxi-style shape, but with synthetic addresses:
+    //   MOV.L literal,R0    -> literal contains P2 pointer-cell alias 0xAC001040
+    //   MOV.L @R0,R0       -> file-backed P2 cell contains P2 code target
+    //   JSR @R0
+    put16(elf, 0x8C001000u, 0xD003u); // literal @ 0x8C001010
+    put16(elf, 0x8C001002u, 0x6002u); // mov.l @r0,r0
+    put16(elf, 0x8C001004u, 0x400Bu); // jsr @r0
+    put16(elf, 0x8C001006u, 0x0009u); // delay slot
+    put16(elf, 0x8C001008u, 0x000Bu);
+    put16(elf, 0x8C00100Au, 0x0009u);
+    put32(elf, 0x8C001010u, 0xAC001040u);
+    put32(elf, 0x8C001040u, 0xAC001080u);
+    put16(elf, 0x8C001080u, 0x000Bu);
+    put16(elf, 0x8C001082u, 0x0009u);
+    return elf;
+}
+
+dcrecomp::Elf32Image make_raw_shared_tail_fixture() {
+    dcrecomp::Elf32Image elf;
+    elf.machine = 42u;
+    elf.entry = 0x2000u;
+    elf.bytes.resize(0x300u, 0u);
+
+    dcrecomp::ElfSection text;
+    text.name = ".raw_boot";
+    text.type = 1u;
+    text.flags = 0x2u | 0x4u;
+    text.address = 0x2000u;
+    text.offset = 0u;
+    text.size = static_cast<std::uint32_t>(elf.bytes.size());
+    elf.sections.push_back(text);
+
+    // Raw commercial symbols are analysis envelopes, not authoritative st_size
+    // boundaries. Two discovered entries may overlap and share an epilogue well
+    // beyond the second entry.
+    dcrecomp::ElfSymbol entry;
+    entry.name = "sub_00002000";
+    entry.value = 0x2000u;
+    entry.size = 0x300u;
+    entry.info = static_cast<std::uint8_t>((1u << 4u) | 2u);
+    entry.section_index = 0u;
+    elf.symbols.push_back(entry);
+
+    dcrecomp::ElfSymbol overlap;
+    overlap.name = "sub_00002020";
+    overlap.value = 0x2020u;
+    overlap.size = 0x2E0u;
+    overlap.info = static_cast<std::uint8_t>((1u << 4u) | 2u);
+    overlap.section_index = 0u;
+    elf.symbols.push_back(overlap);
+
+    // BRA 0x2180; NOP.  The target is intentionally far beyond the adjacent
+    // discovered entry at 0x2020. It restores R11 in the RTS delay slot, matching
+    // the shared-tail shape that exposed the commercial ChuChu bootstrap bug.
+    put16(elf, 0x2000u, 0xA0BEu); // 0x2004 + (0xBE * 2) = 0x2180
+    put16(elf, 0x2002u, 0x0009u);
+    put16(elf, 0x2180u, 0x000Bu); // rts
+    put16(elf, 0x2182u, 0x6BF6u); // mov.l @r15+,r11 (delay slot)
+    return elf;
+}
+
+
+dcrecomp::Elf32Image make_shared_delay_slot_entry_fixture() {
+    dcrecomp::Elf32Image elf;
+    elf.machine = 42u;
+    elf.entry = 0x3000u;
+    elf.bytes.resize(0x100u, 0u);
+
+    dcrecomp::ElfSection text;
+    text.name = ".text";
+    text.type = 1u;
+    text.flags = 0x4u;
+    text.address = 0x3000u;
+    text.offset = 0u;
+    text.size = static_cast<std::uint32_t>(elf.bytes.size());
+    elf.sections.push_back(text);
+
+    dcrecomp::ElfSymbol fn;
+    fn.name = "_shared_delay_slot_entry";
+    fn.value = 0x3000u;
+    fn.size = 0x30u;
+    fn.info = 2u;
+    fn.section_index = 0u;
+    elf.symbols.push_back(fn);
+
+    // The instruction at 0x3004 is both the delay slot of BRA 0x3002 and the
+    // taken target of BT 0x3000.  When entered through BT it must execute as a
+    // normal instruction and continue to 0x3006.  This is the exact control-flow
+    // shape used by Crazy Taxi 2 around 0x8C087758..0x8C08775E.
+    put16(elf, 0x3000u, 0x8900u); // bt 0x3004
+    put16(elf, 0x3002u, 0xA005u); // bra 0x3010
+    put16(elf, 0x3004u, 0x7404u); // add #4,r4 -- shared delay slot / branch target
+    put16(elf, 0x3006u, 0xE001u); // mov #1,r0 -- must remain reachable
+    put16(elf, 0x3008u, 0x000Bu); // rts
+    put16(elf, 0x300Au, 0x0009u); // nop
+    put16(elf, 0x3010u, 0x000Bu); // rts
+    put16(elf, 0x3012u, 0x0009u); // nop
+    return elf;
+}
+
+bool has_dynamic_target(const dcrecomp::FunctionAnalysis& a, std::uint32_t branch, std::uint32_t target) {
+    for (const auto& ref : a.dynamic_branches) {
+        if (ref.instruction_address != branch) continue;
+        return std::find(ref.targets.begin(), ref.targets.end(), target) != ref.targets.end();
+    }
+    return false;
+}
+
+bool has_branch_selected_target(const dcrecomp::FunctionAnalysis& a, std::uint32_t branch, std::uint32_t target) {
+    for (const auto& ref : a.branch_selected_calls) {
+        if (ref.instruction_address != branch) continue;
+        return std::find(ref.targets.begin(), ref.targets.end(), target) != ref.targets.end();
+    }
+    return false;
+}
+} // namespace
+
+int main(int argc, char** argv) {
+    if (argc != 2) {
+        std::cerr << "usage: function_analysis_tests <literal_pool.elf>\n";
+        return 2;
+    }
+
+    const auto elf = dcrecomp::load_elf32(argv[1]);
+    const auto a = dcrecomp::analyze_function(elf, "_main");
+
+    require(a.start_address == 0x8C010000, "_main start");
+    require(a.end_address == 0x8C01001C, "_main end/st_size");
+    require(a.total() == 9, "reachable instructions exclude literal pool and padding");
+    require(a.known == 9 && a.unknown == 0, "reachable code coverage is 100%");
+    require(a.literals.size() == 2, "two PC-relative literals detected");
+    require(a.literals[0].storage_address == 0x8C010014, "first literal storage address");
+    require(a.literals[0].value == 0x8C010040, "first literal value");
+    require(a.literals[0].symbol == "_printf", "function literal resolves symbol");
+    require(a.literals[1].storage_address == 0x8C010018, "second literal storage address");
+    require(a.literals[1].value == 0x8C020000, "second literal value");
+    require(a.literals[1].symbol == "hello_string", "rodata literal resolves exact object symbol");
+    require(a.padding_words.size() == 1 && a.padding_words[0] == 0x8C010012,
+            "unreachable alignment NOP classified as padding");
+    require(a.calls.size() == 1, "one call detected");
+    require(a.calls[0].resolved, "indirect JSR resolved");
+    require(a.calls[0].target == 0x8C010040, "indirect JSR target");
+    require(a.calls[0].symbol == "_printf", "indirect JSR symbol");
+
+    // 0.0.40 regressions from the real KOS sound/sfx/newlib graph. GCC emits
+    // signed 16-bit BRAF switch tables and constant PC-relative BRAF offsets;
+    // both must become static graph edges so generated native dispatch never
+    // falls through to an unregistered target at runtime.
+    const auto branch_fixture = make_dynamic_branch_fixture();
+    const auto word = dcrecomp::analyze_function(branch_fixture, "_wordjump");
+    require(has_dynamic_target(word, 0x100Au, 0x1010u), "signed word jump table target 0 resolved");
+    require(has_dynamic_target(word, 0x100Au, 0x1014u), "signed word jump table target 1 resolved");
+    const auto constant = dcrecomp::analyze_function(branch_fixture, "_constbraf");
+    require(has_dynamic_target(constant, 0x1102u, 0x1110u), "constant MOV.W+BRAF target resolved");
+
+    const auto bsrf_analysis = dcrecomp::analyze_function(branch_fixture, "_bsrf");
+    require(bsrf_analysis.calls.size() == 1u, "BSRF call detected");
+    require(bsrf_analysis.calls[0].resolved, "BSRF register delta resolved");
+    require(bsrf_analysis.calls[0].target == 0x1180u, "BSRF target uses PC+4+Rn");
+    require(bsrf_analysis.calls[0].symbol == "_bsrf_target", "BSRF target symbol resolved");
+
+    const auto p2jmp_analysis = dcrecomp::analyze_function(branch_fixture, "_p2jmp");
+    require(p2jmp_analysis.calls.size() == 1u, "P2 JMP tail-call detected");
+    require(p2jmp_analysis.calls[0].resolved, "OR-composed P2 JMP target resolved");
+    require(p2jmp_analysis.calls[0].target == 0xA00011C0u, "OR-composed P2 JMP absolute target");
+
+    const auto filebacked = dcrecomp::analyze_function(branch_fixture, "_filebacked_indirect");
+    require(filebacked.calls.size() == 1u, "file-backed pointer-cell JSR detected");
+    require(filebacked.calls[0].resolved, "file-backed pointer-cell JSR target resolved");
+    require(filebacked.calls[0].target == 0xA00018E0u, "file-backed pointer-cell keeps P2 target for canonical closure");
+    require(filebacked.calls[0].symbol == "_filebacked_target", "P2 pointer-cell target resolves P1 callable symbol");
+
+    const auto p2_cell_fixture = make_p2_pointer_cell_fixture();
+    const auto p2_cell = dcrecomp::analyze_function(p2_cell_fixture, "sub_8C001000");
+    require(p2_cell.calls.size() == 1u, "P2 pointer-cell JSR detected");
+    require(p2_cell.calls[0].resolved, "P2 pointer-cell file-backed load resolved");
+    require(p2_cell.calls[0].target == 0xAC001080u, "P2 pointer-cell keeps uncached target alias");
+
+    const auto copied_word = dcrecomp::analyze_function(branch_fixture, "_copiedwordjump");
+    require(has_dynamic_target(copied_word, 0x120Cu, 0x1220u), "copied-index CMP/HS word table target 0 resolved");
+    require(has_dynamic_target(copied_word, 0x120Cu, 0x1228u), "copied-index CMP/HS word table target 1 resolved");
+    require(has_dynamic_target(copied_word, 0x120Cu, 0x1230u), "copied-index CMP/HS word table target 2 resolved");
+
+    const auto long_braf = dcrecomp::analyze_function(branch_fixture, "_longbraf");
+    for (const auto target : {0x1916u, 0x191Eu, 0x1926u, 0x192Eu,
+                              0x1936u, 0x193Eu, 0x1946u, 0x194Eu})
+        require(has_dynamic_target(long_braf, 0x1910u, target), "signed long BRAF table target resolved");
+
+    const auto masked = dcrecomp::analyze_function(branch_fixture, "_masked_braf");
+    for (std::uint32_t i = 0u; i < 8u; ++i)
+        require(has_dynamic_target(masked, 0x1A04u, 0x1A08u + i * 4u),
+                "masked selector BRAF target resolved");
+
+    const auto inline_bra = dcrecomp::analyze_function(branch_fixture, "_inline_bra_braf");
+    for (const auto target : {0x1B0Au, 0x1B0Eu, 0x1B12u})
+        require(has_dynamic_target(inline_bra, 0x1B02u, target),
+                "inline BRA/NOP BRAF trampoline target resolved");
+    for (const auto destination : {0x1B40u, 0x1B50u, 0x1B60u})
+        require(std::any_of(inline_bra.instructions.begin(), inline_bra.instructions.end(),
+                            [destination](const auto& insn) { return insn.address == destination; }),
+                "inline BRAF trampoline destination reachable");
+
+
+    const auto shared_slot_fixture = make_shared_delay_slot_entry_fixture();
+    const auto shared_slot = dcrecomp::analyze_function(shared_slot_fixture, "_shared_delay_slot_entry");
+    require(std::any_of(shared_slot.instructions.begin(), shared_slot.instructions.end(), [](const auto& insn) {
+                return insn.address == 0x3006u;
+            }),
+            "branch target that aliases another branch delay slot keeps independent fallthrough");
+
+    const auto raw_shared = make_raw_shared_tail_fixture();
+    const auto raw_entry = dcrecomp::analyze_function(raw_shared, "sub_00002000");
+    require(std::any_of(raw_entry.instructions.begin(), raw_entry.instructions.end(), [](const auto& insn) {
+                return insn.address == 0x2182u;
+            }),
+            "raw synthetic entry reaches shared RTS delay-slot epilogue beyond adjacent entry");
+    require(raw_entry.padding_words.empty(),
+            "raw synthetic analysis envelope does not classify the whole commercial image as padding");
+
+    const auto dense = dcrecomp::analyze_function(branch_fixture, "_dense_dispatch");
+    require(has_dynamic_target(dense, 0x1284u, 0x1300u), "dense JSR dispatch target 0 resolved");
+    require(has_dynamic_target(dense, 0x1284u, 0x1340u), "dense JSR dispatch target 1 resolved");
+    require(has_dynamic_target(dense, 0x1284u, 0x1380u), "dense JSR dispatch target 2 resolved");
+    require(has_dynamic_target(dense, 0x1284u, 0x13C0u), "dense JSR compact RTS thunk resolved");
+
+    const auto dense_r0base = dcrecomp::analyze_function(branch_fixture, "_dense_dispatch_r0base");
+    require(has_dynamic_target(dense_r0base, 0x12A8u, 0x1300u), "R0-base dense JSR dispatch target 0 resolved");
+    require(has_dynamic_target(dense_r0base, 0x12A8u, 0x1340u), "R0-base dense JSR dispatch target 1 resolved");
+    require(has_dynamic_target(dense_r0base, 0x12A8u, 0x1380u), "R0-base dense JSR dispatch target 2 resolved");
+    require(has_dynamic_target(dense_r0base, 0x12A8u, 0x13C0u), "R0-base dense JSR compact RTS thunk resolved");
+
+    const auto nested = dcrecomp::analyze_function(branch_fixture, "_nested_dispatch");
+    for (const auto target : {0x1600u, 0x1640u, 0x1680u, 0x16C0u, 0x1700u, 0x1740u,
+                              0x1780u, 0x17C0u, 0x1800u})
+        require(has_dynamic_target(nested, 0x1412u, target), "nested row/method JSR dispatch target resolved");
+
+    const auto selected = dcrecomp::analyze_function(branch_fixture, "_branch_selected_jsr");
+    require(selected.calls.size() == 1u && selected.calls[0].resolved,
+            "branch-selected indirect JSR keeps normal fall-through resolution");
+    require(selected.calls[0].target == 0x1880u,
+            "branch-selected indirect JSR fall-through target is callback B");
+    require(has_branch_selected_target(selected, 0x1828u, 0x1860u),
+            "branch-selected indirect JSR preserves callback A from taken path");
+    require(has_branch_selected_target(selected, 0x1828u, 0x1880u),
+            "branch-selected indirect JSR records callback B as possible target");
+
+    std::cout << "Function analysis tests: PASS\n";
+    return 0;
+}

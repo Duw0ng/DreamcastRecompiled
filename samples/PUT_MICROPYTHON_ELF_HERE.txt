@@ -1,0 +1,8 @@
+Optional diagnostic probe:
+Copy the supplied corpus file:
+  dreamcast\micropython\micropython.elf
+here as:
+  samples\micropython.elf
+
+Then run:
+  run_homebrew_micropython_probe.bat

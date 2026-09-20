@@ -1,0 +1,74 @@
+[SH4 closure] pass 1/64 entries=173/9000
+[SH4 closure] pass 2/64 entries=2685/9000
+[SH4 closure] pass 3/64 entries=4705/9000
+[SH4 closure] pass 4/64 entries=6234/9000
+[SH4 closure] pass 5/64 entries=7533/9000
+[SH4 closure] pass 6/64 entries=8086/9000
+[SH4 closure] pass 7/64 entries=8278/9000
+[SH4 closure] pass 8/64 entries=8349/9000
+[SH4 closure] pass 9/64 entries=8368/9000
+[SH4 closure] pass 10/64 entries=8376/9000
+[SH4 closure] pass 11/64 entries=8381/9000
+[SH4 closure] pass 12/64 entries=8385/9000
+[SH4 closure] pass 13/64 entries=8389/9000
+[SH4 closure] pass 14/64 entries=8393/9000
+[SH4 closure] pass 15/64 entries=8397/9000
+[SH4 closure] pass 16/64 entries=8401/9000
+[SH4 closure] pass 17/64 entries=8403/9000
+DreamcastRecomp Raw Commercial Recompiler 0.0.210
+=============================================
+Input:                  /mnt/data/dcr_0210_test/DreamcastRecomp_0.0.210_Universal_Controller_CT2/generated/lodoss_0210_test/1NOSDC.BIN
+Image bytes:            3473412
+Load base:              0x8C010000
+Entry:                  0x8C010000
+Manual seed entries:    173
+Closure passes:         17
+Closure entry budget:   9000 / 10000
+Synthetic entries:      8403
+Reachable functions:    8403
+Call-graph edges:       26352
+External/unresolved:    996
+Reachable instructions: 678999
+Known SH-4:             678999
+Unknown SH-4:           0
+CFG blocks:             103488
+DCIR ops:               705773
+RAW_SH4:                0
+Closure resolved calls: 506720
+Closure unresolved:     14171
+Rejected nonlocal:      386
+Inline BSRF thunks:      0
+Literal callback targets:     0
+Stored callback targets:   453
+Direct literal targets:       8
+CFG literal call targets:    5
+Returned literal targets:    24
+Callback-object targets:  132
+Anchored dense callbacks:  362
+Long dense callbacks:     1758
+Clustered callbacks:       227
+Strided callback targets:  111
+Relocatable templates:       3
+Argument callbacks:        120
+Promoted CFG fragments:    187
+VBR vector callbacks:        0
+Sparse callback targets:     0
+Dense dispatch targets:     394
+Indexed tail dispatchers:    0
+Indexed tail targets:        0
+Scaled-index targets:        92
+Branch-selected calls:        1
+Packed BRA selectors:         1
+Rejected dirty fragments:     0
+Rejected dirty sources:       0
+Rejected dirty candidates:  113
+Address-taken candidates:  1600
+Address-taken proven:        128
+Function map:            /mnt/data/lod10/function_map.csv
+SH-4 evidence map:       /mnt/data/lod10/cpp/sh4_address_taken_evidence.csv
+Generated output:        /mnt/data/lod10/cpp
+Embedded raw image:      3473412 bytes
+Registered functions:    8403
+
+[OK] Reachable commercial closure emitted without RAW_SH4.
+[NEXT] Runtime execution will identify the first unresolved dynamic/hardware dependency.

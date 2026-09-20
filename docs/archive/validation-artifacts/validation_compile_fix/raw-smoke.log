@@ -1,0 +1,2 @@
+[PVR TA-OBJCTRL] first legacy OR Texture conflict pcw=0x80000024 isp=0x2000000 pcw-tex=0 isp-tex=1 decoder=2 source=1 pc=0x0
+PVR cache width trace: 60 binds, 6 total decodes (first width preloaded)

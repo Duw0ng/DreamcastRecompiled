@@ -1,0 +1,51 @@
+DreamcastRecomp 0.0.209 - Universal Pre-Validation Checkpoint
+==============================================================
+
+Este ZIP congela la base consolidada ANTES de completar la validacion larga en Windows.
+No contiene ISOs/CDIs ni archivos comerciales.
+
+OBJETIVO DE ESTA BASE
+---------------------
+Mantener en un unico arbol los fixes usados para:
+  - ChuChu Rocket!
+  - Crazy Taxi 2
+  - Daytona USA
+  - Record of Lodoss War (RLW)
+
+CAMBIOS 0.0.209 YA APLICADOS
+----------------------------
+- Unificacion de los fixes SH-4/FPU/PVR/AICA/G2 acumulados entre las ramas 0.0.204-0.0.208.
+- Conserva el recovery generico de ChuChu para 0x8C02CE0C.
+- Conserva la ruta Lodoss WIP: SH-4 relocado en runtime, literales PC-relative mutables,
+  YUV y fixes PVR relacionados.
+- dc_raw_recomp acepta --seed-file=FILE.
+- dc_disc_probe acepta --extract-file=NAME=FILE para ejecutables secundarios (RLW).
+- profiles/daytona_usa_known_seeds.txt concentra la closure FIX1 de Daytona.
+- profiles/record_of_lodoss_war_known_seeds.txt concentra la closure WIP conocida de RLW.
+- run_universal_0.0.209.bat detecta el titulo y prepara cada juego desde la MISMA base fuente.
+- Versiones de recompiler/probe/runner alineadas a 0.0.209.
+
+VALIDACION REALIZADA HASTA ESTE CHECKPOINT
+-----------------------------------------
+- Suite rapida del nucleo: 51/51 PASS.
+- Crazy Taxi 2: closure completa observada en esta base:
+    3814 funciones / 331599 instrucciones conocidas / Unknown SH-4=0 / RAW_SH4=0.
+- Daytona: closure con perfil FIX1 consolidado emitida limpia:
+    3638 funciones / 303051 instrucciones conocidas / Unknown SH-4=0 / RAW_SH4=0.
+- ChuChu y RLW alcanzaron closures extensas sin Unknown/RAW observados durante el barrido,
+  pero la validacion final del runner completo queda pendiente.
+
+IMPORTANTE
+----------
+Este checkpoint se entrega deliberadamente antes de terminar los smoke tests largos.
+Los perfiles son una base de compatibilidad reproducible y temporal; a futuro conviene seguir
+promoviendo esos roots a descubrimiento estructural generico para reducir seeds por titulo.
+
+USO EN WINDOWS
+--------------
+1. Tener Visual Studio/C++ y CMake disponibles.
+2. Ejecutar build_windows.bat si se quiere compilar herramientas primero.
+3. Para una prueba comercial unificada:
+       run_universal_0.0.209.bat "C:\ruta\al\juego.cdi"
+
+Los juegos NO vienen incluidos en este ZIP.

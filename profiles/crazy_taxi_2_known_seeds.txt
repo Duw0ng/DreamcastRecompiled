@@ -1,0 +1,5 @@
+# DreamcastRecomp 0.0.210 — Crazy Taxi 2 runtime-proven seeds
+# Clean SH-4 entry points discovered by direct-game runtime validation.
+# Keep title-specific discoveries here rather than hard-coding them in the generic analyzer.
+0x8C16BF2A
+0x8C16BFD4

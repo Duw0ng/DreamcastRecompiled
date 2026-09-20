@@ -1,0 +1,26 @@
+DreamcastRecomp 0.0.47 - KallistiOS corpus compatibility
+=========================================================
+ELF encontrados:                155
+ELF cargados:                   155
+ELF ISA-clean (all functions):  155
+Funciones escaneadas:           202431
+Instrucciones conocidas:        17953662
+Instrucciones desconocidas:     0
+_main call graphs escaneados:   155
+_main con RAW_SH4=0:             155
+Tiempo:                          21.05 s
+
+NOTA: ISA-clean significa que el decoder/DCIR no encontro opcodes desconocidos en las funciones simbolizadas.
+No implica que el programa completo ya pueda ejecutarse: pueden faltar servicios KOS/MMIO/PVR/AICA/etc.
+
+Top familias desconocidas alcanzables desde _main
+==================================================
+
+Top raw words desconocidos alcanzables desde _main
+====================================================
+
+Top familias desconocidas en todas las funciones simbolizadas
+==========================================================
+
+Top raw words SH-4 desconocidos en todas las funciones simbolizadas
+=================================================================

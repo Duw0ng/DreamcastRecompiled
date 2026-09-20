@@ -1,0 +1,68 @@
+--- /tmp/a.txt	2026-09-19 06:23:53.830273355 +0000
++++ /tmp/b.txt	2026-09-19 06:23:53.870273357 +0000
+@@ -4,7 +4,7 @@
+ 
+ if "%~1"=="" (
+   echo.
+-  echo DreamcastRecomp recovery208 - Daytona USA - recuperacion parcial 0.0.208 SIN VALIDAR
++  echo DreamcastRecomp 0.0.208 FIX1 - Daytona USA - 54 seeds (25 + 29 destinos de tablas de handlers)
+   echo Uso: %~nx0 "C:\ruta\Daytona USA.cdi"
+   echo.
+   echo Perfil reconstruido desde 0.0.207 con cuatro seeds documentados; pendiente de validar.
+@@ -18,9 +18,9 @@
+   exit /b 1
+ )
+ 
+-set "OUT=generated\daytona_recovery208"
++set "OUT=generated\daytona_fix1"
+ set "CPP=%OUT%\cpp"
+-set "CB=_cb_daytona_recovery208"
++set "CB=_cb_daytona_fix1"
+ 
+ rem Build only the three preparation/recompiler tools first.
+ cmake -S . -B build -A x64
+@@ -49,7 +49,7 @@
+ if errorlevel 1 exit /b 4
+ 
+ echo.
+-echo [3/4] Recompilando Daytona con closure recovery208 reconstruida, SIN VALIDAR...
++echo [3/4] Recompilando Daytona con closure FIX1 (54 seeds)...
+ build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+   --base=0x8C008000 ^
+   --entry=0x8C008300 ^
+@@ -78,6 +78,35 @@
+   --seed=0x8C05B2C8 ^
+   --seed=0x8C03F820 ^
+   --seed=0x8C05B2D6 ^
++  --seed=0x8C010080 ^
++  --seed=0x8C026ED0 ^
++  --seed=0x8C056F20 ^
++  --seed=0x8C056F46 ^
++  --seed=0x8C056F78 ^
++  --seed=0x8C057032 ^
++  --seed=0x8C05703E ^
++  --seed=0x8C05B2EC ^
++  --seed=0x8C05B300 ^
++  --seed=0x8C05B46A ^
++  --seed=0x8C062FF4 ^
++  --seed=0x8C066316 ^
++  --seed=0x8C067C2A ^
++  --seed=0x8C069980 ^
++  --seed=0x8C069984 ^
++  --seed=0x8C06CC12 ^
++  --seed=0x8C06CC6C ^
++  --seed=0x8C070C88 ^
++  --seed=0x8C070C8C ^
++  --seed=0x8C070C90 ^
++  --seed=0x8C070C94 ^
++  --seed=0x8C070CA0 ^
++  --seed=0x8C070CA4 ^
++  --seed=0x8C070CA8 ^
++  --seed=0x8C070CAC ^
++  --seed=0x8C070CB8 ^
++  --seed=0x8C070CBC ^
++  --seed=0x8C070CC0 ^
++  --seed=0x8C070CC4 ^
+   --max-functions=8192 ^
+   --max-closure-entries=6144 ^
+   --closure-passes=64 ^

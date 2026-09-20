@@ -1,0 +1,12 @@
+Optional real-KallistiOS demo for DreamcastRecomp 0.0.27
+
+Copy:
+  KallistiOS/examples/dreamcast/basic/exec/sub.elf
+as:
+  samples/sub.elf
+
+Then run:
+  run_kos_exec_sub.bat
+
+You can also pass the ELF path directly:
+  run_kos_exec_sub.bat C:\path\to\sub.elf

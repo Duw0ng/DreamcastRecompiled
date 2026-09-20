@@ -1,0 +1,66 @@
+DreamcastRecomp 0.0.21 - validated real-homebrew results
+========================================================
+
+Raytris _rlGetPixelDataSize(64,32,7)
+------------------------------------
+Reachable functions: 1
+RAW_SH4: 0
+R0=8192
+FR0=1.5
+PC=0xFFFFFFFF
+
+Raytris __rgba8888_to_argb4444
+------------------------------
+Input RGBA bytes: 12 34 56 78
+R4=0x8C100000 source
+R5=0x8C100100 destination
+[PEEK16] 0x8C100100 = 0x7135
+PC=0xFFFFFFFF
+
+Real linked _memset assembly
+----------------------------
+R4=0x8C100000, R5=0xAB, R6=16
+[PEEK32] 0x8C100000 = 0xABABABAB
+[PEEK32] 0x8C10000C = 0xABABABAB
+PC=0xFFFFFFFF
+
+Raytris full _main CPU probe
+----------------------------
+Reachable functions: 428
+Call-graph edges: 974
+External/native calls: 596
+CFG blocks: 7788
+DCIR ops: 44171
+RAW_SH4: 0
+
+Minimal startup seed for the supplied ELF:
+  _vid_mode    (0x8C43B7BC) -> _vid_builtin (0x8C42FF60)
+
+Native output reaches:
+  Welcome to GLdc! Git revision: 1.1-656-g105e
+
+Then explicitly stops at the deferred hardware boundary:
+  address=0xA05F8008
+  physical=0x005F8008
+  width=4
+  guest_pc=0x8C071328
+
+0xA05F8008 is PVR_RESET (PVR base 0xA05F8000 + offset 0x0008).
+
+Regression status
+-----------------
+CTest: 43/43 passed
+KOS hello _main: PASS
+memTestDataBus: PASS
+memTestAddressBus: PASS
+memTestDevice: PASS
+___ieee754_sqrtf(9): FR0=3 PASS
+_arch_tls_init mock TLS: GBR=0x8C123456 PASS
+
+Corpus baseline
+---------------
+ELF: 155/155 loaded
+STT_FUNC functions: 202431
+Known instructions: 15331771
+Unknown words in broad all-function extents: 73
+_main call graphs with RAW_SH4=0: 155/155

@@ -1,0 +1,6 @@
+build/
+compare/
+*.user
+*.suo
+.vs/
+.idea/

@@ -1,0 +1,93 @@
+DreamcastRecomp 0.0.18 - KallistiOS corpus compatibility
+=========================================================
+ELF encontrados:                155
+ELF cargados:                   155
+ELF ISA-clean (all functions):  0
+Funciones escaneadas:           202431
+Instrucciones conocidas:        15287460
+Instrucciones desconocidas:     44384
+_main call graphs escaneados:   155
+_main con RAW_SH4=0:             71
+Tiempo:                          8.10 s
+
+NOTA: ISA-clean significa que el decoder/DCIR no encontro opcodes desconocidos en las funciones simbolizadas.
+No implica que el programa completo ya pueda ejecutarse: pueden faltar servicios KOS/MMIO/PVR/AICA/etc.
+
+Top familias desconocidas alcanzables desde _main
+==================================================
+  1. FPU unary/conversion [FnmD]  count=6118  elfs=75  sample=0xF19D  _cube_one_frame@0x8C010952
+  2. SH-4 0x0*** system/control  count=584  elfs=68  sample=0x04C3  _pvr_poly_compile@0x8C022D36
+  3. SH-4 0x4*** special/shift  count=60  elfs=17  sample=0x400E  _arch_exec_at@0x8C0105C6
+
+Top raw words desconocidos alcanzables desde _main
+====================================================
+  1. 0xF12D  count=563  elfs=44  example=_font_next_screen@0x8C010D04  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  2. 0xF22D  count=530  elfs=58  example=_main@0x8C010730  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+  3. 0xF13D  count=476  elfs=31  example=_font_one_frame@0x8C010DEC  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  4. 0xF18D  count=242  elfs=54  example=_main@0x8C010904  /mnt/data/kos_corpus/dreamcast/cpp/dcplib/fnt_test.elf
+  5. 0xF42D  count=240  elfs=31  example=_font_next_screen@0x8C010CC8  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  6. 0xF48D  count=206  elfs=22  example=_main@0x8C01089C  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+  7. 0xF23D  count=187  elfs=31  example=_font_next_screen@0x8C010CDA  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  8. 0xF19D  count=181  elfs=40  example=_cube_one_frame@0x8C010952  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  9. 0xF24D  count=134  elfs=35  example=_SceneListSubmit.part.0@0x8C0141DE  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 10. 0xF00D  count=126  elfs=27  example=___floatundisf@0x8C04D8D2  /mnt/data/kos_corpus/dreamcast/basic/dma/speedtest/speedtest.elf
+ 11. 0xF10D  count=125  elfs=23  example=_gluPerspective@0x8C01724E  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 12. 0xF78D  count=123  elfs=24  example=_main@0x8C0107B2  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 13. 0xF72D  count=115  elfs=16  example=_SceneListSubmit.part.0@0x8C014496  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 14. 0x0383  count=110  elfs=22  example=_sq_cpy@0x8C033D68  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 15. 0xF03D  count=105  elfs=17  example=___ieee754_rem_pio2@0x8C04F744  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 16. 0xF04D  count=102  elfs=21  example=___kernel_tan@0x8C04F3C2  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 17. 0x0012  count=97  elfs=1  example=__ZL19stbi__build_huffmanP13stbi__huffmanPi@0x8C01BDDA  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+ 18. 0xF58D  count=97  elfs=27  example=_glKosInit@0x8C016690  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 19. 0xF32D  count=89  elfs=33  example=_pvr_fog_table_exp@0x8C021F70  /mnt/data/kos_corpus/dreamcast/gldc/nehe/nehe16/nehe16.elf
+ 20. 0xF68D  count=86  elfs=19  example=_glRotatef@0x8C019E88  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 21. 0xF43D  count=78  elfs=34  example=_glColor4f@0x8C01735E  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 22. 0xFF9D  count=77  elfs=9  example=_draw_gl@0x8C01026E  /mnt/data/kos_corpus/dreamcast/gldc/nehe/nehe09/nehe09.elf
+ 23. 0xF0FD  count=76  elfs=29  example=_gluPerspective@0x8C012506  /mnt/data/kos_corpus/dreamcast/kgl/basic/elements/gl-elements.elf
+ 24. 0xF49D  count=74  elfs=36  example=_SceneListSubmit.part.0@0x8C014570  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 25. 0x0048  count=73  elfs=16  example=_aligned_vector_reserve.isra.0@0x8C0140F8  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 26. 0xFDFD  count=72  elfs=6  example=__glKosVertexComputeLighting@0x8C011124  /mnt/data/kos_corpus/dreamcast/kgl/demos/blur/radial_blur.elf
+ 27. 0xF51D  count=70  elfs=14  example=_fabsf@0x8C04F220  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 28. 0xF33D  count=68  elfs=29  example=_gluPerspective@0x8C012504  /mnt/data/kos_corpus/dreamcast/kgl/basic/elements/gl-elements.elf
+ 29. 0xF11D  count=67  elfs=30  example=_main@0x8C0102F0  /mnt/data/kos_corpus/dreamcast/basic/dma/speedtest/speedtest.elf
+ 30. 0xF09D  count=65  elfs=11  example=_SceneListSubmit.part.0@0x8C014280  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+
+Top familias desconocidas en todas las funciones simbolizadas
+==========================================================
+  1. FPU unary/conversion [FnmD]  count=39519  elfs=155  sample=0xF02D  _draw_cube.part.0@0x8C010330
+  2. SH-4 0x0*** system/control  count=3696  elfs=155  sample=0x0002  _irq_init@0x8C01BD38
+  3. SH-4 0x4*** special/shift  count=1104  elfs=155  sample=0x402E  _irq_init@0x8C01BDD6
+  4. Other top-nibble 0x8***  count=65  elfs=10  sample=0x8C01  _d_type@0x8C014096
+
+Top raw words SH-4 desconocidos en todas las funciones simbolizadas
+=================================================================
+  1. 0xF13D  count=4864  elfs=154  example=_draw_cube.part.0@0x8C010402  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  2. 0xF22D  count=2302  elfs=155  example=_font_draw_char@0x8C010B3A  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  3. 0xF18D  count=2006  elfs=155  example=_draw_cube.part.0@0x8C010420  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  4. 0xF12D  count=1922  elfs=154  example=_poly_pnt@0x8C0107A2  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  5. 0xF42D  count=1584  elfs=155  example=_font_next_screen@0x8C010CC8  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  6. 0xF14D  count=1413  elfs=154  example=_mat_lookat@0x8C03155C  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  7. 0xF24D  count=1327  elfs=155  example=_draw_cube.part.0@0x8C010386  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  8. 0xFA3D  count=1014  elfs=154  example=_mat_rotate_x@0x8C03130E  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  9. 0xFA4D  count=955  elfs=154  example=_mat_rotate_x@0x8C031318  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 10. 0xFAFD  count=934  elfs=154  example=_mat_rotate_x@0x8C031310  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 11. 0xF19D  count=882  elfs=154  example=_draw_cube.part.0@0x8C0104A8  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 12. 0xF23D  count=879  elfs=155  example=_font_next_screen@0x8C010CDA  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 13. 0xF10D  count=877  elfs=154  example=_pvr_fog_table_exp2@0x8C0334C4  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 14. 0xF03D  count=847  elfs=155  example=_pvr_fog_table_exp2@0x8C033442  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 15. 0xF43D  count=835  elfs=155  example=_pvr_set_bg_color@0x8C0227C2  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 16. 0xF04D  count=792  elfs=155  example=_draw_cube.part.0@0x8C0103C0  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 17. 0xF68D  count=727  elfs=154  example=_mat_lookat@0x8C031538  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 18. 0xF2BD  count=682  elfs=37  example=_font_draw_char@0x8C010B96  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 19. 0xF00D  count=618  elfs=154  example=___ieee754_sqrtf@0x8C03A020  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 20. 0xF53D  count=557  elfs=154  example=_font_draw_char@0x8C010BAE  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 21. 0xF51D  count=550  elfs=155  example=_pvr_fog_far_depth@0x8C0333DE  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 22. 0xFF9D  count=517  elfs=154  example=_mat_lookat@0x8C031542  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 23. 0x402E  count=464  elfs=155  example=_irq_init@0x8C01BDD6  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 24. 0xF28D  count=433  elfs=28  example=_draw_cube.part.0@0x8C0103D6  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 25. 0xF32D  count=417  elfs=154  example=_pvr_fog_table_exp@0x8C033614  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 26. 0x0383  count=404  elfs=154  example=_sq_cpy@0x8C02564C  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 27. 0xF5ED  count=398  elfs=154  example=_mat_lookat@0x8C03153A  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 28. 0xF79D  count=392  elfs=154  example=_pvr_fog_table_exp2@0x8C033498  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 29. 0xF73D  count=390  elfs=154  example=_pvr_set_bg_color@0x8C0227C6  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 30. 0xF72D  count=385  elfs=41  example=_draw_cube.part.0@0x8C01034A  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf

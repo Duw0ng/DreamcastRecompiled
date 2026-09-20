@@ -1,0 +1,241 @@
+--- previous/src/disc/raw_recompiler.cpp
++++ prelim/src/disc/raw_recompiler.cpp
+@@ -543,7 +543,12 @@
+     // dataflow deliberately local: the loaded register must reach a 32-bit store
+     // unchanged within a handful of instructions.
+     const std::uint64_t end64 = std::min<std::uint64_t>(
+-        static_cast<std::uint64_t>(load_address) + 0x0Au,
++        // A compact Katana registration descriptor can interleave a few scalar
++        // field stores between loading the callback literal and committing it
++        // into the structure (Lodoss: 0x8C03CE4C -> store at +0x0E). Keep this
++        // bounded to eight following SH-4 instructions and still require the
++        // exact register to survive unchanged.
++        static_cast<std::uint64_t>(load_address) + 0x10u,
+         static_cast<std::uint64_t>(base) + bytes.size());
+     const auto end = static_cast<std::uint32_t>(end64);
+     for (std::uint32_t pc = load_address + 2u; pc + 2u <= end; pc += 2u) {
+@@ -1449,12 +1454,21 @@
+            gpr_saves >= 1u && pr_save;
+ }
+ 
++// Forward declaration: stored callback provenance is strong enough to reuse the
++// compact callable validator defined below. This covers tiny Katana callback
++// veneers such as PUSH_PR; JSR @Rn; ...; JMP @Rm; POP_PR that intentionally
++// save no callee-saved GPRs.
++bool looks_like_compact_callable_entry(const std::vector<std::uint8_t>& bytes,
++                                       std::uint32_t base,
++                                       std::uint32_t address);
++
+ bool looks_like_stored_callback_entry(const std::vector<std::uint8_t>& bytes,
+                                       std::uint32_t base,
+                                       std::uint32_t address) {
+     return looks_like_argument_callback_entry(bytes, base, address) ||
+            looks_like_local_cfg_callable_entry(bytes, base, address) ||
+-           looks_like_stored_callback_abi_entry(bytes, base, address);
++           looks_like_stored_callback_abi_entry(bytes, base, address) ||
++           looks_like_compact_callable_entry(bytes, base, address);
+ }
+ 
+ bool looks_like_fpu_only_abi_prologue(const std::vector<std::uint8_t>& bytes,
+@@ -2016,7 +2030,171 @@
+         run.push_back(*cb0);
+         run.push_back(*cb1);
+     }
+-    if (records < kMinRecords) return targets;
++    if (records < kMinRecords) {
++        // 0.0.211: Katana also uses compact 12-byte callback descriptors:
++        //   { scalar0, scalar1, callback }
++        // Record of Lodoss War has long arrays of exactly this shape.  The callback
++        // can legitimately point two bytes past a leading alignment NOP, so requiring
++        // the target to be an already-known function start loses the real runtime
++        // address (for example 0x8C02B580).  Keep this generic and conservative:
++        // search only the first three word alignments relative to an anchored literal,
++        // require at least eight consecutive records, reject local pointers in either
++        // scalar field, and require every callback to have a decoder-clean callable
++        // prefix.  This turns a proven data-table layout into exact dynamic entry roots
++        // without scanning arbitrary in-image words as code.
++        constexpr std::size_t kCompactRecordBytes = 12u;
++        for (const std::uint32_t adjust : {0u, 4u, 8u}) {
++            std::vector<std::uint32_t> compact_run;
++            std::size_t compact_records = 0u;
++            for (; compact_records < kMaxRecords; ++compact_records) {
++                const auto rec64 = static_cast<std::uint64_t>(table_address) + adjust +
++                                   compact_records * kCompactRecordBytes;
++                if (rec64 + kCompactRecordBytes >
++                    static_cast<std::uint64_t>(base) + bytes.size()) break;
++                const auto rec = static_cast<std::uint32_t>(rec64);
++                const std::uint32_t scalar0 = raw32_at(bytes, base, rec + 0u);
++                const std::uint32_t scalar1 = raw32_at(bytes, base, rec + 4u);
++                const auto cb = canonical_local_address(base, bytes.size(),
++                                                        raw32_at(bytes, base, rec + 8u));
++                if (canonical_local_address(base, bytes.size(), scalar0) ||
++                    canonical_local_address(base, bytes.size(), scalar1) || !cb) break;
++                if (looks_like_pointer_table(bytes, base, *cb) ||
++                    looks_like_probable_ascii_data(bytes, base, *cb) ||
++                    !looks_like_code_entry(bytes, base, *cb)) break;
++                compact_run.push_back(*cb);
++            }
++            if (compact_records >= kMinRecords) {
++                std::sort(compact_run.begin(), compact_run.end());
++                compact_run.erase(std::unique(compact_run.begin(), compact_run.end()), compact_run.end());
++                return compact_run;
++            }
++        }
++        // 0.0.211 preliminary: another Katana state/method table uses 36-byte records:
++        //   { cb0, cb1, cb2, scalar0, scalar1, scalar2, scalar3, scalar4, scalar5 }
++        //
++        // The runtime computes selector * 36 and loads one of the first callback
++        // fields before an indirect JMP/JSR (Record of Lodoss War uses this exact
++        // ABI shape).  Keep the rule generic: it is only attempted from an
++        // executable PC-relative literal anchor, requires at least eight consecutive
++        // records, all six scalar words must remain non-pointer values, and every
++        // non-null callback must independently pass a conservative callable-entry
++        // predicate.  Testing word-aligned adjustments lets a literal point at a
++        // small scalar prefix immediately before the first record without teaching
++        // the recompiler any title-specific address.
++        constexpr std::size_t kMethod36RecordBytes = 36u;
++        for (std::uint32_t adjust = 0u; adjust < kMethod36RecordBytes; adjust += 4u) {
++            std::vector<std::uint32_t> method36_run;
++            std::size_t method36_records = 0u;
++            std::size_t method36_callbacks = 0u;
++            bool method36_valid = true;
++            for (; method36_records < kMaxRecords; ++method36_records) {
++                const auto rec64 = static_cast<std::uint64_t>(table_address) + adjust +
++                                   method36_records * kMethod36RecordBytes;
++                if (rec64 + kMethod36RecordBytes >
++                    static_cast<std::uint64_t>(base) + bytes.size()) break;
++                const auto rec = static_cast<std::uint32_t>(rec64);
++
++                for (std::uint32_t scalar_field = 12u; scalar_field < 36u; scalar_field += 4u) {
++                    const auto scalar = raw32_at(bytes, base, rec + scalar_field);
++                    if (canonical_local_address(base, bytes.size(), scalar)) {
++                        method36_valid = false;
++                        break;
++                    }
++                }
++                if (!method36_valid) break;
++
++                bool record_has_callback = false;
++                for (const std::uint32_t field : {0u, 4u, 8u}) {
++                    const auto raw = raw32_at(bytes, base, rec + field);
++                    if (raw == 0u) continue;
++                    const auto cb = canonical_local_address(base, bytes.size(), raw);
++                    if (!cb || looks_like_pointer_table(bytes, base, *cb) ||
++                        looks_like_probable_ascii_data(bytes, base, *cb) ||
++                        (!looks_like_stored_callback_entry(bytes, base, *cb) &&
++                         !looks_like_dense_dispatch_entry(bytes, base, *cb) &&
++                         !looks_like_code_entry(bytes, base, *cb))) {
++                        method36_valid = false;
++                        break;
++                    }
++                    record_has_callback = true;
++                    ++method36_callbacks;
++                    method36_run.push_back(*cb);
++                }
++                if (!method36_valid || !record_has_callback) break;
++            }
++            // A mismatch after a completed run terminates this table family; it
++            // does not invalidate the records already proven.
++            if (method36_records >= kMinRecords && method36_callbacks >= 16u) {
++                std::sort(method36_run.begin(), method36_run.end());
++                method36_run.erase(std::unique(method36_run.begin(), method36_run.end()),
++                                   method36_run.end());
++                return method36_run;
++            }
++        }
++
++        // 0.0.211: a second Katana descriptor family uses 32-byte records:
++        //   { cb0, cb1, cb2, cb3, scalar0, scalar1, metadata_ptr, scalar2 }
++        //
++        // The record array is reached through a real PC-relative literal, so the
++        // source address is already anchored by executable code.  Require a long
++        // run (>=8 records), keep the scalar positions non-pointer-valued, require
++        // a local metadata pointer in every record, and accept only callback fields
++        // that independently look callable.  Null callback slots are allowed.
++        // A 75% callable ratio across at least 12 non-null callback pointers keeps
++        // this from turning arbitrary mixed object data into code while recovering
++        // exact runtime entries selected from copied descriptor objects.
++        constexpr std::size_t kWideRecordBytes = 32u;
++        std::vector<std::uint32_t> wide_run;
++        std::size_t wide_records = 0u;
++        std::size_t records_with_callbacks = 0u;
++        std::size_t callback_pointers = 0u;
++        std::size_t callable_callbacks = 0u;
++        for (; wide_records < kMaxRecords; ++wide_records) {
++            const auto rec64 = static_cast<std::uint64_t>(table_address) +
++                               wide_records * kWideRecordBytes;
++            if (rec64 + kWideRecordBytes >
++                static_cast<std::uint64_t>(base) + bytes.size()) break;
++            const auto rec = static_cast<std::uint32_t>(rec64);
++            const auto scalar0 = raw32_at(bytes, base, rec + 16u);
++            const auto scalar1 = raw32_at(bytes, base, rec + 20u);
++            const auto metadata = canonical_local_address(
++                base, bytes.size(), raw32_at(bytes, base, rec + 24u));
++            const auto scalar2 = raw32_at(bytes, base, rec + 28u);
++            if (canonical_local_address(base, bytes.size(), scalar0) ||
++                canonical_local_address(base, bytes.size(), scalar1) ||
++                canonical_local_address(base, bytes.size(), scalar2) || !metadata) break;
++
++            bool layout_ok = true;
++            bool has_callback = false;
++            for (const std::uint32_t field : {0u, 4u, 8u, 12u}) {
++                const auto raw = raw32_at(bytes, base, rec + field);
++                if (raw == 0u) continue;
++                const auto cb = canonical_local_address(base, bytes.size(), raw);
++                if (!cb) {
++                    layout_ok = false;
++                    break;
++                }
++                has_callback = true;
++                ++callback_pointers;
++                if (looks_like_pointer_table(bytes, base, *cb) ||
++                    looks_like_probable_ascii_data(bytes, base, *cb)) continue;
++                if (looks_like_stored_callback_entry(bytes, base, *cb) ||
++                    looks_like_dense_dispatch_entry(bytes, base, *cb)) {
++                    wide_run.push_back(*cb);
++                    ++callable_callbacks;
++                }
++            }
++            if (!layout_ok) break;
++            if (has_callback) ++records_with_callbacks;
++        }
++        if (wide_records >= kMinRecords && records_with_callbacks >= 6u &&
++            callback_pointers >= 12u && callable_callbacks * 4u >= callback_pointers * 3u) {
++            std::sort(wide_run.begin(), wide_run.end());
++            wide_run.erase(std::unique(wide_run.begin(), wide_run.end()), wide_run.end());
++            return wide_run;
++        }
++        return targets;
++    }
+     std::sort(run.begin(), run.end());
+     run.erase(std::unique(run.begin(), run.end()), run.end());
+     return run;
+--- previous/run_universal_0.0.210.bat
++++ prelim/run_universal_0.0.210.bat
+@@ -32,8 +32,6 @@
+ set "CPP=%OUT%\cpp"
+ set "CB=_cb_universal_0.0.210"
+ set "PADARG="
+-set "STARTARG="
+-if /I "%DCR_PROBE_START_BURST%"=="1" set "STARTARG=--probe-controller-start-burst"
+ if exist "profiles\controller_profile.ini" (
+   set "PADARG=--controller-profile=profiles\controller_profile.ini"
+   echo [INFO] Perfil de mando: profiles\controller_profile.ini
+@@ -115,7 +113,7 @@
+ build\Release\dc_raw_recomp.exe "%OUT%\1NOSDC.BIN" ^
+   --base=0x8C010000 --entry=0x8C010000 ^
+   --seed-file="profiles\record_of_lodoss_war_known_seeds.txt" ^
+-  --max-functions=10000 --max-closure-entries=8192 --closure-passes=64 ^
++  --max-functions=10000 --max-closure-entries=9000 --closure-passes=64 ^
+   --map="%OUT%\function_map.csv" --output="%CPP%"
+ if errorlevel 1 exit /b 5
+ 
+@@ -149,7 +147,7 @@
+   "%EXE%" ^
+     --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
+     --pvr-window --pvr-frame-sync --pvr-mt --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! !STARTARG! --device-clock --aica-arm7 --aica-play --diag-heartbeat-ms=1000
++    --maple-host-input !PADARG! --device-clock --aica-arm7 --aica-play --diag-heartbeat-ms=1000
+ ) else (
+   "%EXE%" ^
+     --commercial-boot --disc-map="%OUT%\disc.map" ^

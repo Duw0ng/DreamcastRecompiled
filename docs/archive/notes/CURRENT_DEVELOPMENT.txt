@@ -1,0 +1,3 @@
+Official release line: v0.1 / 0.1.0
+Development continues after the 0.0.210 compatibility lineage.
+Use run_game.bat for normal end-user testing; legacy/probe BATs are developer diagnostics.

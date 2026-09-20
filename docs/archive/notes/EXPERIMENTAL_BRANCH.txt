@@ -1,0 +1,74 @@
+DreamcastRecomp experimental performance branch
+===============================================
+Stable rollback baseline: 0.0.131
+Immediate experimental rollback: 0.0.165
+Measured high-FPS reference: 0.0.156
+Experimental architecture parent: 0.0.137
+Current experimental build: 0.0.194 (rebased from 0.0.193)
+
+0.0.140 recreates the most important Flycast TA separation natively:
+  guest Store Queue/PREF -> raw 32-byte scene stream + small front FSM
+  scene finalization/STARTRENDER -> bulk TA parser -> specialized decoder -> indexed arena
+
+The front path intentionally does not build vertices/triangles. It only captures the
+packet and preserves state that is externally timing-sensitive, including 64-byte
+continuations and End-Of-List IRQ timing. During replay EOL signaling is suppressed
+so the interrupt is not duplicated. Consecutive ordinary 32-byte vertices are parsed
+in a direct bulk run with the decoder already selected by the polygon header.
+
+Rejected experiments intentionally excluded from 0.0.140:
+  0.0.138 runtime batch4 queue
+  0.0.138/139 QACR-map experiment
+  0.0.139 8xStore32 staticpkt recognizer
+
+Telemetry:
+  pvr-ta-fast=vtx7/le32/src4/v64cache/specdec/nativepref/exactflow/streamfsm/bulkparse/typed78/exactu8/stripstate/bitplaus/arenaonly/zonce/stripbulk/opidx/opbulk/tacont/spgprog/cullstate/tspfull/texa/clamp/hotleaf/dirtytex
+  pvr-ta-stage=<capture>/<flush>/<bulk runs>/<bulk vertices>/<generic replay>/<peak packets>
+  pvr-ta-stage-ms=<total staged parse milliseconds>
+  pvr-stripbulk=<complete runs>/<vertices>/<triangles>/<fallbacks>
+  pvr-opidx=<opaque triangles>/<indices>/<state runs>/<merged triangles>
+  pvr-opbulk=<complete opaque strips>/<triangles>/<indices>
+
+Windows commercial compilation remains strict serial/low-memory:
+  cmake --build ... --parallel 1
+  CL_MPCount=1
+  CMAKE_BUILD_PARALLEL_LEVEL=1
+  MSBUILDDISABLENODEREUSE=1
+  MSVC /MP disabled
+
+0.0.141 adds Flycast-style page-scoped texture dirty tracking on top of 0.0.140.
+0.0.142 keeps 0.0.141 intact and specializes the staged Type-7/Type-8 hot loop: direct typed decoder calls, exact cheaper intensity rounding, and one-load UV16 decode.
+0.0.143 keeps all of 0.0.142 and optimizes the post-decode strip path only: staged per-strip deferred-state reuse, exact IEEE bit plausibility, and modulo-free 3-slot ring rotation.
+
+0.0.144 keeps all of 0.0.143 and removes duplicate indexed-strip vertex storage, moves GPU unit-Z validation to once per vertex, and skips translucent-only sort metadata for opaque triangles.
+
+0.0.147 keeps the complete 0.0.146 PVR/TA stack and adds exact guest-TU hot leaves for SQ Store32, SQ FMOV64 stores and main-RAM FMOV64 loads. Generic runtime helpers remain the fallback; FPU/PREF/TA semantics are unchanged. Heartbeats now expose pvr-ta-reg directly.
+
+0.0.148 keeps all 0.0.147 semantics and compacts opaque/punch-through deferred geometry into final R32 indices plus state runs. Translucent triangles retain per-triangle sort metadata.
+
+0.0.149 keeps 0.0.148 as immediate rollback and removes the last per-strip first-triangle materialization on complete non-translucent staged strips: state is resolved once, then every strip index is emitted by one resize/fill/commit.
+
+0.0.150 keeps 0.0.149 as immediate rollback, retains the proven opbulk PVR path, and changes only SH-4 FTRV/FIPR emission plus automatic timestamped session logging. FTRV/FIPR now use direct dot-product expressions with double accumulation and final float writeback, matching Flycast reference semantics more closely while removing per-instruction temporary arrays/loops.
+
+0.0.151 keeps the 0.0.150 renderer/performance path and aligns TA decoder locking with Flycast: PCW Object Control alone selects vertex format/stride. New regressions cover PCW-vs-ISP Texture disagreement and split 64-byte vertex/header continuations; pvr-objisp plus [PVR TA-STATE] expose live framing evidence.
+
+0.0.152 keeps 0.0.151 as rollback and adds a conservative native D3D11 triangle-strip path for complete staged non-translucent strips with CullMode 0/1. Mixed topology remains software-fallback-safe. New pvr-stripgpu and pvr-shortbad counters quantify index savings and BAD-VTX/short-strip correlation.
+
+0.0.153 keeps 0.0.152 as immediate rollback and combines Flycast-style finite-coordinate TA acceptance with guarded per-basic-block FR/XF register-cache regions. `pvr-xaccept` and `fpu-cache` measure both effects independently.
+
+0.0.154 keeps 0.0.153 as immediate rollback. The FPU cache now persists across internal basic-block edges below the existing 256-cycle scheduler quantum and flushes only at real scheduler/barrier/exit boundaries; `fpu-trace` reports actual reuse/writeback. TA staging is also split into an exact 32-byte aligned raw stream plus compact provenance sidecar, exposed by `pvr-ta-pack`.
+
+0.0.155 keeps 0.0.154 available for comparison but removes the regressed dynamic FPU trace from the default path. It adds runtime-selectable static FPU superblocks vs the proven 0.0.153 region cache, compacts normal TA provenance to 32+1 bytes, batches Type-7/8 metrics, and removes telemetry-only SQ/FMOV/PREF writes from the normal FPS path.
+
+0.0.156 keeps 0.0.155 as immediate rollback and groups the FPS-first SQ->PREF->TA full-packet fusion with adaptive AOT natural-loop hot traces. Runtime guards preserve the old SQ/PREF path, and hot-trace promotion can be disabled without recompiling.
+
+
+
+0.0.163 performance recovery: production SH-4 codegen defaults to the pre-0.0.157 context-backed GPR path while retaining 0.0.160 PVR/texture fixes, FPU superblocks, SQ->TA zero-copy, direct dispatch and 256-cycle tick batching. The function-wide GPR cache is available only with DCR_GPR_CACHE=1. PERF adds component-ms/frame reporting; CPU-safe now uses the same runtime fast flags as normal for a valid A/B.
+
+
+0.0.164 keeps 0.0.163 timing unchanged and applies a Flycast-inspired whole-strip Type-7/8 decode path: contiguous arena growth + tight typed loop + one proven finalizer call. It also warms persistent vertex/index/state-run capacities. `pvr-flystrip=<runs>/<vertices>/<fallbacks>` reports live coverage; all incomplete/diagnostic/non-finite cases retain the old path.
+
+0.0.165 keeps 0.0.164 whole-strip decode and moves native opaque strip index generation to final GPU submission. TA stores topology-2 first/count descriptors; D3D11 writes the cut-index stream once, and software fallback consumes vertex ranges directly. `pvr-latestrip` reports runs/vertices/materialized indices/avoided TA writes/final merges.
+
+0.0.167 Region+ uses the live-proven 0.0.165 per-region FR/XF cache as production default, keeps FMA3 from 0.0.166, suppresses hot per-region telemetry writes by default, and removes conservative redundant writebacks at terminal control boundaries. The 0.0.165 TA/index path and 0.0.163 timing remain unchanged.

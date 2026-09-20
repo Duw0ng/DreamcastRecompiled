@@ -1,0 +1,6 @@
+DreamcastRecomp 0.0.210 Universal Controller + CT2
+Final package date: 2026-09-19
+Core tests: 53/53 PASS
+CT2 final static closure: 3823 functions, 331876 known SH-4, Unknown=0, RAW_SH4=0
+Controller profile: optional profiles/controller_profile.ini via Configurar_Mando.bat
+Commercial game images: not included

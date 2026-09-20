@@ -1,0 +1,9 @@
+[DCR LOG] session-log=logs/DreamcastRecomp_0.0.200_session_20260915-114109.log
+DreamcastRecomp 0.0.203 native runner
+===================================
+Reachable functions: 300
+Executing sub_8C010000 @ 0x8C010000u
+
+
+
+[DreamcastRecomp] returned to host | R0=0 | FR0=0 | SR=0x0 | GBR=0x0 | PC=0xFFFFFFFF

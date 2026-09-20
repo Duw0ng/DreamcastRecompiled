@@ -1,0 +1,31 @@
+DreamcastRecomp 0.0.38 — KallistiOS corpus summary
+=================================================
+
+Input corpus: 155 compiled KallistiOS ELF demos supplied for compatibility testing.
+The supplied ELF corpus is NOT redistributed with DreamcastRecomp.
+
+Final 0.0.38 static/emission results:
+- ELF loaded by corpus scanner: 155 / 155
+- ELF emitted by dc_recomp with normal settings: 155 / 155
+- _main reachable graphs with RAW_SH4=0: 154 / 155
+- Full symbolized ISA-clean ELF: 154 / 155
+- Remaining decoder/DCIR exception: lua/basic/lua.elf::_llex
+  words: 0x0118, 0x0119, 0x011B
+
+Representative 0.0.38 runtime regressions:
+- 2ndMix: stable native ARM/AICA/PVR regression; 5 s WAV SHA-256 remains
+  0506c2f483184738e5034924288f2b7b7948f0805c45ae1760a309fc4d991567
+- plasma: texture SQ aperture + RGB565 + bilinear path
+- palette/4bpp: 4-bit paletted TCW/palette bank path
+- palette/8bpp: 8-bit paletted TCW/palette bank path
+- palette/wormhole: dynamic palette effect path
+- texture_render: RTT -> VRAM -> immediate texture reuse without RTT page flip
+- bumpmap: 64-byte sprites + VQ texture path; exact BUMP lighting remains pending
+- pvrmark: TA/frontend stress path
+
+Main test suite: 47 / 47 PASS.
+
+See:
+- docs/VALIDATION_0.0.38.md
+- docs/PVR_TEXTURE_PIPELINE_0.0.38.md
+- docs/NEXT_STEPS.md

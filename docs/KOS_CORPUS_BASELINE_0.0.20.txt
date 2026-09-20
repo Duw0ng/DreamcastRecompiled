@@ -1,0 +1,49 @@
+DreamcastRecomp 0.0.20 - KallistiOS corpus compatibility
+=========================================================
+ELF encontrados:                155
+ELF cargados:                   155
+ELF ISA-clean (all functions):  144
+Funciones escaneadas:           202431
+Instrucciones conocidas:        15331771
+Instrucciones desconocidas:     73
+_main call graphs escaneados:   155
+_main con RAW_SH4=0:             155
+Tiempo:                          8.81 s
+
+NOTA: ISA-clean significa que el decoder/DCIR no encontro opcodes desconocidos en las funciones simbolizadas.
+No implica que el programa completo ya pueda ejecutarse: pueden faltar servicios KOS/MMIO/PVR/AICA/etc.
+
+Top familias desconocidas alcanzables desde _main
+==================================================
+
+Top raw words desconocidos alcanzables desde _main
+====================================================
+
+Top familias desconocidas en todas las funciones simbolizadas
+==========================================================
+  1. Other top-nibble 0x8***  count=65  elfs=10  sample=0x8C01  _d_type@0x8C014096
+  2. SH-4 0x4*** special/shift  count=5  elfs=3  sample=0x4338  _d_type@0x8C024B44
+  3. SH-4 0x0*** system/control  count=3  elfs=1  sample=0x0119  _llex@0x8C0323B4
+
+Top raw words SH-4 desconocidos en todas las funciones simbolizadas
+=================================================================
+  1. 0x8C08  count=13  elfs=3  example=_d_type@0x8C014242  /mnt/data/kos_corpus/dreamcast/cpp/dcplib/fnt_test.elf
+  2. 0x8C0A  count=12  elfs=2  example=_d_type@0x8C024B4A  /mnt/data/kos_corpus/dreamcast/cpp/modplug_test/example.elf
+  3. 0x8C01  count=11  elfs=6  example=_d_type@0x8C014096  /mnt/data/kos_corpus/dreamcast/cpp/clock/clock.elf
+  4. 0x8C41  count=7  elfs=1  example=_d_type@0x8C052E32  /mnt/data/kos_corpus/dreamcast/raylib/raytris/raytris.elf
+  5. 0x8C06  count=6  elfs=1  example=_d_type@0x8C01409E  /mnt/data/kos_corpus/dreamcast/cpp/clock/clock.elf
+  6. 0x8C07  count=6  elfs=1  example=_d_type@0x8C01CF56  /mnt/data/kos_corpus/dreamcast/tsunami/genmenu/genmenu.elf
+  7. 0x8C04  count=3  elfs=2  example=_d_type@0x8C04AD8E  /mnt/data/kos_corpus/dreamcast/cpp/concurrency/concurrency.elf
+  8. 0x8C02  count=2  elfs=1  example=_d_type@0x8C024B42  /mnt/data/kos_corpus/dreamcast/cpp/modplug_test/example.elf
+  9. 0x8C05  count=2  elfs=1  example=_d_type@0x8C052E2A  /mnt/data/kos_corpus/dreamcast/raylib/raytris/raytris.elf
+ 10. 0x0118  count=1  elfs=1  example=_llex@0x8C0323C0  /mnt/data/kos_corpus/dreamcast/lua/basic/lua.elf
+ 11. 0x0119  count=1  elfs=1  example=_llex@0x8C0323B4  /mnt/data/kos_corpus/dreamcast/lua/basic/lua.elf
+ 12. 0x011B  count=1  elfs=1  example=_llex@0x8C0323B6  /mnt/data/kos_corpus/dreamcast/lua/basic/lua.elf
+ 13. 0x41A0  count=1  elfs=1  example=_d_type@0x8C0149AC  /mnt/data/kos_corpus/dreamcast/tsunami/font/font.elf
+ 14. 0x4338  count=1  elfs=1  example=_d_type@0x8C024B44  /mnt/data/kos_corpus/dreamcast/cpp/modplug_test/example.elf
+ 15. 0x4EF0  count=1  elfs=1  example=_d_type@0x8C0408CC  /mnt/data/kos_corpus/dreamcast/cpp/out_of_memory/out_of_memory.elf
+ 16. 0x4F40  count=1  elfs=1  example=_d_type@0x8C0408C8  /mnt/data/kos_corpus/dreamcast/cpp/out_of_memory/out_of_memory.elf
+ 17. 0x4F54  count=1  elfs=1  example=_d_type@0x8C0408C4  /mnt/data/kos_corpus/dreamcast/cpp/out_of_memory/out_of_memory.elf
+ 18. 0x8AD4  count=1  elfs=1  example=_d_type@0x8C052E44  /mnt/data/kos_corpus/dreamcast/raylib/raytris/raytris.elf
+ 19. 0x8AE8  count=1  elfs=1  example=_d_type@0x8C052E40  /mnt/data/kos_corpus/dreamcast/raylib/raytris/raytris.elf
+ 20. 0x8C03  count=1  elfs=1  example=_d_type@0x8C0408B6  /mnt/data/kos_corpus/dreamcast/cpp/out_of_memory/out_of_memory.elf

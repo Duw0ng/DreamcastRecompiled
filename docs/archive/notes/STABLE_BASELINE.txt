@@ -1,0 +1,75 @@
+DreamcastRecomp performance lineage
+===================================
+
+Functional stable milestone: 0.0.106
+Measured live-performance milestone: 0.0.115
+Best pre-mixer performance baseline: 0.0.120 / 0.0.123 rollback
+AICA mixer optimization baseline: 0.0.124
+Current stable runtime baseline: 0.0.131
+Current development branch: 0.0.191
+Immediate functional rollback: 0.0.165
+Measured performance reference: 0.0.156
+Rejected performance experiments: 0.0.113 (TA/PREF shortcut regression), 0.0.121 (no material gain), 0.0.122 (live regression), 0.0.125 init bug fixed by 0.0.126
+
+0.0.131 is the accepted stable baseline: strict serial Windows build, single PVR window, AICA mixer fast path, PVR packed28, GPU/MT fast paths, and three-vertex strip ring. Live gameplay is generally >60 FPS; Mouse Mania remains the principal stress case, with a smoother transition and ~41 FPS profiled minimum in the supplied trace.
+
+0.0.132 changes only TA parser CPU overhead: vertex-first Parameter Type 7 dispatch, native defined LE32 loads, fixed-size source-counter indexing, and cached 32/64-byte vertex-format classification.
+
+0.0.133 begins the indexed deferred PVR architecture: one frame vertex arena plus compact triangle indices, while preserving 0.0.132 triangle order and 0.0.131 as the stable rollback point.
+
+0.0.134 adds Flycast/Reicast-style per-surface specialized TA vertex decoders: the polygon header selects one compiled decoder for formats 0..14, retaining the indexed arena from 0.0.133.
+
+0.0.135 remains experimental and adds conservative native TA producer recognition: analyzer-recognized Store Queue -> PREF sites use a guarded direct TA commit helper, with exact dc_pref() fallback for non-TA live state.
+
+0.0.136 remains experimental and extends native TA producer recognition across a function CFG with register-alias propagation and overwrite kills; live Store Queue/QACR validation still gates every direct TA commit.
+
+0.0.137 is the best recent pre-staging experimental reference: exact local/CFG MUST provenance recovered most of the 0.0.136 regression.
+
+0.0.138/0.0.139 are rejected performance experiments for current development: runtime batch4 regressed FPS and staticpkt had zero ChuChu Rocket coverage.
+
+0.0.140 remains experimental and returns to 0.0.137 as its runtime parent. It moves full TA geometry decoding out of the per-PREF submission path: raw 32-byte packets are staged into a contiguous scene stream under a small timing FSM, then parsed in bulk at scene finalization/STARTRENDER. 0.0.131 remains the stable rollback.
+
+0.0.141 keeps 0.0.131 as stable rollback and adds page-scoped texture dirty-region tracking to the experimental 0.0.140 TA architecture.
+
+0.0.142 keeps 0.0.141 available and specializes the staged Type-7/Type-8 hot loop.
+
+0.0.143 uses 0.0.142 as the immediate experimental rollback and changes only the post-decode staged strip path: per-strip deferred-state reuse, exact bit-level plausibility checks, and modulo-free ring rotation. Stable rollback remains 0.0.131.
+
+0.0.144 keeps 0.0.143 as immediate rollback and optimizes only indexed strip geometry storage/checks; stable rollback remains 0.0.131.
+
+0.0.146 uses 0.0.145 as immediate experimental rollback and keeps the 0.0.145 hot path intact while adding Flycast-aligned PVR reset state, TA_LIST_CONT/guest-pointer semantics, programmed SPG status, D3D11 culling, full decoded TSP surface identity, IgnoreTexA and ColorClamp. Stable rollback remains 0.0.131.
+
+0.0.147 isolates the remaining SH-4 memory-feed overhead observed in the 0.0.146 Mouse Mania trace: exact SQ/FMOV64 common leaves are emitted in guest translation units, with 0.0.146 runtime helpers as fallback.
+
+0.0.148 keeps 0.0.147 as immediate rollback and replaces per-triangle opaque deferred structs with the final R32 index stream plus compact state runs; translucent sorting remains unchanged.
+
+0.0.149 keeps 0.0.148 as immediate rollback and bulk-emits the entire index sequence for complete opaque/punch-through staged strips after a state-only resolve; translucent sorting remains unchanged.
+
+0.0.150 keeps 0.0.149 as immediate rollback; PVR/TA opbulk is unchanged. SH-4 FTRV/FIPR move to Flycast-style double accumulation with direct emitted dot products, and the generated runner automatically tees the full console session to a timestamped log file.
+
+0.0.151 keeps 0.0.150 as immediate rollback and makes PCW Object Control authoritative for TA replay decoder selection; it also adds locked 64-byte continuation regressions and live PCW/ISP conflict diagnostics. Stable rollback remains 0.0.131.
+
+0.0.152 keeps 0.0.151 as immediate rollback and preserves eligible complete opaque/punch strips as D3D11 triangle strips with primitive-restart cuts, reducing index materialization while preserving mixed-topology software fallback.
+
+0.0.153 keeps 0.0.152 as immediate rollback and combines finite off-screen TA acceptance with a guarded per-basic-block AOT FR/XF cache. Stable rollback remains 0.0.131.
+
+0.0.154 keeps 0.0.153 as immediate rollback, persists the FR/XF cache across internal basic-block edges until scheduler/barrier boundaries, and splits TA staging from a 64-byte combined record into a 32-byte raw payload plus compact metadata sidecar. Stable rollback remains 0.0.131.
+
+0.0.155 keeps 0.0.154 as immediate experimental rollback, defaults to static AOT FPU superblocks with an in-binary 0.0.153 region-cache A/B mode, compacts TA staging provenance to 32+1 bytes, and removes telemetry-only writes from SQ/PREF/Type-7/8 hot paths. Stable rollback remains 0.0.131.
+
+0.0.156 keeps 0.0.155 as immediate experimental rollback and adds conservative complete SQ-packet TA fusion plus scheduler-safe adaptive hot traces. Stable rollback remains 0.0.131.
+
+0.0.158 uses 0.0.156 as immediate experimental rollback. It removes adaptive hot-trace scaffolding from production codegen, adds a Flycast-inspired static GPR cache with source-only preload and barrier/exit writeback, and moves structurally fused 32-byte SQ packets directly into TA staging without the extra packet-to-stage copy. Stable rollback remains 0.0.131.
+
+0.0.158 fixes the 0.0.157 multi-entry GPR cache boot regression. Immediate experimental rollback: 0.0.156.
+
+
+
+0.0.163 keeps all 0.0.160 PVR/texture correctness changes but removes the function-wide static GPR cache from production codegen. Normal/PERF/smoke recompilation uses DCR_GPR_CACHE=0 with the same GPU/direct-dispatch/256-cycle-tick runtime flags; DCR_GPR_CACHE=1 remains an explicit experiment. The old CPU-safe launcher is corrected to be an apples-to-apples fast-path A/B. Immediate functional rollback: 0.0.165; measured high-FPS reference: 0.0.156; stable rollback: 0.0.131.
+
+
+0.0.164 uses the live-proven 0.0.163 timing/runtime as its immediate rollback and changes only TA CPU work. Complete staged Type-7/Type-8 strips can decode directly into the persistent vertex arena and finalize once, with exact fallback for every ineligible case. New `pvr-flystrip` telemetry measures coverage. Stable rollback remains 0.0.131; measured high-FPS reference remains 0.0.156.
+
+0.0.165 uses the live-tested 0.0.164 as immediate rollback. Native opaque strips keep firstVertex/vertexCount/state descriptors until GPU submission, eliminating the TA-time index write plus later opaque index copy for the dominant native-strip path. `pvr-latestrip` reports coverage/materialization. Stable rollback remains 0.0.131; measured high-FPS reference remains 0.0.156.
+
+0.0.170 focuses on commercial compatibility rather than FPS: file-backed indirect target resolution, bounded literal-to-call CFG provenance, symmetric P1/P2 target canonicalization, and richer missing-target diagnostics. Immediate functional rollback remains 0.0.167; stable rollback remains 0.0.131.

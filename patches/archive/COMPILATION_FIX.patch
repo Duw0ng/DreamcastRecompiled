@@ -1,0 +1,346 @@
+--- a/src/codegen/cpp_emitter.cpp
++++ b/src/codegen/cpp_emitter.cpp
+@@ -12130,8 +12130,8 @@
+             return bits;
+         }
+     }
+-    const std::uint32_t lo = dc_guest_read32_hot(runtime, address);
+-    const std::uint32_t hi = dc_guest_read32_hot(runtime, address + 4u);
++    const std::uint32_t lo = dc_read32_hot(runtime, address);
++    const std::uint32_t hi = dc_read32_hot(runtime, address + 4u);
+     return static_cast<std::uint64_t>(lo) | (static_cast<std::uint64_t>(hi) << 32u);
+ }
+ 
+@@ -19495,6 +19495,76 @@
+     return std::max<std::uint64_t>(1u, cycles);
+ }
+ 
++std::string guest_helpers_cpp() {
++    std::ostringstream out;
++    out << "#if defined(_MSC_VER)\n"
++            << "#define DCR_GUEST_FORCEINLINE __forceinline\n"
++            << "#elif defined(__GNUC__) || defined(__clang__)\n"
++            << "#define DCR_GUEST_FORCEINLINE inline __attribute__((always_inline))\n"
++            << "#else\n"
++            << "#define DCR_GUEST_FORCEINLINE inline\n"
++            << "#endif\n\n"
++            << "// 0.0.147: exact hot leaves live in the guest TU so retail SQ/FMOV traffic\n"
++            << "// does not cross dc_runtime.cpp for the overwhelmingly common mappings.\n"
++            << "// 0.0.201: CT2 validates MMU-off throughout gameplay.  Inline the overwhelmingly\n"
++            << "// common SDRAM word path while retaining exact fallback semantics elsewhere.\n"
++            << "DCR_GUEST_FORCEINLINE std::uint32_t dc_guest_read32_hot(DCRuntime& runtime, std::uint32_t address) {\n"
++            << "#if defined(DCR_ASSUME_MMU_OFF)\n"
++            << "    const std::uint32_t physical = address & 0x1FFFFFFFu;\n"
++            << "    if (physical >= DCRuntime::kMainRamPhysicalBase && physical < 0x10000000u) {\n"
++            << "        const std::uint32_t off = (physical - DCRuntime::kMainRamPhysicalBase) & static_cast<std::uint32_t>(DCRuntime::kMainRamSize - 1u);\n"
++            << "        if (off <= DCRuntime::kMainRamSize - 4u) { std::uint32_t value = 0u; std::memcpy(&value, runtime.main_ram.data() + off, sizeof(value)); return value; }\n"
++            << "    }\n"
++            << "#endif\n"
++            << "    return dc_read32_hot(runtime, address);\n"
++            << "}\n\n"
++            << "DCR_GUEST_FORCEINLINE void dc_guest_write32_hot(DCRuntime& runtime, std::uint32_t address, std::uint32_t value) {\n"
++            << "    if ((address & 0xFC000000u) == 0xE0000000u) {\n"
++            << "        const std::size_t base = static_cast<std::size_t>(address & 63u);\n"
++            << "        if (base + 4u <= runtime.store_queues.size()) {\n"
++            << "            auto* q = runtime.store_queues.data() + base;\n"
++            << "            q[0] = static_cast<std::uint8_t>(value); q[1] = static_cast<std::uint8_t>(value >> 8u);\n"
++            << "            q[2] = static_cast<std::uint8_t>(value >> 16u); q[3] = static_cast<std::uint8_t>(value >> 24u);\n"
++            << "        }\n"
++            << "        return;\n"
++            << "    }\n"
++            << "#if defined(DCR_ASSUME_MMU_OFF)\n"
++            << "    const std::uint32_t physical = address & 0x1FFFFFFFu;\n"
++            << "    if (physical >= DCRuntime::kMainRamPhysicalBase && physical < 0x10000000u) {\n"
++            << "        const std::uint32_t off = (physical - DCRuntime::kMainRamPhysicalBase) & static_cast<std::uint32_t>(DCRuntime::kMainRamSize - 1u);\n"
++            << "        if (off <= DCRuntime::kMainRamSize - 4u) { std::memcpy(runtime.main_ram.data() + off, &value, sizeof(value)); return; }\n"
++            << "    }\n"
++            << "#endif\n"
++            << "    dc_write32_hot(runtime, address, value);\n"
++            << "}\n\n"
++            << "DCR_GUEST_FORCEINLINE std::uint64_t dc_guest_read64_fmov_hot(DCRuntime& runtime, std::uint32_t address) {\n"
++            << "    const std::uint32_t physical = address & 0x1FFFFFFFu;\n"
++            << "    if (physical >= DCRuntime::kMainRamPhysicalBase && physical < 0x10000000u) {\n"
++            << "        const std::uint32_t off = (physical - DCRuntime::kMainRamPhysicalBase) & static_cast<std::uint32_t>(DCRuntime::kMainRamSize - 1u);\n"
++            << "        if (off <= DCRuntime::kMainRamSize - 8u) { std::uint64_t bits = 0u; std::memcpy(&bits, runtime.main_ram.data() + off, sizeof(bits)); return bits; }\n"
++            << "    }\n"
++            << "    return dc_read64_fmov_hot(runtime, address);\n"
++            << "}\n\n"
++            << "DCR_GUEST_FORCEINLINE void dc_guest_write64_fmov_hot(DCRuntime& runtime, std::uint32_t address, std::uint64_t bits) {\n"
++            << "    if ((address & 0xFC000000u) == 0xE0000000u && (address & 31u) <= 24u) {\n"
++            << "        const std::size_t base = static_cast<std::size_t>(address & 63u);\n"
++            << "        std::memcpy(runtime.store_queues.data() + base, &bits, sizeof(bits));\n"
++            << "        return;\n"
++            << "    }\n"
++            << "    dc_write64_fmov_hot(runtime, address, bits);\n"
++            << "}\n\n"
++            << "DCR_GUEST_FORCEINLINE void dc_guest_pref(DCRuntime& runtime, std::uint32_t address, std::uint32_t source_address) {\n"
++            << "    if ((address & 0xFC000000u) != 0xE0000000u) {\n"
++            << "#if !defined(DCR_LIGHTWEIGHT_HOT_METRICS)\n"
++            << "        ++runtime.pref_calls;\n"
++            << "#endif\n"
++            << "        return;\n"
++            << "    }\n"
++            << "    dc_pref(runtime, address, source_address);\n"
++            << "}\n\n";
++    return out.str();
++}
++
+ } // namespace
+ 
+ CppEmitResult emit_cpp(const Elf32Image& elf,
+@@ -19556,8 +19626,10 @@
+     std::ostringstream source;
+     source << "#include \"" << result.function_header.filename().string() << "\"\n\n"
+            << "#include <bit>\n"
+-           << "#include <cstdint>\n\n"
++           << "#include <cstdint>\n"
++           << "#include <cstring>\n\n"
+            << "namespace dcrecomp_generated {\n\n"
++           << guest_helpers_cpp()
+            << "void " << cpp_fn << "(SH4Context& ctx, DCRuntime& runtime) {\n"
+            << "    bool delayed_t = false;\n    std::uint32_t delayed_target = 0u;\n"
+            << (hot_trace_plan.enabled ? emit_hot_trace_decls(hot_trace_plan) : std::string{})
+@@ -20382,71 +20454,7 @@
+             << "#include <cstdint>\n"
+             << "#include <cstring>\n\n"
+             << "namespace dcrecomp_generated {\n\n"
+-            << "#if defined(_MSC_VER)\n"
+-            << "#define DCR_GUEST_FORCEINLINE __forceinline\n"
+-            << "#elif defined(__GNUC__) || defined(__clang__)\n"
+-            << "#define DCR_GUEST_FORCEINLINE inline __attribute__((always_inline))\n"
+-            << "#else\n"
+-            << "#define DCR_GUEST_FORCEINLINE inline\n"
+-            << "#endif\n\n"
+-            << "// 0.0.147: exact hot leaves live in the guest TU so retail SQ/FMOV traffic\n"
+-            << "// does not cross dc_runtime.cpp for the overwhelmingly common mappings.\n"
+-            << "// 0.0.201: CT2 validates MMU-off throughout gameplay.  Inline the overwhelmingly\n"
+-            << "// common SDRAM word path while retaining exact fallback semantics elsewhere.\n"
+-            << "DCR_GUEST_FORCEINLINE std::uint32_t dc_guest_read32_hot(DCRuntime& runtime, std::uint32_t address) {\n"
+-            << "#if defined(DCR_ASSUME_MMU_OFF)\n"
+-            << "    const std::uint32_t physical = address & 0x1FFFFFFFu;\n"
+-            << "    if (physical >= DCRuntime::kMainRamPhysicalBase && physical < 0x10000000u) {\n"
+-            << "        const std::uint32_t off = (physical - DCRuntime::kMainRamPhysicalBase) & static_cast<std::uint32_t>(DCRuntime::kMainRamSize - 1u);\n"
+-            << "        if (off <= DCRuntime::kMainRamSize - 4u) { std::uint32_t value = 0u; std::memcpy(&value, runtime.main_ram.data() + off, sizeof(value)); return value; }\n"
+-            << "    }\n"
+-            << "#endif\n"
+-            << "    return dc_read32_hot(runtime, address);\n"
+-            << "}\n\n"
+-            << "DCR_GUEST_FORCEINLINE void dc_guest_write32_hot(DCRuntime& runtime, std::uint32_t address, std::uint32_t value) {\n"
+-            << "    if ((address & 0xFC000000u) == 0xE0000000u) {\n"
+-            << "        const std::size_t base = static_cast<std::size_t>(address & 63u);\n"
+-            << "        if (base + 4u <= runtime.store_queues.size()) {\n"
+-            << "            auto* q = runtime.store_queues.data() + base;\n"
+-            << "            q[0] = static_cast<std::uint8_t>(value); q[1] = static_cast<std::uint8_t>(value >> 8u);\n"
+-            << "            q[2] = static_cast<std::uint8_t>(value >> 16u); q[3] = static_cast<std::uint8_t>(value >> 24u);\n"
+-            << "        }\n"
+-            << "        return;\n"
+-            << "    }\n"
+-            << "#if defined(DCR_ASSUME_MMU_OFF)\n"
+-            << "    const std::uint32_t physical = address & 0x1FFFFFFFu;\n"
+-            << "    if (physical >= DCRuntime::kMainRamPhysicalBase && physical < 0x10000000u) {\n"
+-            << "        const std::uint32_t off = (physical - DCRuntime::kMainRamPhysicalBase) & static_cast<std::uint32_t>(DCRuntime::kMainRamSize - 1u);\n"
+-            << "        if (off <= DCRuntime::kMainRamSize - 4u) { std::memcpy(runtime.main_ram.data() + off, &value, sizeof(value)); return; }\n"
+-            << "    }\n"
+-            << "#endif\n"
+-            << "    dc_write32_hot(runtime, address, value);\n"
+-            << "}\n\n"
+-            << "DCR_GUEST_FORCEINLINE std::uint64_t dc_guest_read64_fmov_hot(DCRuntime& runtime, std::uint32_t address) {\n"
+-            << "    const std::uint32_t physical = address & 0x1FFFFFFFu;\n"
+-            << "    if (physical >= DCRuntime::kMainRamPhysicalBase && physical < 0x10000000u) {\n"
+-            << "        const std::uint32_t off = (physical - DCRuntime::kMainRamPhysicalBase) & static_cast<std::uint32_t>(DCRuntime::kMainRamSize - 1u);\n"
+-            << "        if (off <= DCRuntime::kMainRamSize - 8u) { std::uint64_t bits = 0u; std::memcpy(&bits, runtime.main_ram.data() + off, sizeof(bits)); return bits; }\n"
+-            << "    }\n"
+-            << "    return dc_read64_fmov_hot(runtime, address);\n"
+-            << "}\n\n"
+-            << "DCR_GUEST_FORCEINLINE void dc_guest_write64_fmov_hot(DCRuntime& runtime, std::uint32_t address, std::uint64_t bits) {\n"
+-            << "    if ((address & 0xFC000000u) == 0xE0000000u && (address & 31u) <= 24u) {\n"
+-            << "        const std::size_t base = static_cast<std::size_t>(address & 63u);\n"
+-            << "        std::memcpy(runtime.store_queues.data() + base, &bits, sizeof(bits));\n"
+-            << "        return;\n"
+-            << "    }\n"
+-            << "    dc_write64_fmov_hot(runtime, address, bits);\n"
+-            << "}\n\n"
+-            << "DCR_GUEST_FORCEINLINE void dc_guest_pref(DCRuntime& runtime, std::uint32_t address, std::uint32_t source_address) {\n"
+-            << "    if ((address & 0xFC000000u) != 0xE0000000u) {\n"
+-            << "#if !defined(DCR_LIGHTWEIGHT_HOT_METRICS)\n"
+-            << "        ++runtime.pref_calls;\n"
+-            << "#endif\n"
+-            << "        return;\n"
+-            << "    }\n"
+-            << "    dc_pref(runtime, address, source_address);\n"
+-            << "}\n\n";
++            << guest_helpers_cpp();
+         return out.str();
+     };
+ 
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -508,3 +508,23 @@
+ # to the generic QACR target + TA FIFO range classifier.
+ add_executable(pvr_pref_guard_tests tests/pvr_pref_guard_tests.cpp)
+ add_test(NAME pvr_pref_guard_tests COMMAND pvr_pref_guard_tests)
++
++# Guard both emitter paths with actual host compilation and linking.
++function(dcr_add_generated_build_test name producer source_dir)
++    set_tests_properties(${producer} PROPERTIES FIXTURES_SETUP ${name}_source)
++    add_test(NAME ${name} COMMAND ${CMAKE_COMMAND}
++        "-DSOURCE_DIR=${source_dir}"
++        "-DBINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/${name}"
++        "-DGENERATOR=${CMAKE_GENERATOR}"
++        "-DPLATFORM=${CMAKE_GENERATOR_PLATFORM}"
++        "-DTOOLSET=${CMAKE_GENERATOR_TOOLSET}"
++        "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
++        "-DCONFIG=$<IF:$<BOOL:$<CONFIG>>,$<CONFIG>,Release>"
++        "-DEXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
++        -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/build_generated.cmake")
++    set_tests_properties(${name} PROPERTIES
++        FIXTURES_REQUIRED ${name}_source RUN_SERIAL TRUE TIMEOUT 900)
++endfunction()
++dcr_add_generated_build_test(generated_single_build cpp_emitter_tests "${GENERATED_TEST_DIR}")
++dcr_add_generated_build_test(generated_program_build dc_recomp_multifunc_codegen
++    "${CMAKE_CURRENT_BINARY_DIR}/dc_recomp_multifunc_output")
+--- a/tests/build_generated.cmake
++++ b/tests/build_generated.cmake
+@@ -0,0 +1,25 @@
++# Compile and link real emitted C++, not just text assertions.
++set(args -S "${SOURCE_DIR}" -B "${BINARY_DIR}" -G "${GENERATOR}")
++if(DEFINED PLATFORM AND NOT PLATFORM STREQUAL "")
++    list(APPEND args -A "${PLATFORM}")
++endif()
++if(DEFINED TOOLSET AND NOT TOOLSET STREQUAL "")
++    list(APPEND args -T "${TOOLSET}")
++endif()
++list(APPEND args "-DCMAKE_CXX_COMPILER=${CXX_COMPILER}" "-DCMAKE_BUILD_TYPE=${CONFIG}")
++execute_process(COMMAND "${CMAKE_COMMAND}" ${args} RESULT_VARIABLE rc)
++if(NOT rc EQUAL 0)
++    message(FATAL_ERROR "Generated project configuration failed: ${rc}")
++endif()
++execute_process(COMMAND "${CMAKE_COMMAND}" --build "${BINARY_DIR}" --config "${CONFIG}" --parallel 1 RESULT_VARIABLE rc)
++if(NOT rc EQUAL 0)
++    message(FATAL_ERROR "Generated C++ compile/link failed: ${rc}")
++endif()
++set(exe "${BINARY_DIR}/generated_compile_test${EXE_SUFFIX}")
++if(EXISTS "${BINARY_DIR}/${CONFIG}/generated_compile_test${EXE_SUFFIX}")
++    set(exe "${BINARY_DIR}/${CONFIG}/generated_compile_test${EXE_SUFFIX}")
++endif()
++execute_process(COMMAND "${exe}" WORKING_DIRECTORY "${BINARY_DIR}" RESULT_VARIABLE rc)
++if(NOT rc EQUAL 0)
++    message(FATAL_ERROR "Generated runtime smoke test failed: ${rc}")
++endif()
+--- a/build_windows.bat
++++ b/build_windows.bat
+@@ -6,7 +6,7 @@
+ if /I "%~1"=="--no-pause" set "NOPAUSE=1"
+ 
+ echo ========================================
+-echo  DreamcastRecomp 0.0.193 - Windows Build
++echo  DreamcastRecomp 0.0.203 - Build fix
+ echo ========================================
+ echo.
+ 
+--- a/run_commercial_recompile.bat
++++ b/run_commercial_recompile.bat
+@@ -12,21 +12,22 @@
+   exit /b 1
+ )
+ 
+-set DISC=%~1
++set "DISC=%~f1"
+ if not exist "%DISC%" (
+   echo [ERROR] No encuentro "%DISC%"
+   exit /b 1
+ )
+ 
+-if not exist build\Release\dc_disc_probe.exe call build_windows.bat --no-pause
++rem Always update the tools: an existing EXE may belong to an older generator.
++cmake -S . -B build -A x64
+ if errorlevel 1 exit /b 2
+-if not exist build\Release\dc_boot_prepare.exe (
+-  echo [ERROR] Falta dc_boot_prepare.exe despues del build.
+-  exit /b 2
+-)
+-if not exist build\Release\dc_raw_recomp.exe (
+-  echo [ERROR] Falta dc_raw_recomp.exe despues del build.
+-  exit /b 2
++cmake --build build --config Release --target dc_disc_probe dc_boot_prepare dc_raw_recomp --parallel 1
++if errorlevel 1 exit /b 2
++for %%T in (dc_disc_probe dc_boot_prepare dc_raw_recomp) do (
++  if not exist "build\Release\%%T.exe" (
++    echo [ERROR] Falta build\Release\%%T.exe despues del build.
++    exit /b 2
++  )
+ )
+ 
+ if not exist generated mkdir generated
+--- a/compilar_y_probar_chuchu.bat
++++ b/compilar_y_probar_chuchu.bat
+@@ -0,0 +1,29 @@
++@echo off
++setlocal
++cd /d "%~dp0"
++if "%~1"=="" (
++  echo Uso: compilar_y_probar_chuchu.bat "C:\Juegos\ChuChu Rocket.cdi"
++  echo Tambien puedes arrastrar el CDI sobre este BAT.
++  pause
++  exit /b 1
++)
++set "DISC=%~f1"
++if not exist "%DISC%" (
++  echo [ERROR] No encuentro "%DISC%"
++  pause
++  exit /b 1
++)
++rem Validate both generated C++ paths before the long commercial compilation.
++call build_windows.bat --no-pause
++if errorlevel 1 goto :failed
++call run_commercial_recompiled.bat "%DISC%"
++set "RC=%ERRORLEVEL%"
++if "%RC%"=="0" exit /b 0
++if "%RC%"=="130" exit /b 130
++goto :report
++:failed
++set "RC=%ERRORLEVEL%"
++:report
++echo [ERROR] Proceso terminado con codigo %RC%. Copia el primer error completo.
++pause
++exit /b %RC%
+--- a/tools/build_progress.ps1
++++ b/tools/build_progress.ps1
+@@ -69,6 +69,12 @@
+ $barTotal = if ($estimatedPending.Count -gt 0) { $estimatedPending.Count } else { $totalSources }
+ $compileDetected = $false
+ 
++$rc = 1
++$oldErrorPreference = $ErrorActionPreference
++try {
++    # Windows PowerShell 5.1 wraps redirected native stderr as ErrorRecord.
++    # Preserve compiler diagnostics and use the actual CMake exit code.
++    $ErrorActionPreference = "Continue"
+ & cmake --build "$buildPath" --config "$Config" --target "$Target" --parallel 1 2>&1 | ForEach-Object {
+     $line = $_.ToString()
+     $matches = [regex]::Matches($line, '(?i)([A-Za-z0-9_.-]+\.cpp)')
+@@ -92,13 +98,17 @@
+         Write-Host $line
+     }
+ }
+-$rc = $LASTEXITCODE
+-
+-# Restore caller environment even though this PowerShell process normally exits
+-# immediately afterwards; it also keeps the script safe when invoked manually.
+-$env:MSBUILDDISABLENODEREUSE = $oldNodeReuse
+-$env:CL_MPCount = $oldClMpCount
+-$env:CMAKE_BUILD_PARALLEL_LEVEL = $oldCmakeParallel
++    $rc = $LASTEXITCODE
++    if ($null -eq $rc) { $rc = 1 }
++} catch {
++    Write-Host ("[ERROR] No se pudo ejecutar CMake: {0}" -f $_)
++    $rc = 1
++} finally {
++    $ErrorActionPreference = $oldErrorPreference
++    $env:MSBUILDDISABLENODEREUSE = $oldNodeReuse
++    $env:CL_MPCount = $oldClMpCount
++    $env:CMAKE_BUILD_PARALLEL_LEVEL = $oldCmakeParallel
++}
+ 
+ if ($rc -ne 0) {
+     Write-Host ("[ERROR] La compilacion termino con codigo {0}." -f $rc)

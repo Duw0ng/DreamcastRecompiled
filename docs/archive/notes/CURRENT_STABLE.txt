@@ -1,0 +1,4 @@
+DreamcastRecomp v0.1 Official
+Internal SemVer: 0.1.0
+Base lineage: 0.0.210
+Primary user entry point: run_game.bat

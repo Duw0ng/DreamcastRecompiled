@@ -1,0 +1,7 @@
+Copy the real KallistiOS examples/dreamcast/sound/sfx/sfx.elf here as:
+
+    samples\sfx.elf
+
+It is used by run_kos_aica_sfx_hle.bat to exercise the real SH-4
+_snd_sh4_to_aica command-queue function while DreamcastRecomp HLEs the
+standard KOS ARM sound firmware queue on the host.

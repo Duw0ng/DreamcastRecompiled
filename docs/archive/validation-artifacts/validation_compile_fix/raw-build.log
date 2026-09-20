@@ -1,0 +1,52 @@
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (0.3s)
+-- Generating done (0.0s)
+-- Build files have been written to: /workspace/scratch/51042541999c/raw-build
+[  2%] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_arm7.cpp.o
+[  5%] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_runtime.cpp.o
+[  7%] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_image.cpp.o
+[ 10%] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_native_overrides.cpp.o
+[ 12%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program.cpp.o
+[ 15%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_00.cpp.o
+[ 17%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_01.cpp.o
+[ 20%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_02.cpp.o
+[ 22%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_03.cpp.o
+[ 25%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_04.cpp.o
+[ 27%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_05.cpp.o
+[ 30%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_06.cpp.o
+[ 32%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_07.cpp.o
+[ 35%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_08.cpp.o
+[ 37%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_09.cpp.o
+[ 40%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_10.cpp.o
+[ 42%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_11.cpp.o
+[ 45%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_12.cpp.o
+[ 47%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_13.cpp.o
+[ 50%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_14.cpp.o
+[ 52%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_15.cpp.o
+[ 55%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_16.cpp.o
+[ 57%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_17.cpp.o
+[ 60%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_18.cpp.o
+[ 62%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_19.cpp.o
+[ 65%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_20.cpp.o
+[ 67%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_21.cpp.o
+[ 70%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_22.cpp.o
+[ 72%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_23.cpp.o
+[ 75%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_24.cpp.o
+[ 77%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_25.cpp.o
+[ 80%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_26.cpp.o
+[ 82%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_27.cpp.o
+[ 85%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_28.cpp.o
+[ 87%] Building CXX object CMakeFiles/dreamcast_generated.dir/generated_program_part_29.cpp.o
+[ 90%] Linking CXX static library libdreamcast_generated.a
+[ 90%] Built target dreamcast_generated
+[ 92%] Building CXX object CMakeFiles/dreamcast_program.dir/generated_runner.cpp.o
+[ 95%] Building CXX object CMakeFiles/generated_compile_test.dir/generated_compile_test.cpp.o
+[ 97%] Linking CXX executable generated_compile_test
+[ 97%] Built target generated_compile_test
+[100%] Linking CXX executable dreamcast_program
+[100%] Built target dreamcast_program

@@ -1,0 +1,54 @@
+[SH4 closure] pass 1/32 entries=300/6144
+DreamcastRecomp Raw Commercial Recompiler 0.0.203
+=============================================
+Input:                  raw-fixture.bin
+Image bytes:            2400
+Load base:              0x8C010000
+Entry:                  0x8C010000
+Manual seed entries:    299
+Closure passes:         1
+Closure entry budget:   6144 / 8192
+Synthetic entries:      300
+Reachable functions:    300
+Call-graph edges:       0
+External/unresolved:    0
+Reachable instructions: 900
+Known SH-4:             900
+Unknown SH-4:           0
+CFG blocks:             300
+DCIR ops:               600
+RAW_SH4:                0
+Closure resolved calls: 0
+Closure unresolved:     0
+Rejected nonlocal:      0
+Inline BSRF thunks:      0
+Literal callback targets:     0
+Stored callback targets:     0
+Direct literal targets:       0
+CFG literal call targets:    0
+Returned literal targets:     0
+Callback-object targets:    0
+Anchored dense callbacks:    0
+Strided callback targets:    0
+Relocatable templates:       0
+Argument callbacks:          0
+Promoted CFG fragments:      0
+VBR vector callbacks:        0
+Sparse callback targets:     0
+Dense dispatch targets:       0
+Indexed tail dispatchers:    0
+Indexed tail targets:        0
+Scaled-index targets:         0
+Branch-selected calls:        0
+Rejected dirty fragments:     0
+Rejected dirty sources:       0
+Rejected dirty candidates:    0
+Address-taken candidates:     0
+Address-taken proven:          0
+Function map:            raw-map.csv
+SH-4 evidence map:       raw-generated/sh4_address_taken_evidence.csv
+Generated output:        raw-generated
+Embedded raw image:      2400 bytes
+Registered functions:    300
+
+[OK] Reachable commercial closure emitted without RAW_SH4.

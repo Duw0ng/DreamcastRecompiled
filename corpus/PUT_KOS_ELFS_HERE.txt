@@ -1,0 +1,8 @@
+DreamcastRecomp 0.0.22 corpus scanner
+
+Copia aqui una carpeta con archivos .elf de KallistiOS, o ejecuta:
+
+  run_corpus_scan.bat C:\ruta\a\dreamcast
+
+El scanner recorre subcarpetas automaticamente.
+Los ELF no se redistribuyen dentro del proyecto.

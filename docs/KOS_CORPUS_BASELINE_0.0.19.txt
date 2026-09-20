@@ -1,0 +1,89 @@
+DreamcastRecomp 0.0.19 - KallistiOS corpus compatibility
+=========================================================
+ELF encontrados:                155
+ELF cargados:                   155
+ELF ISA-clean (all functions):  0
+Funciones escaneadas:           202431
+Instrucciones conocidas:        15326979
+Instrucciones desconocidas:     4865
+_main call graphs escaneados:   155
+_main con RAW_SH4=0:             86
+Tiempo:                          8.59 s
+
+NOTA: ISA-clean significa que el decoder/DCIR no encontro opcodes desconocidos en las funciones simbolizadas.
+No implica que el programa completo ya pueda ejecutarse: pueden faltar servicios KOS/MMIO/PVR/AICA/etc.
+
+Top familias desconocidas alcanzables desde _main
+==================================================
+  1. SH-4 0x0*** system/control  count=584  elfs=68  sample=0x04C3  _pvr_poly_compile@0x8C022D36
+  2. SH-4 0x4*** special/shift  count=60  elfs=17  sample=0x400E  _arch_exec_at@0x8C0105C6
+
+Top raw words desconocidos alcanzables desde _main
+====================================================
+  1. 0x0383  count=110  elfs=22  example=_sq_cpy@0x8C033D68  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+  2. 0x0012  count=97  elfs=1  example=__ZL19stbi__build_huffmanP13stbi__huffmanPi@0x8C01BDDA  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+  3. 0x0048  count=73  elfs=16  example=_aligned_vector_reserve.isra.0@0x8C0140F8  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+  4. 0x0283  count=60  elfs=9  example=_glEnd@0x8C018926  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+  5. 0x0783  count=49  elfs=7  example=_glEnd@0x8C0188A0  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+  6. 0x0083  count=40  elfs=40  example=_sq_set32@0x8C02570C  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  7. 0x0183  count=37  elfs=8  example=_glEnd@0x8C018712  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+  8. 0x04C3  count=35  elfs=34  example=_pvr_poly_compile@0x8C022D36  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  9. 0x4456  count=26  elfs=13  example=___kernel_rem_pio2@0x8C04FEE8  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 10. 0x0483  count=25  elfs=21  example=_sq_cpy@0x8C033D8A  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 11. 0x400E  count=17  elfs=4  example=_arch_exec_at@0x8C0105C6  /mnt/data/kos_corpus/dreamcast/basic/exec/exec.elf
+ 12. 0x0002  count=16  elfs=3  example=_thread@0x8C010356  /mnt/data/kos_corpus/dreamcast/basic/threading/atomics/atomics.elf
+ 13. 0x0D83  count=10  elfs=5  example=_glEnd@0x8C017E78  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+ 14. 0x0112  count=7  elfs=1  example=_thd@0x8C010244  /mnt/data/kos_corpus/dreamcast/basic/threading/compiler_tls/compiler_tls.elf
+ 15. 0x0B83  count=7  elfs=6  example=_glEnd@0x8C017E50  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+ 16. 0x420E  count=6  elfs=3  example=_thread@0x8C0103CE  /mnt/data/kos_corpus/dreamcast/basic/threading/atomics/atomics.elf
+ 17. 0x0A83  count=5  elfs=5  example=_glEnd@0x8C017F2C  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+ 18. 0x410E  count=4  elfs=3  example=_thread@0x8C01047C  /mnt/data/kos_corpus/dreamcast/basic/threading/atomics/atomics.elf
+ 19. 0x430E  count=4  elfs=1  example=_thread@0x8C01040C  /mnt/data/kos_corpus/dreamcast/basic/threading/atomics/atomics.elf
+ 20. 0x0583  count=3  elfs=3  example=_main@0x8C010500  /mnt/data/kos_corpus/dreamcast/pvr/pvrmark_strips_direct/pvrmark_strips_direct.elf
+ 21. 0x0683  count=3  elfs=3  example=_main@0x8C0104C2  /mnt/data/kos_corpus/dreamcast/pvr/yuv_converter/YUV420/yuv420.elf
+ 22. 0x0038  count=2  elfs=2  example=_mmu_page_map_static@0x8C01E218  /mnt/data/kos_corpus/dreamcast/basic/mmu/nullptr/nullptr.elf
+ 23. 0x0883  count=2  elfs=2  example=_snd_pcm16_split_sq@0x8C075D02  /mnt/data/kos_corpus/dreamcast/raylib/raytris/raytris.elf
+ 24. 0x0983  count=2  elfs=2  example=_snd_pcm16_split_sq@0x8C075E18  /mnt/data/kos_corpus/dreamcast/raylib/raytris/raytris.elf
+ 25. 0x0E83  count=1  elfs=1  example=_pvr_vertex_commit_zclip@0x8C010E6E  /mnt/data/kos_corpus/dreamcast/pvr/modifier_volume_zclip/example.elf
+ 26. 0x402E  count=1  elfs=1  example=_arch_exec_at@0x8C0105CC  /mnt/data/kos_corpus/dreamcast/basic/exec/exec.elf
+ 27. 0x460E  count=1  elfs=1  example=_main@0x8C010666  /mnt/data/kos_corpus/dreamcast/basic/threading/atomics/atomics.elf
+ 28. 0x470E  count=1  elfs=1  example=_thread@0x8C010362  /mnt/data/kos_corpus/dreamcast/basic/threading/atomics/atomics.elf
+
+Top familias desconocidas en todas las funciones simbolizadas
+==========================================================
+  1. SH-4 0x0*** system/control  count=3696  elfs=155  sample=0x0002  _irq_init@0x8C01BD38
+  2. SH-4 0x4*** special/shift  count=1104  elfs=155  sample=0x402E  _irq_init@0x8C01BDD6
+  3. Other top-nibble 0x8***  count=65  elfs=10  sample=0x8C01  _d_type@0x8C014096
+
+Top raw words SH-4 desconocidos en todas las funciones simbolizadas
+=================================================================
+  1. 0x402E  count=464  elfs=155  example=_irq_init@0x8C01BDD6  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  2. 0x0383  count=404  elfs=154  example=_sq_cpy@0x8C02564C  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  3. 0x400E  count=375  elfs=155  example=_irq_shutdown@0x8C01BE9C  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  4. 0x0483  count=313  elfs=154  example=_sq_cpy@0x8C02566E  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  5. 0x0038  count=309  elfs=155  example=_mmu_gen_tlb_miss@0x8C01F0F6  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  6. 0x0183  count=298  elfs=154  example=_snd_stream_fill@0x8C038090  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  7. 0x0002  count=221  elfs=155  example=_irq_init@0x8C01BD38  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+  8. 0x0283  count=191  elfs=21  example=_glEnd@0x8C018B4E  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+  9. 0x04C3  count=161  elfs=154  example=_pvr_poly_compile@0x8C022D36  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 10. 0x0083  count=157  elfs=155  example=_sq_set32@0x8C02570C  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 11. 0x0883  count=156  elfs=154  example=_snd_pcm16_split_sq@0x8C0387C6  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 12. 0x0983  count=156  elfs=154  example=_snd_pcm16_split_sq@0x8C0388DC  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 13. 0x001B  count=155  elfs=155  example=_thd_idle_task@0x8C025990  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 14. 0x0022  count=155  elfs=155  example=_irq_init@0x8C01BD3E  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 15. 0x0583  count=155  elfs=154  example=_snd_pcm16_split_sq@0x8C038864  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 16. 0x0683  count=155  elfs=154  example=_snd_pcm16_split_sq@0x8C0388B8  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 17. 0x411E  count=155  elfs=155  example=_arch_tls_init@0x8C02763E  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 18. 0x05C3  count=154  elfs=154  example=_snd_stream_fill@0x8C03807C  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 19. 0x06C3  count=154  elfs=154  example=_snd_stream_fill@0x8C038080  /mnt/data/kos_corpus/dreamcast/2ndmix/2ndmix.elf
+ 20. 0x0012  count=117  elfs=1  example=__ZL19stbi__build_huffmanP13stbi__huffmanPi@0x8C01BDDA  /mnt/data/kos_corpus/dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+ 21. 0x0048  count=114  elfs=16  example=_aligned_vector_reserve.isra.0@0x8C0140F8  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 22. 0x0783  count=96  elfs=17  example=_glEnd@0x8C018AC8  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 23. 0x4456  count=34  elfs=17  example=___kernel_rem_pio2@0x8C04FEE8  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 24. 0x0D83  count=29  elfs=15  example=_glEnd@0x8C0180A0  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 25. 0x420E  count=20  elfs=4  example=_thread@0x8C0103CE  /mnt/data/kos_corpus/dreamcast/basic/threading/atomics/atomics.elf
+ 26. 0x0B83  count=16  elfs=15  example=_glEnd@0x8C018078  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 27. 0x0A83  count=14  elfs=14  example=_glEnd@0x8C018154  /mnt/data/kos_corpus/dreamcast/cpp/gltest/gltest.elf
+ 28. 0x410E  count=13  elfs=5  example=_thread@0x8C01047C  /mnt/data/kos_corpus/dreamcast/basic/threading/atomics/atomics.elf
+ 29. 0x8C08  count=13  elfs=3  example=_d_type@0x8C014242  /mnt/data/kos_corpus/dreamcast/cpp/dcplib/fnt_test.elf
+ 30. 0x8C0A  count=12  elfs=2  example=_d_type@0x8C024B4A  /mnt/data/kos_corpus/dreamcast/cpp/modplug_test/example.elf

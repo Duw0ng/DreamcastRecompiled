@@ -1,0 +1,111 @@
+Test project /workspace/scratch/51042541999c/build-check
+      Start  1: arm7_tests
+ 1/53 Test  #1: arm7_tests .........................   Passed    0.00 sec
+      Start  2: sh4_decoder_tests
+ 2/53 Test  #2: sh4_decoder_tests ..................   Passed    0.00 sec
+      Start  3: raw_data_tests
+ 3/53 Test  #3: raw_data_tests .....................   Passed    0.00 sec
+      Start  4: dc_analyzer_smoke
+ 4/53 Test  #4: dc_analyzer_smoke ..................   Passed    0.01 sec
+      Start  5: function_analysis_tests
+ 5/53 Test  #5: function_analysis_tests ............   Passed    0.00 sec
+      Start  6: dc_analyzer_literal_pool
+ 6/53 Test  #6: dc_analyzer_literal_pool ...........   Passed    0.01 sec
+      Start  7: cfg_dcir_tests
+ 7/53 Test  #7: cfg_dcir_tests .....................   Passed    0.01 sec
+      Start  8: dc_analyzer_dcir
+ 8/53 Test  #8: dc_analyzer_dcir ...................   Passed    0.00 sec
+      Start  9: cpp_emitter_tests
+ 9/53 Test  #9: cpp_emitter_tests ..................   Passed    0.08 sec
+      Start 10: dc_recomp_codegen
+10/53 Test #10: dc_recomp_codegen ..................   Passed    0.01 sec
+      Start 11: program_analysis_tests
+11/53 Test #11: program_analysis_tests .............   Passed    0.00 sec
+      Start 12: dc_recomp_multifunc_codegen
+12/53 Test #12: dc_recomp_multifunc_codegen ........   Passed    0.01 sec
+      Start 13: branch_control_tests
+13/53 Test #13: branch_control_tests ...............   Passed    0.00 sec
+      Start 14: dc_recomp_branches_codegen
+14/53 Test #14: dc_recomp_branches_codegen .........   Passed    0.01 sec
+      Start 15: memory_ops_tests
+15/53 Test #15: memory_ops_tests ...................   Passed    0.00 sec
+      Start 16: dc_analyzer_memory_ir
+16/53 Test #16: dc_analyzer_memory_ir ..............   Passed    0.00 sec
+      Start 17: dc_recomp_memory_codegen
+17/53 Test #17: dc_recomp_memory_codegen ...........   Passed    0.01 sec
+      Start 18: struct_bitops_tests
+18/53 Test #18: struct_bitops_tests ................   Passed    0.00 sec
+      Start 19: dc_analyzer_struct_ir
+19/53 Test #19: dc_analyzer_struct_ir ..............   Passed    0.00 sec
+      Start 20: dc_recomp_struct_codegen
+20/53 Test #20: dc_recomp_struct_codegen ...........   Passed    0.01 sec
+      Start 21: address_bus_tests
+21/53 Test #21: address_bus_tests ..................   Passed    0.00 sec
+      Start 22: dc_analyzer_addressbus_ir
+22/53 Test #22: dc_analyzer_addressbus_ir ..........   Passed    0.00 sec
+      Start 23: dc_recomp_addressbus_codegen
+23/53 Test #23: dc_recomp_addressbus_codegen .......   Passed    0.01 sec
+      Start 24: not_ops_tests
+24/53 Test #24: not_ops_tests ......................   Passed    0.00 sec
+      Start 25: dc_analyzer_not_ir
+25/53 Test #25: dc_analyzer_not_ir .................   Passed    0.00 sec
+      Start 26: dc_recomp_not_codegen
+26/53 Test #26: dc_recomp_not_codegen ..............   Passed    0.01 sec
+      Start 27: dc_corpus_scan_samples
+27/53 Test #27: dc_corpus_scan_samples .............   Passed    0.00 sec
+      Start 28: cpu_batch_tests
+28/53 Test #28: cpu_batch_tests ....................   Passed    0.00 sec
+      Start 29: dc_analyzer_cpu_batch_ir
+29/53 Test #29: dc_analyzer_cpu_batch_ir ...........   Passed    0.00 sec
+      Start 30: dc_recomp_cpu_batch_codegen
+30/53 Test #30: dc_recomp_cpu_batch_codegen ........   Passed    0.01 sec
+      Start 31: cpu_control_tests
+31/53 Test #31: cpu_control_tests ..................   Passed    0.00 sec
+      Start 32: dc_analyzer_cpu_control_ir
+32/53 Test #32: dc_analyzer_cpu_control_ir .........   Passed    0.00 sec
+      Start 33: dc_recomp_cpu_control_codegen
+33/53 Test #33: dc_recomp_cpu_control_codegen ......   Passed    0.01 sec
+      Start 34: fpu_move_tests
+34/53 Test #34: fpu_move_tests .....................   Passed    0.00 sec
+      Start 35: dc_analyzer_fpu_moves_ir
+35/53 Test #35: dc_analyzer_fpu_moves_ir ...........   Passed    0.00 sec
+      Start 36: dc_recomp_fpu_moves_codegen
+36/53 Test #36: dc_recomp_fpu_moves_codegen ........   Passed    0.01 sec
+      Start 37: fpu_arith_tests
+37/53 Test #37: fpu_arith_tests ....................   Passed    0.01 sec
+      Start 38: dc_analyzer_fpu_arith_ir
+38/53 Test #38: dc_analyzer_fpu_arith_ir ...........   Passed    0.00 sec
+      Start 39: dc_recomp_fpu_arith_codegen
+39/53 Test #39: dc_recomp_fpu_arith_codegen ........   Passed    0.01 sec
+      Start 40: fpu_unary_tests
+40/53 Test #40: fpu_unary_tests ....................   Passed    0.01 sec
+      Start 41: dc_analyzer_fpu_unary_ir
+41/53 Test #41: dc_analyzer_fpu_unary_ir ...........   Passed    0.00 sec
+      Start 42: dc_recomp_fpu_unary_codegen
+42/53 Test #42: dc_recomp_fpu_unary_codegen ........   Passed    0.01 sec
+      Start 43: system_control_tests
+43/53 Test #43: system_control_tests ...............   Passed    0.00 sec
+      Start 44: dc_analyzer_system_control_ir
+44/53 Test #44: dc_analyzer_system_control_ir ......   Passed    0.00 sec
+      Start 45: dc_recomp_system_control_codegen
+45/53 Test #45: dc_recomp_system_control_codegen ...   Passed    0.01 sec
+      Start 46: noreturn_flow_tests
+46/53 Test #46: noreturn_flow_tests ................   Passed    0.00 sec
+      Start 47: cross_branch_tests
+47/53 Test #47: cross_branch_tests .................   Passed    0.00 sec
+      Start 48: dc_recomp_cross_branch_codegen
+48/53 Test #48: dc_recomp_cross_branch_codegen .....   Passed    0.01 sec
+      Start 49: pvr_indexed_tests
+49/53 Test #49: pvr_indexed_tests ..................   Passed    0.19 sec
+      Start 50: pvr_vertex_decoder_tests
+50/53 Test #50: pvr_vertex_decoder_tests ...........   Passed    0.10 sec
+      Start 51: pvr_pref_guard_tests
+51/53 Test #51: pvr_pref_guard_tests ...............   Passed    0.01 sec
+      Start 52: generated_single_build
+52/53 Test #52: generated_single_build .............   Passed   25.92 sec
+      Start 53: generated_program_build
+53/53 Test #53: generated_program_build ............   Passed   23.76 sec
+
+100% tests passed out of 53
+
+Total Test time (real) =  50.28 sec

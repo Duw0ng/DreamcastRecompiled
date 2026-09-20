@@ -1,0 +1,22 @@
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done (0.2s)
+-- Generating done (0.0s)
+-- Build files have been written to: /workspace/scratch/51042541999c/baseline-generated
+[ 10%] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_runtime.cpp.o
+[ 20%] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_arm7.cpp.o
+[ 30%] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_image.cpp.o
+/workspace/scratch/51042541999c/build-check/generated_cpp_test/dc_runtime.cpp: In function ‘uint64_t dcrecomp_generated::dc_read64_fmov_hot(DCRuntime&, uint32_t)’:
+/workspace/scratch/51042541999c/build-check/generated_cpp_test/dc_runtime.cpp:9508:30: error: ‘dc_guest_read32_hot’ was not declared in this scope; did you mean ‘dc_read32_hot’?
+ 9508 |     const std::uint32_t lo = dc_guest_read32_hot(runtime, address);
+      |                              ^~~~~~~~~~~~~~~~~~~
+      |                              dc_read32_hot
+[ 40%] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_native_overrides.cpp.o
+gmake[2]: *** [CMakeFiles/dreamcast_generated.dir/build.make:79: CMakeFiles/dreamcast_generated.dir/dc_runtime.cpp.o] Error 1
+gmake[2]: *** Waiting for unfinished jobs....
+gmake[1]: *** [CMakeFiles/Makefile2:93: CMakeFiles/dreamcast_generated.dir/all] Error 2
+gmake: *** [Makefile:91: all] Error 2

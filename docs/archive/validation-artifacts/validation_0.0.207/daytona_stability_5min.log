@@ -1,0 +1,149 @@
+[DCR LOG] session-log=logs/DreamcastRecomp_0.0.205_session_20260918-093720.log
+[GDROM] disc map loaded | format=DCR_DISC_MAP_V2 | image=/mnt/data/daytona_extracted/Daytona USA.cdi | tracks=2 | boot-fad=11852 | physical-sector=2336 | user-offset=8 | logical-sector=2048
+[DCR DIRECT-GAME] bypass bootstrap; entry=0x8C010000
+DreamcastRecomp 0.0.205 native runner
+===================================
+Reachable functions: 3179
+Executing sub_8C008300 @ 0x8C008300u
+
+[DCR code-reloc] 0x8C000600 -> template 0x8C1E8918
+[DCR code-reloc] 0x8C000000 -> template 0x8C1E8974
+[GDROM] request #1 id=2 cmd=0x18 p0=0x0 p1=0x0 p2=0x0 p3=0x0
+[GDROM] request #2 id=3 cmd=0x28 p0=0x8C2EE8A0 p1=0x0 p2=0x8C1BED4C p3=0x8C1F9C24
+[GDROM] request #3 id=4 cmd=0x13 p0=0x1 p1=0x8C27DBA0 p2=0x8C1BF55A p3=0x8C27EBE0
+[GDROM] request #4 id=5 cmd=0x11 p0=0x2E5C p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11868 count=1 dest=0xC27DBA0
+[GDROM] request #5 id=6 cmd=0x11 p0=0x2E63 p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11875 count=1 dest=0xC27DBA0
+[GDROM] request #6 id=7 cmd=0x11 p0=0x2E64 p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11876 count=1 dest=0xC27DBA0
+[GDROM] request #7 id=8 cmd=0x11 p0=0x2E65 p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11877 count=1 dest=0xC27DBA0
+[GDROM] request #8 id=9 cmd=0x11 p0=0x2E66 p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11878 count=1 dest=0xC27DBA0
+[GDROM] request #9 id=10 cmd=0x11 p0=0x2E67 p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11879 count=1 dest=0xC27DBA0
+[GDROM] request #10 id=11 cmd=0x11 p0=0x2E68 p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11880 count=1 dest=0xC27DBA0
+[GDROM] request #11 id=12 cmd=0x11 p0=0x2E69 p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11881 count=1 dest=0xC27DBA0
+[GDROM] request #12 id=13 cmd=0x11 p0=0x2E6A p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11882 count=1 dest=0xC27DBA0
+[GDROM] request #13 id=14 cmd=0x11 p0=0x2E6B p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11883 count=1 dest=0xC27DBA0
+[GDROM] request #14 id=15 cmd=0x11 p0=0x2E6C p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11884 count=1 dest=0xC27DBA0
+[GDROM] request #15 id=16 cmd=0x11 p0=0x2E6D p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11885 count=1 dest=0xC27DBA0
+[GDROM] request #16 id=17 cmd=0x11 p0=0x2E6E p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11886 count=1 dest=0xC27DBA0
+[GDROM] request #17 id=18 cmd=0x11 p0=0x2E6F p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11887 count=1 dest=0xC27DBA0
+[GDROM] request #18 id=19 cmd=0x11 p0=0x2E70 p1=0x1 p2=0xC27DBA0 p3=0x0
+[GDROM] READ fad=11888 count=1 dest=0xC27DBA0
+[GDROM] request #19 id=20 cmd=0x11 p0=0x2E5F p1=0x1 p2=0xC27DBE0 p3=0x0
+[GDROM] READ fad=11871 count=1 dest=0xC27DBE0
+[CH2] run=1 src=0xC079100 dst=0x1152C080 len=0x4000 kind=TEX
+[CH2] run=2 src=0xCE00000 dst=0x10000000 len=0x40 kind=TA
+[CH2] run=3 src=0xCECD140 dst=0x10000000 len=0x40 kind=TA
+[CH2] run=4 src=0xCFFEC60 dst=0x10000000 len=0x40 kind=TA
+[GDROM] request #20 id=21 cmd=0x11 p0=0x33900 p1=0x1F p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=211200 count=31 dest=0xCC8F800
+[Maple VMU] loaded dreamcast_vmu_a1.bin (128 KiB)
+[GDROM] request #21 id=22 cmd=0x11 p0=0x46C51 p1=0x90 p2=0xCA55000 p3=0x0
+[GDROM] READ fad=289873 count=144 dest=0xCA55000
+[GDROM] request #22 id=23 cmd=0x11 p0=0x4694D p1=0x304 p2=0xCA55000 p3=0x0
+[GDROM] READ fad=289101 count=772 dest=0xCA55000
+[GDROM] request #23 id=24 cmd=0x11 p0=0x460CF p1=0x9E p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=286927 count=158 dest=0xCC8F800
+[CH2] run=5 src=0xCC8F800 dst=0x11530080 len=0x80 kind=TEX
+[CH2] run=6 src=0xCC8F880 dst=0x11530100 len=0x4000 kind=TEX
+[CH2] run=7 src=0xCC93880 dst=0x11534100 len=0x4000 kind=TEX
+[CH2] run=8 src=0xCC97880 dst=0x11538100 len=0x800 kind=TEX
+[CH2] run=9 src=0xCC98080 dst=0x11538900 len=0x4000 kind=TEX
+[CH2] run=10 src=0xCC9C080 dst=0x1153C900 len=0x10000 kind=TEX
+[CH2] run=11 src=0xCCAC080 dst=0x1154C900 len=0x2000 kind=TEX
+[CH2] run=12 src=0xCCAE080 dst=0x1154E900 len=0x1000 kind=TEX
+[CH2] run=13 src=0xCCAF080 dst=0x1154F900 len=0x1000 kind=TEX
+[CH2] run=14 src=0xCCB0080 dst=0x11550900 len=0x1000 kind=TEX
+[CH2] run=15 src=0xCCB1080 dst=0x11551900 len=0x800 kind=TEX
+[CH2] run=16 src=0xCCB1880 dst=0x11552100 len=0x8000 kind=TEX
+[CH2] run=17 src=0xCCB9880 dst=0x1155A100 len=0x800 kind=TEX
+[CH2] run=18 src=0xCCBA080 dst=0x1155A900 len=0x20000 kind=TEX
+[CH2] run=19 src=0xCCDA080 dst=0x1157A900 len=0x4000 kind=TEX
+[CH2] run=20 src=0xCCDE080 dst=0x1157E900 len=0x400 kind=TEX
+[CH2] run=21 src=0xCCDE480 dst=0x1157ED00 len=0x200 kind=TEX
+[GDROM] request #24 id=25 cmd=0x11 p0=0x9D1E p1=0x100 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=40222 count=256 dest=0xCC8F800
+[CH2] run=22 src=0xCC8F800 dst=0x1157EF00 len=0x80000 kind=TEX
+[GDROM] request #25 id=26 cmd=0x11 p0=0x466F5 p1=0x258 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=288501 count=600 dest=0xCC8F800
+[CH2] run=23 src=0xCC8F800 dst=0x115FEF00 len=0x40000 kind=TEX
+[CH2] run=24 src=0xCCCF800 dst=0x1163EF00 len=0x10000 kind=TEX
+[GDROM] request #26 id=27 cmd=0x11 p0=0x46381 p1=0x120 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=287617 count=288 dest=0xCC8F800
+[GDROM] request #27 id=28 cmd=0x11 p0=0x437E7 p1=0x100 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=276455 count=256 dest=0xCC8F800
+[GDROM] request #28 id=29 cmd=0x11 p0=0x4E0D2 p1=0x8 p2=0xC590000 p3=0x0
+[GDROM] READ fad=319698 count=8 dest=0xC590000
+[GDROM] request #29 id=30 cmd=0x11 p0=0x34867 p1=0x13A p2=0xC590000 p3=0x0
+[GDROM] READ fad=215143 count=314 dest=0xC590000
+[GDROM] request #30 id=31 cmd=0x11 p0=0x349A1 p1=0x6D p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=215457 count=109 dest=0xCC8F800
+[GDROM] request #31 id=32 cmd=0x11 p0=0x407AD p1=0x62 p2=0xC96F000 p3=0x0
+[GDROM] READ fad=264109 count=98 dest=0xC96F000
+[GDROM] request #32 id=33 cmd=0x11 p0=0x38270 p1=0xE8 p2=0xCA55000 p3=0x0
+[GDROM] READ fad=230000 count=232 dest=0xCA55000
+[GDROM] request #33 id=34 cmd=0x11 p0=0x38358 p1=0x19D p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=230232 count=413 dest=0xCC8F800
+[GDROM] request #34 id=35 cmd=0x11 p0=0x34867 p1=0x13A p2=0xC590000 p3=0x0
+[GDROM] READ fad=215143 count=314 dest=0xC590000
+[GDROM] request #35 id=36 cmd=0x11 p0=0x349A1 p1=0x6D p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=215457 count=109 dest=0xCC8F800
+[GDROM] request #36 id=37 cmd=0x11 p0=0x4148A p1=0xE9 p2=0xC6D8000 p3=0x0
+[GDROM] READ fad=267402 count=233 dest=0xC6D8000
+[GDROM] request #37 id=38 cmd=0x11 p0=0x41573 p1=0x33 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=267635 count=51 dest=0xCC8F800
+[GDROM] request #38 id=39 cmd=0x11 p0=0x415A6 p1=0xDB p2=0xC74C800 p3=0x0
+[GDROM] READ fad=267686 count=219 dest=0xC74C800
+[GDROM] request #39 id=40 cmd=0x11 p0=0x41681 p1=0x35 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=267905 count=53 dest=0xCC8F800
+[GDROM] request #40 id=41 cmd=0x11 p0=0x416B6 p1=0xE1 p2=0xC7BD000 p3=0x0
+[GDROM] READ fad=267958 count=225 dest=0xC7BD000
+[GDROM] request #41 id=42 cmd=0x11 p0=0x41797 p1=0x38 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=268183 count=56 dest=0xCC8F800
+[GDROM] request #42 id=43 cmd=0x11 p0=0x417CF p1=0xD0 p2=0xC82D800 p3=0x0
+[GDROM] READ fad=268239 count=208 dest=0xC82D800
+[GDROM] request #43 id=44 cmd=0x11 p0=0x4189F p1=0x3C p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=268447 count=60 dest=0xCC8F800
+[GDROM] request #44 id=45 cmd=0x11 p0=0x464BB p1=0x6C p2=0xC939000 p3=0x0
+[GDROM] READ fad=287931 count=108 dest=0xC939000
+[GDROM] request #45 id=46 cmd=0x11 p0=0x4662F p1=0x42 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=288303 count=66 dest=0xCC8F800
+[GDROM] request #46 id=47 cmd=0x11 p0=0x33FCF p1=0xBB p2=0xC500000 p3=0x0
+[GDROM] READ fad=212943 count=187 dest=0xC500000
+[GDROM] request #47 id=48 cmd=0x11 p0=0x3408A p1=0x4B p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=213130 count=75 dest=0xCC8F800
+[GDROM] request #48 id=49 cmd=0x11 p0=0x4073C p1=0x65 p2=0xC55D800 p3=0x0
+[GDROM] READ fad=263996 count=101 dest=0xC55D800
+[GDROM] request #49 id=50 cmd=0x11 p0=0x407A1 p1=0xC p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=264097 count=12 dest=0xCC8F800
+[GDROM] request #50 id=51 cmd=0x11 p0=0x361C7 p1=0x136 p2=0xC89E000 p3=0x0
+[GDROM] READ fad=221639 count=310 dest=0xC89E000
+[GDROM] request #51 id=52 cmd=0x11 p0=0x362FD p1=0x3A p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=221949 count=58 dest=0xCC8F800
+[GDROM] request #52 id=53 cmd=0x11 p0=0x407AD p1=0x62 p2=0xC96F000 p3=0x0
+[GDROM] READ fad=264109 count=98 dest=0xC96F000
+[GDROM] request #53 id=54 cmd=0x11 p0=0x38270 p1=0xE8 p2=0xCA55000 p3=0x0
+[GDROM] READ fad=230000 count=232 dest=0xCA55000
+[GDROM] request #54 id=55 cmd=0x11 p0=0x38358 p1=0x19D p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=230232 count=413 dest=0xCC8F800
+[GDROM] request #55 id=56 cmd=0x11 p0=0x4616D p1=0x68 p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=287085 count=104 dest=0xCC8F800
+[GDROM] request #56 id=57 cmd=0x11 p0=0x472E9 p1=0x22C p2=0xCC8F800 p3=0x0
+[GDROM] READ fad=291561 count=556 dest=0xCC8F800
+[GDROM] request #57 id=58 cmd=0x11 p0=0x261F4 p1=0x19 p2=0xC2103C0 p3=0x0
+[GDROM] READ fad=156148 count=25 dest=0xC2103C0
+[GDROM] request #58 id=59 cmd=0x11 p0=0x2620D p1=0x20 p2=0xC21CBC0 p3=0x0
+[GDROM] READ fad=156173 count=32 dest=0xC21CBC0
+[GDROM] request #59 id=60 cmd=0x11 p0=0x2622D

@@ -1,0 +1,30 @@
+DreamcastRecomp 0.0.26 - KallistiOS corpus compatibility
+=========================================================
+ELF encontrados:                155
+ELF cargados:                   155
+ELF ISA-clean (all functions):  154
+Funciones escaneadas:           202431
+Instrucciones conocidas:        15309526
+Instrucciones desconocidas:     3
+_main call graphs escaneados:   155
+_main con RAW_SH4=0:             155
+Tiempo:                          14.36 s
+
+NOTA: ISA-clean significa que el decoder/DCIR no encontro opcodes desconocidos en las funciones simbolizadas.
+No implica que el programa completo ya pueda ejecutarse: pueden faltar servicios KOS/MMIO/PVR/AICA/etc.
+
+Top familias desconocidas alcanzables desde _main
+==================================================
+
+Top raw words desconocidos alcanzables desde _main
+====================================================
+
+Top familias desconocidas en todas las funciones simbolizadas
+==========================================================
+  1. SH-4 0x0*** system/control  count=3  elfs=1  sample=0x0119  _llex@0x8C0323B4
+
+Top raw words SH-4 desconocidos en todas las funciones simbolizadas
+=================================================================
+  1. 0x0118  count=1  elfs=1  example=_llex@0x8C0323C0  /mnt/data/dcr025_kos_corpus/dreamcast/lua/basic/lua.elf
+  2. 0x0119  count=1  elfs=1  example=_llex@0x8C0323B4  /mnt/data/dcr025_kos_corpus/dreamcast/lua/basic/lua.elf
+  3. 0x011B  count=1  elfs=1  example=_llex@0x8C0323B6  /mnt/data/dcr025_kos_corpus/dreamcast/lua/basic/lua.elf

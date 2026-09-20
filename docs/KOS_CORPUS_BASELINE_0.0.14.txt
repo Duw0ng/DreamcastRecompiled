@@ -1,0 +1,100 @@
+DreamcastRecomp 0.0.14 - KallistiOS corpus compatibility
+=========================================================
+ELF encontrados:                155
+ELF cargados:                   155
+ELF ISA-clean (all functions):  0
+Funciones escaneadas:           202431
+Instrucciones conocidas:        14682249
+Instrucciones desconocidas:     666876
+_main call graphs escaneados:   155
+_main con RAW_SH4=0:             2
+Tiempo:                          9.28 s
+
+NOTA: ISA-clean significa que el decoder/DCIR no encontro opcodes desconocidos en las funciones simbolizadas.
+No implica que el programa completo ya pueda ejecutarse: pueden faltar servicios KOS/MMIO/PVR/AICA/etc.
+
+Top opcodes desconocidos alcanzables desde _main
+=================================================
+  1. 0x016A  count=5671  elfs=144  example=_font_next_screen@0x8C010CAC  dreamcast/2ndmix/2ndmix.elf
+  2. 0x3054  count=4860  elfs=136  example=___udivsi3_i4i@0x8C04D8F6  dreamcast/2ndmix/2ndmix.elf
+  3. 0x416A  count=4605  elfs=144  example=_font_next_screen@0x8C010CB2  dreamcast/2ndmix/2ndmix.elf
+  4. 0x0123  count=3381  elfs=143  example=__svfprintf_r@0x8C040168  dreamcast/2ndmix/2ndmix.elf
+  5. 0x0023  count=1477  elfs=142  example=__svfprintf_r@0x8C04000E  dreamcast/2ndmix/2ndmix.elf
+  6. 0xF309  count=1439  elfs=144  example=_font_next_screen@0x8C010CC0  dreamcast/2ndmix/2ndmix.elf
+  7. 0xF209  count=1430  elfs=144  example=_font_next_screen@0x8C010CC2  dreamcast/2ndmix/2ndmix.elf
+  8. 0x011A  count=1408  elfs=139  example=_fREe@0x8C01C910  dreamcast/2ndmix/2ndmix.elf
+  9. 0xF25A  count=1328  elfs=16  example=__glPrecalcLightingValues@0x8C010BF4  dreamcast/cpp/gltest/gltest.elf
+ 10. 0xF528  count=1306  elfs=23  example=__glPrecalcLightingValues@0x8C010BEE  dreamcast/cpp/gltest/gltest.elf
+ 11. 0xF509  count=981  elfs=144  example=_font_next_screen@0x8C010CD4  dreamcast/2ndmix/2ndmix.elf
+ 12. 0x026A  count=969  elfs=142  example=__svfprintf_r@0x8C041EE2  dreamcast/2ndmix/2ndmix.elf
+ 13. 0x3154  count=924  elfs=132  example=___udivsi3_i4i@0x8C04D982  dreamcast/2ndmix/2ndmix.elf
+ 14. 0x481B  count=912  elfs=137  example=_malloc@0x8C01CF88  dreamcast/2ndmix/2ndmix.elf
+ 15. 0x426A  count=863  elfs=142  example=__svfprintf_r@0x8C041F86  dreamcast/2ndmix/2ndmix.elf
+ 16. 0xF109  count=767  elfs=64  example=_cube_one_frame@0x8C01099A  dreamcast/2ndmix/2ndmix.elf
+ 17. 0xF11A  count=747  elfs=61  example=_font_one_frame@0x8C010E48  dreamcast/2ndmix/2ndmix.elf
+ 18. 0x041A  count=648  elfs=103  example=_calloc@0x8C01D3DA  dreamcast/2ndmix/2ndmix.elf
+ 19. 0xF12E  count=631  elfs=24  example=__glPrecalcLightingValues@0x8C010ED6  dreamcast/cpp/gltest/gltest.elf
+ 20. 0xF12D  count=563  elfs=44  example=_font_next_screen@0x8C010D04  dreamcast/2ndmix/2ndmix.elf
+ 21. 0x0223  count=545  elfs=142  example=__svfprintf_r@0x8C040EFC  dreamcast/2ndmix/2ndmix.elf
+ 22. 0xF22D  count=530  elfs=58  example=_main@0x8C010730  dreamcast/cpp/gltest/gltest.elf
+ 23. 0x021A  count=510  elfs=102  example=_stars_init@0x8C0106B0  dreamcast/2ndmix/2ndmix.elf
+ 24. 0x405A  count=504  elfs=50  example=_main@0x8C010726  dreamcast/cpp/gltest/gltest.elf
+ 25. 0x031A  count=497  elfs=118  example=_stars_init@0x8C010688  dreamcast/2ndmix/2ndmix.elf
+ 26. 0xF409  count=493  elfs=52  example=_font_next_screen@0x8C010CD6  dreamcast/2ndmix/2ndmix.elf
+ 27. 0xF13D  count=476  elfs=31  example=_font_one_frame@0x8C010DEC  dreamcast/2ndmix/2ndmix.elf
+ 28. 0xF4CC  count=468  elfs=26  example=_gluPerspective@0x8C01721C  dreamcast/cpp/gltest/gltest.elf
+ 29. 0xF5CC  count=454  elfs=26  example=_font_one_frame@0x8C010DF8  dreamcast/2ndmix/2ndmix.elf
+ 30. 0xF408  count=450  elfs=141  example=__svfprintf_r@0x8C040E7A  dreamcast/2ndmix/2ndmix.elf
+ 31. 0x0723  count=443  elfs=143  example=_pvr_sq_set32@0x8C0332B4  dreamcast/2ndmix/2ndmix.elf
+ 32. 0x401D  count=440  elfs=141  example=_timer_ms_gettime64@0x8C0272E8  dreamcast/2ndmix/2ndmix.elf
+ 33. 0x412D  count=403  elfs=128  example=_largebin_index@0x8C01C628  dreamcast/2ndmix/2ndmix.elf
+ 34. 0xFCF9  count=395  elfs=63  example=_cube_one_frame@0x8C01098C  dreamcast/2ndmix/2ndmix.elf
+ 35. 0xF512  count=393  elfs=48  example=__glPrecalcLightingValues@0x8C010C10  dreamcast/cpp/gltest/gltest.elf
+ 36. 0x0437  count=387  elfs=77  example=_pvr_init_tile_matrix@0x8C032B1C  dreamcast/2ndmix/2ndmix.elf
+ 37. 0xF424  count=384  elfs=141  example=__svfprintf_r@0x8C040E7C  dreamcast/2ndmix/2ndmix.elf
+ 38. 0xF211  count=373  elfs=30  example=___ieee754_logf@0x8C05089A  dreamcast/cpp/gltest/gltest.elf
+ 39. 0xF21A  count=357  elfs=41  example=_main@0x8C01098E  dreamcast/cpp/dcplib/fnt_test.elf
+ 40. 0x005A  count=355  elfs=24  example=_glTexImage2D@0x8C01AF6A  dreamcast/cpp/gltest/gltest.elf
+
+Top opcodes SH-4 desconocidos en todas las funciones simbolizadas
+=============================================================
+  1. 0x011A  count=15025  elfs=155  example=_ramdisk_mmap@0x8C01897A  dreamcast/2ndmix/2ndmix.elf
+  2. 0x016A  count=11784  elfs=151  example=_font_next_screen@0x8C010CAC  dreamcast/2ndmix/2ndmix.elf
+  3. 0x416A  count=10429  elfs=151  example=_font_next_screen@0x8C010CB2  dreamcast/2ndmix/2ndmix.elf
+  4. 0x021A  count=10175  elfs=155  example=_draw_cube.part.0@0x8C010278  dreamcast/2ndmix/2ndmix.elf
+  5. 0x481B  count=8951  elfs=144  example=_dcload_open@0x8C0154F0  dreamcast/2ndmix/2ndmix.elf
+  6. 0x3054  count=8100  elfs=108  example=___udivsi3_i4i@0x8C04D8F6  dreamcast/2ndmix/2ndmix.elf
+  7. 0x0008  count=7803  elfs=149  example=_cdrom_abort_cmd@0x8C011476  dreamcast/2ndmix/2ndmix.elf
+  8. 0xF209  count=7741  elfs=155  example=_draw_cube.part.0@0x8C0103C6  dreamcast/2ndmix/2ndmix.elf
+  9. 0xF309  count=6247  elfs=155  example=_draw_cube.part.0@0x8C0103BA  dreamcast/2ndmix/2ndmix.elf
+ 10. 0x031A  count=5565  elfs=155  example=_stars_init@0x8C010688  dreamcast/2ndmix/2ndmix.elf
+ 11. 0x0123  count=5037  elfs=152  example=_thd_pslist@0x8C025AB2  dreamcast/2ndmix/2ndmix.elf
+ 12. 0x412D  count=4867  elfs=155  example=_font_draw_char@0x8C010AEA  dreamcast/2ndmix/2ndmix.elf
+ 13. 0x6118  count=4534  elfs=153  example=_find_object@0x8C016746  dreamcast/2ndmix/2ndmix.elf
+ 14. 0xF13D  count=4431  elfs=153  example=_draw_cube.part.0@0x8C010402  dreamcast/2ndmix/2ndmix.elf
+ 15. 0x0827  count=4190  elfs=148  example=_ramdisk_rewinddir@0x8C0187D4  dreamcast/2ndmix/2ndmix.elf
+ 16. 0x0018  count=4082  elfs=150  example=_font_next_screen@0x8C010D02  dreamcast/2ndmix/2ndmix.elf
+ 17. 0xF109  count=3543  elfs=155  example=_draw_cube.part.0@0x8C0102B8  dreamcast/2ndmix/2ndmix.elf
+ 18. 0x413D  count=3318  elfs=154  example=_maple_addr@0x8C01E588  dreamcast/2ndmix/2ndmix.elf
+ 19. 0x001A  count=3129  elfs=153  example=_ramdisk_fstat@0x8C018702  dreamcast/2ndmix/2ndmix.elf
+ 20. 0x401D  count=3018  elfs=154  example=_iso_fcntl@0x8C01633E  dreamcast/2ndmix/2ndmix.elf
+ 21. 0xF509  count=2969  elfs=155  example=_font_draw_char@0x8C010BE8  dreamcast/2ndmix/2ndmix.elf
+ 22. 0xF02A  count=2845  elfs=150  example=__svfprintf_r@0x8C040042  dreamcast/2ndmix/2ndmix.elf
+ 23. 0xF03B  count=2780  elfs=141  example=__svfprintf_r@0x8C040044  dreamcast/2ndmix/2ndmix.elf
+ 24. 0x015A  count=2727  elfs=155  example=_pvr_set_bg_color@0x8C0227C4  dreamcast/2ndmix/2ndmix.elf
+ 25. 0x0817  count=2688  elfs=152  example=_ramdisk_rewinddir@0x8C01880A  dreamcast/2ndmix/2ndmix.elf
+ 26. 0x041A  count=2644  elfs=155  example=_ramdisk_readdir@0x8C018CFE  dreamcast/2ndmix/2ndmix.elf
+ 27. 0x0237  count=2591  elfs=149  example=_elf_load@0x8C02BD54  dreamcast/2ndmix/2ndmix.elf
+ 28. 0x0023  count=2584  elfs=149  example=___ssvfiscanf_r@0x8C03E2D4  dreamcast/2ndmix/2ndmix.elf
+ 29. 0x025A  count=2579  elfs=155  example=_draw_cube.part.0@0x8C010404  dreamcast/2ndmix/2ndmix.elf
+ 30. 0x0417  count=2540  elfs=149  example=_romdisk_close@0x8C019C90  dreamcast/2ndmix/2ndmix.elf
+ 31. 0x410D  count=2526  elfs=154  example=_irq_set_priority@0x8C01BEF2  dreamcast/2ndmix/2ndmix.elf
+ 32. 0x026A  count=2494  elfs=150  example=_font_draw_char@0x8C010B66  dreamcast/2ndmix/2ndmix.elf
+ 33. 0x0917  count=2477  elfs=148  example=_ramdisk_fstat@0x8C0186FE  dreamcast/2ndmix/2ndmix.elf
+ 34. 0x020A  count=2381  elfs=147  example=_stars_init@0x8C0106A4  dreamcast/2ndmix/2ndmix.elf
+ 35. 0x005A  count=2376  elfs=154  example=___ieee754_sqrtf@0x8C039FAA  dreamcast/2ndmix/2ndmix.elf
+ 36. 0x071A  count=2347  elfs=152  example=_load_pcx@0x8C010A14  dreamcast/2ndmix/2ndmix.elf
+ 37. 0xF11A  count=2341  elfs=153  example=_draw_cube.part.0@0x8C0103CE  dreamcast/2ndmix/2ndmix.elf
+ 38. 0x426A  count=2268  elfs=150  example=_font_draw_char@0x8C010B6A  dreamcast/2ndmix/2ndmix.elf
+ 39. 0xF125  count=2266  elfs=147  example=_draw_cube.part.0@0x8C01043C  dreamcast/2ndmix/2ndmix.elf
+ 40. 0x010A  count=2246  elfs=148  example=_timer_getticks@0x8C026D34  dreamcast/2ndmix/2ndmix.elf

@@ -1,0 +1,15 @@
+Copia aqui tu hello.elf real de KallistiOS con el nombre:
+
+    hello.elf
+
+Para ejecutar el pipeline nativo completo:
+
+    run_native_hello.bat
+
+Para inspeccionar solamente _main:
+
+    run_hello_test.bat
+
+O manualmente:
+
+    build\Release\dc_analyzer.exe samples\hello.elf --analyze-function _main

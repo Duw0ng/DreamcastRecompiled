@@ -1,0 +1,43 @@
+DreamcastRecomp Raw Commercial Recompiler 0.0.170
+=============================================
+Input:                  /mnt/data/dcr174/ct2_raw_boot.bin
+Image bytes:            1492884
+Load base:              0x8C008000
+Entry:                  0x8C008300
+Manual seed entries:    0
+Closure passes:         32
+Synthetic entries:      3553
+Reachable functions:    3573
+Call-graph edges:       11013
+External/unresolved:    1167
+Reachable instructions: 335095
+Known SH-4:             308902
+Unknown SH-4:           26193
+CFG blocks:             54507
+DCIR ops:               342476
+RAW_SH4:                26193
+Closure resolved calls: 268390
+Closure unresolved:     10871
+Rejected nonlocal:      163
+Inline BSRF thunks:      23
+Literal callback targets:     0
+Stored callback targets:    29
+Direct literal targets:       0
+CFG literal call targets:    0
+Callback-object targets:  256
+Strided callback targets:    0
+Relocatable templates:       3
+Argument callbacks:         68
+Promoted CFG fragments:    154
+VBR vector callbacks:        1
+Sparse callback targets:     0
+Dense dispatch targets:     125
+Indexed tail dispatchers:    0
+Indexed tail targets:        0
+Scaled-index targets:       161
+Branch-selected calls:        0
+Rejected dirty fragments:   126
+Function map:            /mnt/data/dcr174/entryfix_map.csv
+
+[PARTIAL] Commercial C++ was emitted, but unsupported/ambiguous reachable operations remain.
+[NEXT] Runtime execution will identify the first unresolved dynamic/hardware dependency.

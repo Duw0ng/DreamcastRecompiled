@@ -1,0 +1,173 @@
+DreamcastRecomp 0.0.15 - KallistiOS corpus compatibility
+=========================================================
+ELF encontrados:                155
+ELF cargados:                   155
+ELF ISA-clean (all functions):  0
+Funciones escaneadas:           202431
+Instrucciones conocidas:        15013785
+Instrucciones desconocidas:     335340
+_main call graphs escaneados:   155
+_main con RAW_SH4=0:             2
+Tiempo:                          9.31 s
+
+NOTA: ISA-clean significa que el decoder/DCIR no encontro opcodes desconocidos en las funciones simbolizadas.
+No implica que el programa completo ya pueda ejecutarse: pueden faltar servicios KOS/MMIO/PVR/AICA/etc.
+
+Top familias desconocidas alcanzables desde _main
+==================================================
+  1. FMOV.S @Rm+,FRn [Fnm9]  count=9152  elfs=144  sample=0xFC09  _cube_one_frame@0x8C010974
+  2. FMOV.S FRm,@Rn [FnmA]  count=7313  elfs=144  sample=0xF31A  _cube_one_frame@0x8C010962
+  3. BRAF Rn [0n23]  count=7310  elfs=143  sample=0x0423  _pvr_sync_stats@0x8C0228F4
+  4. DIV1 Rm,Rn [3nm4]  count=6136  elfs=138  sample=0x3054  ___udivsi3_i4i@0x8C04D8F6
+  5. FMOV.S @Rm,FRn [Fnm8]  count=6132  elfs=144  sample=0xF218  _cube_one_frame@0x8C010956
+  6. FPU unary/conversion [FnmD]  count=6127  elfs=75  sample=0xF19D  _cube_one_frame@0x8C010952
+  7. FMOV FRm,FRn [FnmC]  count=6080  elfs=70  sample=0xF5CC  _font_one_frame@0x8C010DF8
+  8. FMUL FRm,FRn [Fnm2]  count=3697  elfs=65  sample=0xF422  _font_next_screen@0x8C010CCC
+  9. FMOV.S FRm,@-Rn [FnmB]  count=3433  elfs=144  sample=0xFFCB  _cube_one_frame@0x8C010926
+ 10. FSUB FRm,FRn [Fnm1]  count=1985  elfs=55  sample=0xF241  _font_next_screen@0x8C010CD2
+ 11. FMAC FR0,FRm,FRn [FnmE]  count=1846  elfs=41  sample=0xF8CE  _execute_stack_op@0x8C05B01E
+ 12. FADD FRm,FRn [Fnm0]  count=1465  elfs=59  sample=0xF210  _cube_one_frame@0x8C01099E
+ 13. SH-4 0x0*** system/control  count=1007  elfs=74  sample=0x04C3  _pvr_poly_compile@0x8C022D36
+ 14. FCMP/EQ FRm,FRn [Fnm4]  count=950  elfs=143  sample=0xFCD4  _font_one_frame@0x8C010DD6
+ 15. FDIV FRm,FRn [Fnm3]  count=858  elfs=60  sample=0xF103  _main@0x8C0102E4
+ 16. FCMP/GT FRm,FRn [Fnm5]  count=840  elfs=45  sample=0xF125  _cube_one_frame@0x8C010958
+ 17. FMOV.S @(R0,Rm),FRn [Fnm6]  count=588  elfs=26  sample=0xF1F6  _SceneListSubmit.part.0@0x8C01426A
+ 18. FMOV.S FRm,@(R0,Rn) [Fnm7]  count=497  elfs=28  sample=0xF627  _cube_one_frame@0x8C0109A4
+ 19. DIV0U [0019]  count=297  elfs=138  sample=0x0019  ___udivsi3_i4i@0x8C04D8DE
+ 20. SH-4 0x4*** special/shift  count=114  elfs=48  sample=0x4430  _pvr_sq_set32@0x8C0332B8
+ 21. Other top-nibble 0x8***  count=53  elfs=15  sample=0x8C07  _execute_stack_op@0x8C05AAA2
+ 22. CMP/STR Rm,Rn [2nmC]  count=34  elfs=9  sample=0x221C  _uw_frame_state_for@0x8C05C2A8
+ 23. DIV0S Rm,Rn [2nm7]  count=5  elfs=2  sample=0x2727  __ZL31stbi__jpeg_decode_block_prog_dcP10stbi__jpegPsP13stbi__huffmani@0x8C01EE60
+
+Top raw words desconocidos alcanzables desde _main
+====================================================
+  1. 0x3054  count=4947  elfs=138  example=___udivsi3_i4i@0x8C04D8F6  dreamcast/2ndmix/2ndmix.elf
+  2. 0x0123  count=3415  elfs=143  example=__svfprintf_r@0x8C040168  dreamcast/2ndmix/2ndmix.elf
+  3. 0x0023  count=1494  elfs=143  example=__svfprintf_r@0x8C04000E  dreamcast/2ndmix/2ndmix.elf
+  4. 0xF309  count=1445  elfs=144  example=_font_next_screen@0x8C010CC0  dreamcast/2ndmix/2ndmix.elf
+  5. 0xF209  count=1436  elfs=144  example=_font_next_screen@0x8C010CC2  dreamcast/2ndmix/2ndmix.elf
+  6. 0xF25A  count=1328  elfs=16  example=__glPrecalcLightingValues@0x8C010BF4  dreamcast/cpp/gltest/gltest.elf
+  7. 0xF528  count=1306  elfs=23  example=__glPrecalcLightingValues@0x8C010BEE  dreamcast/cpp/gltest/gltest.elf
+  8. 0xF509  count=985  elfs=144  example=_font_next_screen@0x8C010CD4  dreamcast/2ndmix/2ndmix.elf
+  9. 0x3154  count=938  elfs=134  example=___udivsi3_i4i@0x8C04D982  dreamcast/2ndmix/2ndmix.elf
+ 10. 0xF109  count=774  elfs=64  example=_cube_one_frame@0x8C01099A  dreamcast/2ndmix/2ndmix.elf
+ 11. 0xF11A  count=750  elfs=61  example=_font_one_frame@0x8C010E48  dreamcast/2ndmix/2ndmix.elf
+ 12. 0xF12E  count=632  elfs=24  example=__glPrecalcLightingValues@0x8C010ED6  dreamcast/cpp/gltest/gltest.elf
+ 13. 0xF12D  count=563  elfs=44  example=_font_next_screen@0x8C010D04  dreamcast/2ndmix/2ndmix.elf
+ 14. 0x0223  count=554  elfs=143  example=__svfprintf_r@0x8C040EFC  dreamcast/2ndmix/2ndmix.elf
+ 15. 0xF22D  count=530  elfs=58  example=_main@0x8C010730  dreamcast/cpp/gltest/gltest.elf
+ 16. 0xF409  count=493  elfs=52  example=_font_next_screen@0x8C010CD6  dreamcast/2ndmix/2ndmix.elf
+ 17. 0xF13D  count=476  elfs=31  example=_font_one_frame@0x8C010DEC  dreamcast/2ndmix/2ndmix.elf
+ 18. 0xF4CC  count=468  elfs=26  example=_gluPerspective@0x8C01721C  dreamcast/cpp/gltest/gltest.elf
+ 19. 0xF408  count=454  elfs=142  example=__svfprintf_r@0x8C040E7A  dreamcast/2ndmix/2ndmix.elf
+ 20. 0xF5CC  count=454  elfs=26  example=_font_one_frame@0x8C010DF8  dreamcast/2ndmix/2ndmix.elf
+ 21. 0x0723  count=449  elfs=143  example=_pvr_sq_set32@0x8C0332B4  dreamcast/2ndmix/2ndmix.elf
+ 22. 0xFCF9  count=402  elfs=63  example=_cube_one_frame@0x8C01098C  dreamcast/2ndmix/2ndmix.elf
+ 23. 0xF512  count=393  elfs=48  example=__glPrecalcLightingValues@0x8C010C10  dreamcast/cpp/gltest/gltest.elf
+ 24. 0xF424  count=388  elfs=142  example=__svfprintf_r@0x8C040E7C  dreamcast/2ndmix/2ndmix.elf
+ 25. 0xF211  count=373  elfs=30  example=___ieee754_logf@0x8C05089A  dreamcast/cpp/gltest/gltest.elf
+ 26. 0xF21A  count=358  elfs=41  example=_main@0x8C01098E  dreamcast/cpp/dcplib/fnt_test.elf
+ 27. 0xFDF9  count=356  elfs=60  example=_font_one_frame@0x8C010E58  dreamcast/2ndmix/2ndmix.elf
+ 28. 0xF542  count=352  elfs=37  example=__glPrecalcLightingValues@0x8C010BF2  dreamcast/cpp/gltest/gltest.elf
+ 29. 0xF522  count=331  elfs=15  example=__glPrecalcLightingValues@0x8C010C06  dreamcast/cpp/gltest/gltest.elf
+ 30. 0xF532  count=331  elfs=16  example=__glPrecalcLightingValues@0x8C010BFC  dreamcast/cpp/gltest/gltest.elf
+ 31. 0x0323  count=323  elfs=136  example=__svfprintf_r@0x8C040F3E  dreamcast/2ndmix/2ndmix.elf
+ 32. 0x0523  count=316  elfs=135  example=__svfprintf_r@0x8C0417E4  dreamcast/2ndmix/2ndmix.elf
+ 33. 0x0019  count=297  elfs=138  example=___udivsi3_i4i@0x8C04D8DE  dreamcast/2ndmix/2ndmix.elf
+ 34. 0xF709  count=289  elfs=44  example=_gluPerspective@0x8C017226  dreamcast/cpp/gltest/gltest.elf
+ 35. 0xF118  count=286  elfs=38  example=_font_one_frame@0x8C010E3A  dreamcast/2ndmix/2ndmix.elf
+ 36. 0x0923  count=278  elfs=136  example=__svfprintf_r@0x8C04149A  dreamcast/2ndmix/2ndmix.elf
+ 37. 0xF14A  count=274  elfs=84  example=_fs_fcntl@0x8C0232E8  dreamcast/basic/breaking/breaking.elf
+ 38. 0xF5DC  count=273  elfs=22  example=_main@0x8C0108B0  dreamcast/cpp/gltest/gltest.elf
+ 39. 0xFEF9  count=272  elfs=50  example=__Unwind_RaiseException@0x8C05CCEA  dreamcast/cpp/clock/clock.elf
+ 40. 0xFFCB  count=270  elfs=65  example=_cube_one_frame@0x8C010926  dreamcast/2ndmix/2ndmix.elf
+ 41. 0xF1F9  count=261  elfs=21  example=_gluPerspective@0x8C0171FC  dreamcast/cpp/gltest/gltest.elf
+ 42. 0xF71A  count=259  elfs=33  example=_glEnd@0x8C019344  dreamcast/gldc/2D_tex_quad/2D_tex_quad.elf
+ 43. 0xF009  count=252  elfs=20  example=_floorf@0x8C04F2A8  dreamcast/cpp/gltest/gltest.elf
+ 44. 0xF4DC  count=250  elfs=19  example=_glRotatef@0x8C019F28  dreamcast/cpp/gltest/gltest.elf
+ 45. 0xF609  count=244  elfs=48  example=_main@0x8C0108A8  dreamcast/cpp/gltest/gltest.elf
+ 46. 0xF18D  count=243  elfs=54  example=_main@0x8C010904  dreamcast/cpp/dcplib/fnt_test.elf
+ 47. 0xF02A  count=242  elfs=143  example=__svfprintf_r@0x8C040042  dreamcast/2ndmix/2ndmix.elf
+ 48. 0xF42D  count=240  elfs=31  example=_font_next_screen@0x8C010CC8  dreamcast/2ndmix/2ndmix.elf
+ 49. 0xFFDB  count=239  elfs=61  example=_font_one_frame@0x8C010DAE  dreamcast/2ndmix/2ndmix.elf
+ 50. 0xF242  count=235  elfs=20  example=_font_next_screen@0x8C010CD8  dreamcast/2ndmix/2ndmix.elf
+
+Top familias desconocidas en todas las funciones simbolizadas
+==========================================================
+  1. FMOV.S @Rm+,FRn [Fnm9]  count=57568  elfs=155  sample=0xF109  _draw_cube.part.0@0x8C0102B8
+  2. FMOV.S FRm,@Rn [FnmA]  count=41728  elfs=155  sample=0xF12A  _draw_cube.part.0@0x8C0103C4
+  3. FPU unary/conversion [FnmD]  count=39529  elfs=155  sample=0xF02D  _draw_cube.part.0@0x8C010330
+  4. FMOV.S @Rm,FRn [Fnm8]  count=29782  elfs=155  sample=0xF218  _cube_one_frame@0x8C010956
+  5. FMOV FRm,FRn [FnmC]  count=25653  elfs=155  sample=0xFF4C  _draw_cube.part.0@0x8C0102BC
+  6. FMOV.S FRm,@-Rn [FnmB]  count=24538  elfs=155  sample=0xFFCB  _draw_cube.part.0@0x8C01023C
+  7. FMUL FRm,FRn [Fnm2]  count=19910  elfs=155  sample=0xFF12  _draw_cube.part.0@0x8C0102C0
+  8. BRAF Rn [0n23]  count=16743  elfs=155  sample=0x0423  _pvr_int_handler@0x8C0218D0
+  9. DIV1 Rm,Rn [3nm4]  count=15508  elfs=155  sample=0x3054  ___udivsi3_i4i@0x8C04D8F6
+ 10. FSUB FRm,FRn [Fnm1]  count=11763  elfs=155  sample=0xF241  _font_next_screen@0x8C010CD2
+ 11. FMAC FR0,FRm,FRn [FnmE]  count=9777  elfs=155  sample=0xFDDE  _draw_cube.part.0@0x8C0102F6
+ 12. FCMP/GT FRm,FRn [Fnm5]  count=9106  elfs=155  sample=0xF215  _draw_cube.part.0@0x8C0103F4
+ 13. FCMP/EQ FRm,FRn [Fnm4]  count=7066  elfs=155  sample=0xFD24  _draw_cube.part.0@0x8C0103D8
+ 14. FADD FRm,FRn [Fnm0]  count=5852  elfs=155  sample=0xF0D0  _draw_cube.part.0@0x8C010398
+ 15. FDIV FRm,FRn [Fnm3]  count=5145  elfs=155  sample=0xF233  _draw_cube.part.0@0x8C0103AC
+ 16. FMOV.S @(R0,Rm),FRn [Fnm6]  count=4860  elfs=155  sample=0xF4E6  _draw_cube.part.0@0x8C0102B2
+ 17. SH-4 0x0*** system/control  count=4814  elfs=155  sample=0x0002  _irq_init@0x8C01BD38
+ 18. FMOV.S FRm,@(R0,Rn) [Fnm7]  count=2835  elfs=155  sample=0xF627  _cube_one_frame@0x8C0109A4
+ 19. SH-4 0x4*** special/shift  count=1789  elfs=155  sample=0x402E  _irq_init@0x8C01BDD6
+ 20. DIV0U [0019]  count=775  elfs=155  sample=0x0019  ___udivsi3_i4i@0x8C04D8DE
+ 21. CMP/STR Rm,Rn [2nmC]  count=447  elfs=10  sample=0x254C  __ZNK10__cxxabiv117__class_type_info11__do_upcastEPKS0_PKvRNS0_15__upcast_resultE@0x8C0118E8
+ 22. Other top-nibble 0x8***  count=142  elfs=18  sample=0x8C01  _d_type@0x8C014096
+ 23. DIV0S Rm,Rn [2nm7]  count=9  elfs=4  sample=0x2727  __ZL31stbi__jpeg_decode_block_prog_dcP10stbi__jpegPsP13stbi__huffmani@0x8C01EE60
+ 24. Other top-nibble 0xC***  count=1  elfs=1  sample=0xC5B4  _mp_binary_op@0x8C021360
+
+Top raw words SH-4 desconocidos en todas las funciones simbolizadas
+=================================================================
+  1. 0x3054  count=11625  elfs=155  example=___udivsi3_i4i@0x8C04D8F6  dreamcast/2ndmix/2ndmix.elf
+  2. 0xF209  count=10294  elfs=155  example=_draw_cube.part.0@0x8C0103C6  dreamcast/2ndmix/2ndmix.elf
+  3. 0xF309  count=9113  elfs=155  example=_draw_cube.part.0@0x8C0103BA  dreamcast/2ndmix/2ndmix.elf
+  4. 0x0123  count=6233  elfs=155  example=_thd_pslist@0x8C025AB2  dreamcast/2ndmix/2ndmix.elf
+  5. 0xF13D  count=4864  elfs=154  example=_draw_cube.part.0@0x8C010402  dreamcast/2ndmix/2ndmix.elf
+  6. 0xF109  count=4766  elfs=155  example=_draw_cube.part.0@0x8C0102B8  dreamcast/2ndmix/2ndmix.elf
+  7. 0xF509  count=4450  elfs=155  example=_font_draw_char@0x8C010BE8  dreamcast/2ndmix/2ndmix.elf
+  8. 0xF02A  count=4031  elfs=155  example=__svfprintf_r@0x8C040042  dreamcast/2ndmix/2ndmix.elf
+  9. 0xF03B  count=3964  elfs=155  example=__svfprintf_r@0x8C040044  dreamcast/2ndmix/2ndmix.elf
+ 10. 0x0023  count=3318  elfs=155  example=___ssvfiscanf_r@0x8C03E2D4  dreamcast/2ndmix/2ndmix.elf
+ 11. 0xF409  count=2758  elfs=155  example=_stars_one_frame@0x8C01085A  dreamcast/2ndmix/2ndmix.elf
+ 12. 0xF125  count=2613  elfs=154  example=_draw_cube.part.0@0x8C01043C  dreamcast/2ndmix/2ndmix.elf
+ 13. 0xF1F9  count=2549  elfs=155  example=_frexp@0x8C048CEE  dreamcast/2ndmix/2ndmix.elf
+ 14. 0xF1AA  count=2481  elfs=155  example=_dbglog@0x8C01277C  dreamcast/2ndmix/2ndmix.elf
+ 15. 0x3064  count=2480  elfs=155  example=___udiv_qrnnd_16@0x8C04EC3E  dreamcast/2ndmix/2ndmix.elf
+ 16. 0xF11A  count=2431  elfs=154  example=_draw_cube.part.0@0x8C0103CE  dreamcast/2ndmix/2ndmix.elf
+ 17. 0xF14A  count=2430  elfs=155  example=_fs_ioctl@0x8C014BD2  dreamcast/2ndmix/2ndmix.elf
+ 18. 0xF22D  count=2302  elfs=155  example=_font_draw_char@0x8C010B3A  dreamcast/2ndmix/2ndmix.elf
+ 19. 0xF0F9  count=2222  elfs=155  example=_frexp@0x8C048CF2  dreamcast/2ndmix/2ndmix.elf
+ 20. 0xF124  count=2053  elfs=154  example=_font_one_frame@0x8C010E40  dreamcast/2ndmix/2ndmix.elf
+ 21. 0xF121  count=2035  elfs=154  example=_font_one_frame@0x8C010E44  dreamcast/2ndmix/2ndmix.elf
+ 22. 0xF18D  count=2007  elfs=155  example=_draw_cube.part.0@0x8C010420  dreamcast/2ndmix/2ndmix.elf
+ 23. 0xF408  count=1937  elfs=155  example=__svfprintf_r@0x8C040E7A  dreamcast/2ndmix/2ndmix.elf
+ 24. 0xF12D  count=1922  elfs=154  example=_poly_pnt@0x8C0107A2  dreamcast/2ndmix/2ndmix.elf
+ 25. 0xFCF9  count=1870  elfs=155  example=_draw_cube.part.0@0x8C0104E6  dreamcast/2ndmix/2ndmix.elf
+ 26. 0x0223  count=1801  elfs=155  example=__svfprintf_r@0x8C040EFC  dreamcast/2ndmix/2ndmix.elf
+ 27. 0xF12E  count=1735  elfs=52  example=_draw_cube.part.0@0x8C0103D4  dreamcast/2ndmix/2ndmix.elf
+ 28. 0xFDF9  count=1731  elfs=155  example=_draw_cube.part.0@0x8C0104E4  dreamcast/2ndmix/2ndmix.elf
+ 29. 0xF218  count=1668  elfs=155  example=_cube_one_frame@0x8C010956  dreamcast/2ndmix/2ndmix.elf
+ 30. 0xF208  count=1666  elfs=155  example=__strtod_l@0x8C04B27C  dreamcast/2ndmix/2ndmix.elf
+ 31. 0xF42D  count=1584  elfs=155  example=_font_next_screen@0x8C010CC8  dreamcast/2ndmix/2ndmix.elf
+ 32. 0xF25A  count=1571  elfs=154  example=_pvr_fog_table_custom@0x8C0338A6  dreamcast/2ndmix/2ndmix.elf
+ 33. 0xF122  count=1541  elfs=154  example=_draw_cube.part.0@0x8C010400  dreamcast/2ndmix/2ndmix.elf
+ 34. 0xF422  count=1512  elfs=155  example=_font_next_screen@0x8C010CCC  dreamcast/2ndmix/2ndmix.elf
+ 35. 0xF26A  count=1507  elfs=155  example=_fs_ioctl@0x8C014BCC  dreamcast/2ndmix/2ndmix.elf
+ 36. 0xF15B  count=1497  elfs=155  example=_fs_ioctl@0x8C014BD6  dreamcast/2ndmix/2ndmix.elf
+ 37. 0xF118  count=1475  elfs=154  example=_font_one_frame@0x8C010E3A  dreamcast/2ndmix/2ndmix.elf
+ 38. 0xF27B  count=1442  elfs=155  example=_fs_ioctl@0x8C014BD0  dreamcast/2ndmix/2ndmix.elf
+ 39. 0xF2AA  count=1439  elfs=155  example=_fs_ioctl@0x8C014BB2  dreamcast/2ndmix/2ndmix.elf
+ 40. 0xF28A  count=1421  elfs=155  example=_fs_ioctl@0x8C014BC0  dreamcast/2ndmix/2ndmix.elf
+ 41. 0xF29B  count=1416  elfs=155  example=_fs_ioctl@0x8C014BC4  dreamcast/2ndmix/2ndmix.elf
+ 42. 0xF2BB  count=1416  elfs=155  example=_fs_ioctl@0x8C014BB6  dreamcast/2ndmix/2ndmix.elf
+ 43. 0xF21A  count=1414  elfs=154  example=_draw_cube.part.0@0x8C010426  dreamcast/2ndmix/2ndmix.elf
+ 44. 0xF14D  count=1413  elfs=154  example=_mat_lookat@0x8C03155C  dreamcast/2ndmix/2ndmix.elf
+ 45. 0xF528  count=1408  elfs=49  example=__glPrecalcLightingValues@0x8C010BEE  dreamcast/cpp/gltest/gltest.elf
+ 46. 0xFFCB  count=1382  elfs=155  example=_draw_cube.part.0@0x8C01023C  dreamcast/2ndmix/2ndmix.elf
+ 47. 0xF04A  count=1351  elfs=155  example=__strtod_l@0x8C04B1A4  dreamcast/2ndmix/2ndmix.elf
+ 48. 0xF05B  count=1343  elfs=155  example=__strtod_l@0x8C04B1A6  dreamcast/2ndmix/2ndmix.elf
+ 49. 0xFF5B  count=1341  elfs=155  example=_frexp@0x8C048C88  dreamcast/2ndmix/2ndmix.elf
+ 50. 0xF424  count=1331  elfs=155  example=__svfprintf_r@0x8C040E7C  dreamcast/2ndmix/2ndmix.elf

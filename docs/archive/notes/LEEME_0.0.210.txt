@@ -1,0 +1,42 @@
+DreamcastRecomp 0.0.210 - Universal Controller + CT2 Runtime Build
+===================================================================
+
+Esta version continua directamente la base 0.0.209 Universal PreValidation.
+No incluye juegos comerciales ni CDIs.
+
+PRUEBA RAPIDA EN WINDOWS
+------------------------
+1. Ejecuta build_windows.bat.
+2. Opcional: ejecuta Configurar_Mando.bat y guarda tu perfil.
+3. Ejecuta:
+     run_universal_0.0.210.bat "C:\ruta\al\juego.cdi"
+
+El runner reconoce la misma base comercial consolidada:
+- ChuChu Rocket!
+- Crazy Taxi 2
+- Daytona USA / PIZZICATO POLKA
+- Record of Lodoss War
+
+CRAZY TAXI 2
+------------
+En 0.0.210 CT2 usa entrada comercial directa 0x8C010000 y un perfil de seeds
+runtime-proven para evitar el hand-off IP.BIN que en la prueba Linux terminaba
+en el destino invalido 0x005DFFFF.
+
+El cierre estatico final probado con el CDI suministrado queda en:
+  3823 funciones / 331876 instrucciones SH-4 conocidas / Unknown=0 / RAW_SH4=0.
+
+MANDO
+-----
+Si existe profiles\controller_profile.ini se carga automaticamente.
+Sin ese archivo se conserva el control anterior por teclado + XInput #0.
+El backend WinMM es experimental; XInput sigue siendo la primera opcion recomendada.
+
+VALIDACION DEL PAQUETE
+----------------------
+- El arbol fuente compila en Linux con CMake/GCC.
+- Suite completa: 53/53 tests PASS.
+- Generacion/compilacion/link de runners: PASS.
+- CT2 realiza solicitudes GD-ROM y lecturas reales de sectores en el smoke directo.
+- La validacion final de ventana/WinMM/XInput fisico se realiza en Windows,
+  porque esas APIs son especificas del host.

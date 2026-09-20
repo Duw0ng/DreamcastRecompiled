@@ -1,0 +1,73 @@
+--- a/src/disc/raw_recompiler.cpp
++++ b/src/disc/raw_recompiler.cpp
+@@ -1617,6 +1617,70 @@
+         // If no local-pointer word was consumed, advance one word.  Otherwise wi
+         // already names the first non-pointer word after the maximal run.
+         if (wi == run_start) ++wi;
++    }
++
++    // Short SDK method rows need a separate rule from the long-vtable scan.
++    // Katana object/state tables commonly contain exactly three callable methods
++    // followed by metadata.  If two members of an aligned 3-pointer row are
++    // already proven closure entries, a missing literal-fed tail veneer in the
++    // remaining slot is strong address-taken executable evidence.
++    //
++    // Keep this deliberately narrow: only accept the exact
++    //   MOV.L @(disp,PC),Rn
++    //   JMP   @Rn
++    //   <valid delay slot>
++    // shape, and require the veneer destination to be already known (or to pass
++    // the independent dense callable predicate).  This recovers runtime-selected
++    // callbacks such as 0x8C02CE0C without a game-specific seed.
++    if (word_count >= 3u) {
++        for (std::size_t row = 0u; row + 2u < word_count; ++row) {
++            std::array<std::optional<std::uint32_t>, 3> members{};
++            std::size_t anchors = 0u;
++            bool all_local = true;
++            for (std::size_t i = 0u; i < members.size(); ++i) {
++                const auto address64 = static_cast<std::uint64_t>(base) + (row + i) * 4u;
++                if (address64 + 4u > static_cast<std::uint64_t>(base) + bytes.size()) {
++                    all_local = false;
++                    break;
++                }
++                const auto address = static_cast<std::uint32_t>(address64);
++                members[i] = canonical_local_address(
++                    base, bytes.size(), raw32_at(bytes, base, address));
++                if (!members[i]) {
++                    all_local = false;
++                    break;
++                }
++                anchors += known_entries.contains(*members[i]) ? 1u : 0u;
++            }
++            if (!all_local || anchors < 2u) continue;
++
++            for (const auto& member : members) {
++                if (!member || known_entries.contains(*member) ||
++                    looks_like_pointer_table(bytes, base, *member) ||
++                    looks_like_probable_ascii_data(bytes, base, *member) ||
++                    !local_address(base, bytes.size(), *member + 4u)) continue;
++
++                const auto load = dcrecomp::sh4::decode(
++                    raw16_at(bytes, base, *member), *member);
++                const auto jump = dcrecomp::sh4::decode(
++                    raw16_at(bytes, base, *member + 2u), *member + 2u);
++                const auto delay = dcrecomp::sh4::decode(
++                    raw16_at(bytes, base, *member + 4u), *member + 4u);
++                if (load.opcode != dcrecomp::sh4::Opcode::MovLPcRel ||
++                    jump.opcode != dcrecomp::sh4::Opcode::Jmp ||
++                    jump.rm != load.rn || !dcrecomp::sh4::is_known(delay) ||
++                    !local_address(base, bytes.size(), load.effective_address)) continue;
++
++                const auto tail = canonical_local_address(
++                    base, bytes.size(),
++                    raw32_at(bytes, base, load.effective_address));
++                if (!tail || looks_like_pointer_table(bytes, base, *tail)) continue;
++                if (!known_entries.contains(*tail) &&
++                    !looks_like_dense_dispatch_entry(bytes, base, *tail)) continue;
++
++                targets.push_back(*member);
++            }
++        }
+     }
+ 
+     std::sort(targets.begin(), targets.end());

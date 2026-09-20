@@ -1,0 +1,16 @@
+DreamcastRecomp 0.0.27 real 2ndMix probes
+
+Copy your KallistiOS 2ndMix ELF here as:
+
+    samples\2ndmix.elf
+
+CPU/application probes:
+    run_homebrew_2ndmix_crc.bat
+    run_homebrew_2ndmix_pcx.bat
+
+Minimal PVR graphics probe:
+    run_homebrew_2ndmix_graphics_probe.bat
+
+The graphics probe intentionally skips AICA music and Maple input so the real
+2ndMix/KallistiOS CPU + PVR Store Queue path can be exercised deterministically.
+The ELF is intentionally not redistributed by DreamcastRecomp.

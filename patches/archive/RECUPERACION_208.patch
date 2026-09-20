@@ -1,0 +1,75 @@
+--- run_daytona_0.0.207.bat
++++ run_daytona_recovery208.bat
+@@ -4,10 +4,10 @@
+ 
+ if "%~1"=="" (
+   echo.
+-  echo DreamcastRecomp 0.0.207 - Daytona USA PRESS START build
++  echo DreamcastRecomp recovery208 - Daytona USA - recuperacion parcial 0.0.208 SIN VALIDAR
+   echo Uso: %~nx0 "C:\ruta\Daytona USA.cdi"
+   echo.
+-  echo Este perfil reproduce la closure validada que alcanzo PRESS START y attract gameplay.
++  echo Perfil reconstruido desde 0.0.207 con cuatro seeds documentados; pendiente de validar.
+   echo Controles: flechas=D-pad, Z/Space/J=A, X/K=B, C/U=X, V/I=Y, Enter=START.
+   exit /b 1
+ )
+@@ -18,9 +18,9 @@
+   exit /b 1
+ )
+ 
+-set "OUT=generated\daytona_0.0.207"
++set "OUT=generated\daytona_recovery208"
+ set "CPP=%OUT%\cpp"
+-set "CB=_cb_daytona_0.0.207"
++set "CB=_cb_daytona_recovery208"
+ 
+ rem Build only the three preparation/recompiler tools first.
+ cmake -S . -B build -A x64
+@@ -49,7 +49,7 @@
+ if errorlevel 1 exit /b 4
+ 
+ echo.
+-echo [3/4] Recompilando Daytona con closure 0.0.207 validada...
++echo [3/4] Recompilando Daytona con closure recovery208 reconstruida, SIN VALIDAR...
+ build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+   --base=0x8C008000 ^
+   --entry=0x8C008300 ^
+@@ -74,6 +74,10 @@
+   --seed=0x8C03B07A ^
+   --seed=0x8C03C8E0 ^
+   --seed=0x8C044740 ^
++  --seed=0x8C044894 ^
++  --seed=0x8C05B2C8 ^
++  --seed=0x8C03F820 ^
++  --seed=0x8C05B2D6 ^
+   --max-functions=8192 ^
+   --max-closure-entries=6144 ^
+   --closure-passes=64 ^
+@@ -82,7 +86,7 @@
+ if errorlevel 1 exit /b 5
+ 
+ echo.
+-echo [4/4] Compilando runner Daytona 0.0.207...
++echo [4/4] Compilando runner Daytona recovery208...
+ cmake -S "%CPP%" -B "%CB%" -A x64
+ if errorlevel 1 exit /b 6
+ cmake --build "%CB%" --config Release --target dreamcast_program --parallel 1
+@@ -90,9 +94,9 @@
+ 
+ echo.
+ echo ============================================================
+-echo  DreamcastRecomp 0.0.207 - Daytona USA
++echo  DreamcastRecomp recovery208 - Daytona USA
+ 
+-echo  Objetivo validado: PRESS START + attract gameplay 3D estable
++echo  Recuperacion parcial: no confirma carrera ni gameplay estable
+ echo ============================================================
+ echo.
+ echo [INFO] El perfil usa direct-game-entry=0x8C010000 para evitar el descrambler selfboot duplicado.
+@@ -116,5 +120,5 @@
+ set RC=%ERRORLEVEL%
+ echo.
+ echo [INFO] Daytona runner termino con RC=%RC%.
+-echo [INFO] Logs: %CD%\logs\DreamcastRecomp_0.0.207_session_*.log
++echo [INFO] Logs: %CD%\logs\DreamcastRecomp_recovery208_session_*.log
+ exit /b %RC%

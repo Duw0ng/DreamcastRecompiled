@@ -1,0 +1,8 @@
+Copy the official KallistiOS examples/dreamcast/basic/memtest32/memtest32.elf here
+and name it:
+
+    memtest32.elf
+
+0.0.27 experimental real-KOS tests:
+    run_kos_memtest_databus.bat
+    run_kos_memtest_addressbus.bat

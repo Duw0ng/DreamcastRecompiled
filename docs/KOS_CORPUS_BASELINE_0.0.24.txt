@@ -1,0 +1,193 @@
+DreamcastRecomp Corpus Scanner 0.0.26
+===================================
+ELF encontrados: 155
+
+[1/155] 2ndmix.elf  funcs=1219 unknown=0 main_raw=0
+[2/155] asserthnd.elf  funcs=1211 unknown=0 main_raw=0
+[3/155] breaking.elf  funcs=1214 unknown=0 main_raw=0
+[4/155] speedtest.elf  funcs=1209 unknown=0 main_raw=0
+[5/155] exec.elf  funcs=1208 unknown=0 main_raw=0
+[6/155] sub.elf  funcs=1207 unknown=0 main_raw=0
+[7/155] fpu_exc.elf  funcs=1213 unknown=0 main_raw=0
+[8/155] memtest32.elf  funcs=1210 unknown=0 main_raw=0
+[9/155] nullptr.elf  funcs=1208 unknown=0 main_raw=0
+[10/155] pvrmap.elf  funcs=1207 unknown=0 main_raw=0
+[11/155] stackprotector.elf  funcs=1210 unknown=0 main_raw=0
+[12/155] stacktrace.elf  funcs=1208 unknown=0 main_raw=0
+[13/155] atomics.elf  funcs=1218 unknown=0 main_raw=0
+[14/155] barrier.elf  funcs=1216 unknown=0 main_raw=0
+[15/155] compiler_tls.elf  funcs=1208 unknown=0 main_raw=0
+[16/155] general_threading_test.elf  funcs=1211 unknown=0 main_raw=0
+[17/155] once_test.elf  funcs=1215 unknown=0 main_raw=0
+[18/155] rlock_test.elf  funcs=1210 unknown=0 main_raw=0
+[19/155] reentrant_mutex.elf  funcs=1214 unknown=0 main_raw=0
+[20/155] rwsem_test.elf  funcs=1223 unknown=0 main_raw=0
+[21/155] spinlock_test.elf  funcs=1210 unknown=0 main_raw=0
+[22/155] tls_test.elf  funcs=1220 unknown=0 main_raw=0
+[23/155] watchdog.elf  funcs=1213 unknown=0 main_raw=0
+[24/155] cd-stream-test.elf  funcs=1210 unknown=0 main_raw=0
+[25/155] adventure.elf  funcs=1286 unknown=0 main_raw=0
+[26/155] basic.elf  funcs=1228 unknown=0 main_raw=0
+[27/155] kosh.elf  funcs=1265 unknown=0 main_raw=0
+[28/155] wump.elf  funcs=1240 unknown=0 main_raw=0
+[29/155] clock.elf  funcs=1449 unknown=0 main_raw=0
+[30/155] concurrency.elf  funcs=2627 unknown=0 main_raw=0
+[31/155] fnt_test.elf  funcs=1442 unknown=0 main_raw=0
+[32/155] gltest.elf  funcs=1522 unknown=0 main_raw=0
+[33/155] example.elf  funcs=1574 unknown=0 main_raw=0
+[34/155] out_of_memory.elf  funcs=1674 unknown=0 main_raw=0
+[35/155] devroot.elf  funcs=1216 unknown=0 main_raw=0
+[36/155] random.elf  funcs=1207 unknown=0 main_raw=0
+[37/155] dreameye.elf  funcs=1213 unknown=0 main_raw=0
+[38/155] dreameye-sd.elf  funcs=1288 unknown=0 main_raw=0
+[39/155] browse.elf  funcs=1299 unknown=0 main_raw=0
+[40/155] pty.elf  funcs=1210 unknown=0 main_raw=0
+[41/155] sd-ext2fs.elf  funcs=1284 unknown=0 main_raw=0
+[42/155] mke2fs.elf  funcs=1214 unknown=0 main_raw=0
+[43/155] sd-speedtest.elf  funcs=1211 unknown=0 main_raw=0
+[44/155] atatest.elf  funcs=1210 unknown=0 main_raw=0
+[45/155] 2D_tex_quad.elf  funcs=1399 unknown=0 main_raw=0
+[46/155] gltest.elf  funcs=1327 unknown=0 main_raw=0
+[47/155] vq-example.elf  funcs=1318 unknown=0 main_raw=0
+[48/155] quadmark.elf  funcs=1274 unknown=0 main_raw=0
+[49/155] trimark.elf  funcs=1274 unknown=0 main_raw=0
+[50/155] tristripmark.elf  funcs=1274 unknown=0 main_raw=0
+[51/155] nehe02.elf  funcs=1279 unknown=0 main_raw=0
+[52/155] nehe05.elf  funcs=1290 unknown=0 main_raw=0
+[53/155] nehe06.elf  funcs=1322 unknown=0 main_raw=0
+[54/155] nehe08.elf  funcs=1328 unknown=0 main_raw=0
+[55/155] nehe09.elf  funcs=1323 unknown=0 main_raw=0
+[56/155] nehe16.elf  funcs=1331 unknown=0 main_raw=0
+[57/155] nehe26.elf  funcs=1296 unknown=0 main_raw=0
+[58/155] hello.elf  funcs=1207 unknown=0 main_raw=0
+[59/155] keyrawtest.elf  funcs=1208 unknown=0 main_raw=0
+[60/155] keytest.elf  funcs=1209 unknown=0 main_raw=0
+[61/155] gl-elements.elf  funcs=1295 unknown=0 main_raw=0
+[62/155] gltest.elf  funcs=1310 unknown=0 main_raw=0
+[63/155] scissor.elf  funcs=1315 unknown=0 main_raw=0
+[64/155] gltest.elf  funcs=1309 unknown=0 main_raw=0
+[65/155] vq-example.elf  funcs=1293 unknown=0 main_raw=0
+[66/155] gl-arrays.elf  funcs=1293 unknown=0 main_raw=0
+[67/155] quadmark.elf  funcs=1276 unknown=0 main_raw=0
+[68/155] trimark.elf  funcs=1276 unknown=0 main_raw=0
+[69/155] tristripmark.elf  funcs=1276 unknown=0 main_raw=0
+[70/155] radial_blur.elf  funcs=1319 unknown=0 main_raw=0
+[71/155] gl-mipmap.elf  funcs=1297 unknown=0 main_raw=0
+[72/155] gl-multitex-arrays.elf  funcs=1299 unknown=0 main_raw=0
+[73/155] gl-multitex-elements.elf  funcs=1299 unknown=0 main_raw=0
+[74/155] specular.elf  funcs=1343 unknown=0 main_raw=0
+[75/155] nehe02.elf  funcs=1274 unknown=0 main_raw=0
+[76/155] nehe05.elf  funcs=1284 unknown=0 main_raw=0
+[77/155] nehe06.elf  funcs=1304 unknown=0 main_raw=0
+[78/155] nehe08.elf  funcs=1312 unknown=0 main_raw=0
+[79/155] nehe09.elf  funcs=1305 unknown=0 main_raw=0
+[80/155] nehe16.elf  funcs=1315 unknown=0 main_raw=0
+[81/155] nehe26.elf  funcs=1290 unknown=0 main_raw=0
+[82/155] 320x240.elf  funcs=1207 unknown=0 main_raw=0
+[83/155] 640x480.elf  funcs=1208 unknown=0 main_raw=0
+[84/155] cdfs.elf  funcs=1208 unknown=0 main_raw=0
+[85/155] keyboard.elf  funcs=1211 unknown=0 main_raw=0
+[86/155] lcd.elf  funcs=1210 unknown=0 main_raw=0
+[87/155] mouse.elf  funcs=1208 unknown=0 main_raw=0
+[88/155] rgb888.elf  funcs=1208 unknown=0 main_raw=0
+[89/155] spu.elf  funcs=1210 unknown=0 main_raw=0
+[90/155] ta.elf  funcs=1211 unknown=0 main_raw=0
+[91/155] vmu.elf  funcs=1210 unknown=0 main_raw=0
+[92/155] library-test.elf  funcs=1216 unknown=0 main_raw=0
+[93/155] lightgun.elf  funcs=1210 unknown=0 main_raw=0
+[94/155] lua.elf  funcs=1968 unknown=3 main_raw=0
+[95/155] micropython.elf  funcs=1791 unknown=0 main_raw=0
+[96/155] basic.elf  funcs=1272 unknown=0 main_raw=0
+[97/155] ppp.elf  funcs=1478 unknown=0 main_raw=0
+[98/155] basic.elf  funcs=1358 unknown=0 main_raw=0
+[99/155] dns-client.elf  funcs=1367 unknown=0 main_raw=0
+[100/155] httpd.elf  funcs=1371 unknown=0 main_raw=0
+[101/155] isp-settings.elf  funcs=1208 unknown=0 main_raw=0
+[102/155] ntp.elf  funcs=1375 unknown=0 main_raw=0
+[103/155] ping.elf  funcs=1357 unknown=0 main_raw=0
+[104/155] ping.elf  funcs=1360 unknown=0 main_raw=0
+[105/155] speedtest.elf  funcs=1368 unknown=0 main_raw=0
+[106/155] echo.elf  funcs=1362 unknown=0 main_raw=0
+[107/155] bubbles.elf  funcs=1223 unknown=0 main_raw=0
+[108/155] delay_cube.elf  funcs=1227 unknown=0 main_raw=0
+[109/155] font.elf  funcs=1222 unknown=0 main_raw=0
+[110/155] raster_melt.elf  funcs=1616 unknown=0 main_raw=0
+[111/155] rotocube.elf  funcs=1226 unknown=0 main_raw=0
+[112/155] serpent.elf  funcs=1250 unknown=0 main_raw=0
+[113/155] sinus.elf  funcs=1214 unknown=0 main_raw=0
+[114/155] example.elf  funcs=1464 unknown=0 main_raw=0
+[115/155] general_pthread_test.elf  funcs=1235 unknown=0 main_raw=0
+[116/155] bump.elf  funcs=1217 unknown=0 main_raw=0
+[117/155] shadow.elf  funcs=1213 unknown=0 main_raw=0
+[118/155] modifier.elf  funcs=1214 unknown=0 main_raw=0
+[119/155] modifier.elf  funcs=1218 unknown=0 main_raw=0
+[120/155] example.elf  funcs=1410 unknown=0 main_raw=0
+[121/155] 4bpp.elf  funcs=1208 unknown=0 main_raw=0
+[122/155] 8bpp.elf  funcs=1208 unknown=0 main_raw=0
+[123/155] wormhole.elf  funcs=1212 unknown=0 main_raw=0
+[124/155] plasma.elf  funcs=1213 unknown=0 main_raw=0
+[125/155] pvrline.elf  funcs=1209 unknown=0 main_raw=0
+[126/155] pvrmark.elf  funcs=1212 unknown=0 main_raw=0
+[127/155] pvrmark_strips.elf  funcs=1212 unknown=0 main_raw=0
+[128/155] pvrmark_strips_direct.elf  funcs=1210 unknown=0 main_raw=0
+[129/155] texture_render.elf  funcs=1212 unknown=0 main_raw=0
+[130/155] yuv420.elf  funcs=1209 unknown=0 main_raw=0
+[131/155] yuv422.elf  funcs=1210 unknown=0 main_raw=0
+[132/155] raytris.elf  funcs=2692 unknown=0 main_raw=0
+[133/155] rumble.elf  funcs=1230 unknown=0 main_raw=0
+[134/155] sdl_sound.elf  funcs=1409 unknown=0 main_raw=0
+[135/155] basic_cdda.elf  funcs=1208 unknown=0 main_raw=0
+[136/155] ghettoplay.elf  funcs=1428 unknown=0 main_raw=0
+[137/155] libADXplay.elf  funcs=1223 unknown=0 main_raw=0
+[138/155] mp3test.elf  funcs=1361 unknown=0 main_raw=0
+[139/155] vorbistest.elf  funcs=1324 unknown=0 main_raw=0
+[140/155] opustest.elf  funcs=1417 unknown=0 main_raw=0
+[141/155] multistream.elf  funcs=1221 unknown=0 main_raw=0
+[142/155] sfx.elf  funcs=1208 unknown=0 main_raw=0
+[143/155] sfxbuf.elf  funcs=1209 unknown=0 main_raw=0
+[144/155] banner.elf  funcs=2006 unknown=0 main_raw=0
+[145/155] font.elf  funcs=1871 unknown=0 main_raw=0
+[146/155] genmenu.elf  funcs=1602 unknown=0 main_raw=0
+[147/155] bfont.elf  funcs=1208 unknown=0 main_raw=0
+[148/155] minifont.elf  funcs=1209 unknown=0 main_raw=0
+[149/155] multibuffer.elf  funcs=1207 unknown=0 main_raw=0
+[150/155] palmenu.elf  funcs=1207 unknown=0 main_raw=0
+[151/155] screenshot.elf  funcs=1207 unknown=0 main_raw=0
+[152/155] beep.elf  funcs=1226 unknown=0 main_raw=0
+[153/155] vmu_game.elf  funcs=1212 unknown=0 main_raw=0
+[154/155] lcd.elf  funcs=1223 unknown=0 main_raw=0
+[155/155] vmu.elf  funcs=1213 unknown=0 main_raw=0
+DreamcastRecomp 0.0.26 - KallistiOS corpus compatibility
+=========================================================
+ELF encontrados:                155
+ELF cargados:                   155
+ELF ISA-clean (all functions):  154
+Funciones escaneadas:           202431
+Instrucciones conocidas:        15309526
+Instrucciones desconocidas:     3
+_main call graphs escaneados:   155
+_main con RAW_SH4=0:             155
+Tiempo:                          11.70 s
+
+NOTA: ISA-clean significa que el decoder/DCIR no encontro opcodes desconocidos en las funciones simbolizadas.
+No implica que el programa completo ya pueda ejecutarse: pueden faltar servicios KOS/MMIO/PVR/AICA/etc.
+
+Top familias desconocidas alcanzables desde _main
+==================================================
+
+Top raw words desconocidos alcanzables desde _main
+====================================================
+
+Top familias desconocidas en todas las funciones simbolizadas
+==========================================================
+  1. SH-4 0x0*** system/control  count=3  elfs=1  sample=0x0119  _llex@0x8C0323B4
+
+Top raw words SH-4 desconocidos en todas las funciones simbolizadas
+=================================================================
+  1. 0x0118  count=1  elfs=1  example=_llex@0x8C0323C0  /mnt/data/kos_corpus_all/dreamcast/lua/basic/lua.elf
+  2. 0x0119  count=1  elfs=1  example=_llex@0x8C0323B4  /mnt/data/kos_corpus_all/dreamcast/lua/basic/lua.elf
+  3. 0x011B  count=1  elfs=1  example=_llex@0x8C0323B6  /mnt/data/kos_corpus_all/dreamcast/lua/basic/lua.elf
+
+Reportes:
+  corpus_report.txt
+  /mnt/data/dcr024_corpus_report.csv
