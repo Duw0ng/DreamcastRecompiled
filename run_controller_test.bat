@@ -7,7 +7,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo DreamcastRecomp v0.1 Official - Controller Visual Test
+echo DreamcastRecomp v0.1.1 Official - Controller Visual Test
 echo.
 set "TESTER_PS1=%~dp0tools\controller_test\DreamcastControllerTest.ps1"
 

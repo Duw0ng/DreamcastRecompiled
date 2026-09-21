@@ -360,7 +360,7 @@ void save_disc_map(const std::filesystem::path& out, const std::filesystem::path
 int main(int argc, char** argv) {
     try {
         if (argc < 2) {
-            std::cout << "dc_disc_probe 0.1.0 <image.cdi|image.iso> [--extract-boot=FILE] [--extract-ip=FILE] [--extract-disc-map=FILE] [--extract-file=NAME=FILE]\n";
+            std::cout << "dc_disc_probe 0.1.1 <image.cdi|image.iso> [--extract-boot=FILE] [--extract-ip=FILE] [--extract-disc-map=FILE] [--extract-file=NAME=FILE]\n";
             return 1;
         }
         std::filesystem::path in = argv[1], boot_out, ip_out, map_out;
@@ -395,7 +395,7 @@ int main(int argc, char** argv) {
         const auto& t = layout.tracks[bt.track_index];
 
         image.clear(); image.seekg(0, std::ios::end); const auto end = image.tellg();
-        std::cout << "DreamcastRecomp Disc Probe 0.1.0\n=================================\n"
+        std::cout << "DreamcastRecomp Disc Probe 0.1.1\n=================================\n"
                   << "Input:              " << in.string() << "\n"
                   << "Container bytes:    " << (end < 0 ? 0 : static_cast<std::uint64_t>(end)) << "\n"
                   << "Container:          " << (layout.from_cdi ? "DiscJuggler CDI" : "raw/ISO") << "\n"

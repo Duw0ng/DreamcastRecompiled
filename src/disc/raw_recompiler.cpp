@@ -3172,9 +3172,19 @@ std::set<std::uint32_t> discover_function_closure(const std::vector<std::uint8_t
                     // leaf form that preserves at least two FR12-FR15 registers plus PR.
                     // This is kept separate from the literal-gap rule below so data-pool
                     // scanning never has to be relaxed to recover adjacent functions.
-                    if (terminal->opcode == O::Rts &&
-                        looks_like_fpu_only_abi_prologue(bytes, o.base, gap_begin)) {
-                        rts_boundary_candidates.insert(gap_begin);
+                    if (terminal->opcode == O::Rts) {
+                        // A normal GPR ABI prologue can begin immediately after the
+                        // predecessor's RTS delay slot with no literal pool between
+                        // the two functions.  This is common in Katana retail code
+                        // and is strong enough evidence to promote the exact boundary
+                        // (R8-R14 save + PR save) without scanning arbitrary bytes.
+                        // Crazy Taxi 2 exposed this at 0x8C16BFB6, directly after a
+                        // 12-byte function rooted at 0x8C16BFAA.
+                        if (looks_like_strong_abi_prologue(bytes, o.base, gap_begin, false)) {
+                            abi_gap_candidates.insert(gap_begin);
+                        } else if (looks_like_fpu_only_abi_prologue(bytes, o.base, gap_begin)) {
+                            rts_boundary_candidates.insert(gap_begin);
+                        }
                     }
 
                     // For a post-terminal literal/data pool, use the end of the furthest
