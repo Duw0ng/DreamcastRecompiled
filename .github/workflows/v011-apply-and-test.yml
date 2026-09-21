@@ -1,0 +1,49 @@
+name: v0.1.1 source validation
+
+on:
+  push:
+    branches: [release-v0.1.1-prep]
+    paths:
+      - '.github/workflows/v011-apply-and-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and verify v0.1.1 patch
+        shell: bash
+        run: |
+          cat .github/v011_patch_*.b64 | base64 -d > /tmp/v011.patch
+          echo '5e8456541b4a7d3b738a541efb04fd11285d87e2bc98105c621d158aaa78b36b  /tmp/v011.patch' | sha256sum -c -
+          git apply --check /tmp/v011.patch
+          git apply /tmp/v011.patch
+
+      - name: Configure
+        run: cmake -S . -B build-v011 -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build-v011 -j 2
+
+      - name: Test
+        run: ctest --test-dir build-v011 --output-on-failure -j 2
+
+      - name: Commit validated v0.1.1 source
+        shell: bash
+        run: |
+          rm -f .github/v011_patch_*.b64
+          rm -f .github/workflows/v011-apply-and-test.yml
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Apply validated v0.1.1 source changes'
+          git push origin HEAD:release-v0.1.1-prep
