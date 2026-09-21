@@ -1,0 +1,40 @@
+name: Publish v0.1.1 Official
+
+on:
+  push:
+    branches: [publish-v0.1.1]
+    paths:
+      - '.github/workflows/publish-v011.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout publisher branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build release archive from main
+        shell: bash
+        run: |
+          git fetch origin main
+          git archive --format=zip --prefix=DreamcastRecomp_v0.1.1_Official/ origin/main -o DreamcastRecomp_v0.1.1_Official.zip
+          sha256sum DreamcastRecomp_v0.1.1_Official.zip > DreamcastRecomp_v0.1.1_Official.zip.sha256
+          git show origin/main:RELEASE_NOTES_V0.1.1.md > RELEASE_NOTES_V0.1.1.md
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create V0.1.1 \
+            DreamcastRecomp_v0.1.1_Official.zip \
+            DreamcastRecomp_v0.1.1_Official.zip.sha256 \
+            --repo Duw0ng/DreamcastRecompiled \
+            --target main \
+            --title 'DreamcastRecomp v0.1.1 Official' \
+            --notes-file RELEASE_NOTES_V0.1.1.md
