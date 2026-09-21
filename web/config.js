@@ -3,5 +3,5 @@ window.DCR_CONFIG = {
   repo: 'DreamcastRecompiled',
   branch: 'main',
   projectName: 'Dreamcast Recompiled',
-  releaseFallback: 'v0.1 Official'
+  releaseFallback: 'v0.1.1 Official'
 };
