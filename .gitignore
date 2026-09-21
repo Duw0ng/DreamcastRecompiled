@@ -1,4 +1,9 @@
 build/
+build_*/
+generated/
+_cb_*/
+logs/
+*.log
 compare/
 *.user
 *.suo

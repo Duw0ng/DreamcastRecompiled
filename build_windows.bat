@@ -6,7 +6,7 @@ set "NOPAUSE=0"
 if /I "%~1"=="--no-pause" set "NOPAUSE=1"
 
 echo ========================================
-echo  DreamcastRecomp v0.1 Official - Build
+echo  DreamcastRecomp v0.1.1 Official - Build
 echo ========================================
 echo.
 

@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 echo ============================================================
-echo  DreamcastRecomp v0.1 Official - Regression tests
+echo  DreamcastRecomp v0.1.1 Official - Regression tests
 echo ============================================================
 where cmake >nul 2>nul
 if errorlevel 1 (

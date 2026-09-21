@@ -2,7 +2,7 @@
 setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
-set "DCR_VERSION=v0.1 Official"
+set "DCR_VERSION=v0.1.1 Official"
 set "PERF=0"
 set "DEBUG=0"
 set "PVR_PROFILE=0"
@@ -59,9 +59,9 @@ if errorlevel 1 (
   exit /b 2
 )
 
-set "OUT=generated\official_v0.1"
+set "OUT=generated\official_v0.1.1"
 set "CPP=%OUT%\cpp"
-set "CB=_cb_v0.1"
+set "CB=_cb_v0.1.1"
 set "PADARG="
 if exist "profiles\controller_profile.ini" (
   set "PADARG=--controller-profile=profiles\controller_profile.ini"
@@ -219,7 +219,7 @@ if /I "!MODE!"=="DAYTONA" (
     --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
 ) else if /I "!MODE!"=="CT2" (
   "!EXE!" ^
-    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
+    --commercial-boot --ct2-compat --disc-map="%OUT%\disc.map" ^
     --pvr-window --pvr-frame-sync !GPU_ARGS! ^
     --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
     --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
@@ -246,7 +246,7 @@ exit /b !RC!
 
 :usage
 echo.
-echo DreamcastRecomp v0.1 Official
+echo DreamcastRecomp v0.1.1 Official
 echo.
 echo Uso:
 echo   %~nx0 "juego.cdi" [opciones]

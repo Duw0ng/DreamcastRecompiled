@@ -98,7 +98,13 @@ int main(int argc, char** argv) {
             "0.0.199 generated blocks support compile-time lightweight current-PC tracking");
     require(runner.find("--aica-play") != std::string::npos, "runner retains explicit host AICA playback option");
     require(runner.find("DCRSessionLogGuard") != std::string::npos, "0.0.154 runner installs automatic session log tee");
-    require(runner.find("DreamcastRecomp_v0.1_session_") != std::string::npos, "v0.1 runner names timestamped session logs");
+    require(runner.find("DreamcastRecomp_v0.1.1_session_") != std::string::npos, "v0.1.1 runner names timestamped session logs");
+    require(runner.find("else if (pre == \"--ct2-compat\") runtime.ct2_compat = true") != std::string::npos,
+            "v0.1.1 pre-scans CT2 compatibility before commercial bootstrap setup");
+    require(runtime.find("staged scrambled commercial executable") != std::string::npos &&
+            runtime.find("BootRand") != std::string::npos &&
+            runtime.find("if (runtime.ct2_compat)") != std::string::npos,
+            "v0.1.1 emits CT2 32-byte-slice commercial boot staging");
 
     require(runtime.find("const std::uint64_t raster = runtime.pvr_spg_status_reads++") == std::string::npos,
             "0.0.191 must not advance SPG raster from SPG_STATUS reads");

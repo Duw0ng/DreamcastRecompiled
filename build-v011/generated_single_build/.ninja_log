@@ -1,0 +1,11 @@
+# ninja log v7
+0	13124	1789952651242162692	CMakeFiles/dreamcast_generated.dir/dc_runtime.cpp.o	59d30142caee70bd
+13125	13840	1789952664367969443	CMakeFiles/dreamcast_generated.dir/dc_arm7.cpp.o	8dd06affb691869
+13840	14392	1789952665082276024	CMakeFiles/dreamcast_generated.dir/dc_image.cpp.o	88e221cf62d6569b
+14392	15651	1789952665634280641	CMakeFiles/dreamcast_generated.dir/dc_native_overrides.cpp.o	6ea29671595cb231
+15651	16226	1789952666893291135	CMakeFiles/dreamcast_generated.dir/generated_main.cpp.o	86a3013c490878b5
+16227	16306	1789952667469295936	libdreamcast_generated.a	aa813f6d2e7e5f22
+16306	17029	1789952667548296594	CMakeFiles/generated_compile_test.dir/generated_compile_test.cpp.o	b848dd9456dbf9c5
+17029	18904	1789952668271302621	CMakeFiles/dreamcast_hello.dir/generated_runner.cpp.o	32f0c93fad0b24d7
+18904	18954	1789952670146318249	generated_compile_test	4583209dbae4bd0
+18954	19004	1789952670196318665	dreamcast_hello	3600c5b391f2b7bc

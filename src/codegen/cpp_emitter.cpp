@@ -2352,6 +2352,7 @@ struct DCRuntime {
 
     // Deterministic probe state retained for regression/smoke helpers.
     std::uint32_t probe_controller_poll{};
+    bool probe_controller_a_then_start_lowlevel{};
     std::uint32_t probe_start_burst_poll{};
     std::uint32_t probe_start_burst_presses{};
     bool probe_controller_start_burst_lowlevel{};
@@ -2379,6 +2380,7 @@ struct DCRuntime {
     std::size_t trace_history_size{};
     std::uint64_t trace_call_count{};
     bool commercial_boot_active{};
+    bool ct2_compat{};
     // Set when a device event redirects SH-4 execution to VBR+0x600. Generated
     // nested C++ calls propagate this back to the top-level dispatcher so a
     // host call/return cannot overwrite the asynchronous guest PC.
@@ -10085,6 +10087,32 @@ void maple_write_getcond_response(DCRuntime& runtime, std::uint32_t recv,
     if (runtime.maple_host_input) dc_maple_poll_host(runtime);
     auto c = runtime.maple_controller;
 
+    // v0.1.1 CT2 regression harness: inject discrete buttons through the real
+    // low-level Maple GETCOND path. It is opt-in via --probe-controller-a-then-start.
+    if (runtime.probe_controller_a_then_start_lowlevel) {
+        const std::uint32_t poll = runtime.probe_controller_poll++;
+        std::uint32_t buttons = 0u;
+        // Keep the stages non-overlapping so an A pulse cannot cancel a START
+        // press while CT2 is transitioning from VMU setup to the title screen.
+        if (poll >= 80u && poll <= 760u && ((poll - 80u) % 80u) < 8u) {
+            buttons = 1u << 2;
+            if (((poll - 80u) % 80u) == 0u) std::cout << "[DreamcastRecomp CT2 autopilot] VMU/A at GETCOND=" << poll << "\n";
+        }
+        if (poll >= 800u && poll <= 1700u && ((poll - 800u) % 80u) < 16u) {
+            buttons = 1u << 3;
+            if (((poll - 800u) % 80u) == 0u) std::cout << "[DreamcastRecomp CT2 autopilot] START at GETCOND=" << poll << "\n";
+        }
+        if (poll >= 1750u && poll <= 4100u && ((poll - 1750u) % 80u) < 12u) {
+            buttons = 1u << 2;
+            if (((poll - 1750u) % 80u) == 0u) std::cout << "[DreamcastRecomp CT2 autopilot] MENU/A at GETCOND=" << poll << "\n";
+        }
+        if (poll >= 4200u && ((poll - 4200u) % 40u) < 28u) {
+            buttons = 1u << 2;
+            if (poll == 4200u) std::cout << "[DreamcastRecomp CT2 autopilot] gameplay gas phase at GETCOND=" << poll << "\n";
+        }
+        c.buttons = static_cast<std::uint16_t>(buttons);
+    }
+
     // 0.1.0 Lodoss START fix: retail/Katana titles can bypass the high-level
     // KOS maple_dev_status override and consume raw Maple GETCOND packets.
     // Keep the probe opt-in, but inject its finite START burst here so both
@@ -13843,7 +13871,7 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
                       << ((runtime.perf_pvr_clock_sampled_ns * std::max<std::uint64_t>(1u, runtime.perf_sample_stride)) / 1000000u) << "/"
                       << ((runtime.perf_host_sync_sampled_ns * std::max<std::uint64_t>(1u, runtime.perf_sample_stride)) / 1000000u) << "/"
                       << ((runtime.perf_irq_sampled_ns * std::max<std::uint64_t>(1u, runtime.perf_sample_stride)) / 1000000u)
-                      << " | build=v0.1-official"
+                      << " | build=v0.1.1-official"
                       << " | baseline=0.0.124"
                       << " | pvr-fast=" << (runtime.pvr_gpu_fastpath_ready ? 1 : 0)
                       << "/" << (runtime.pvr_mt_fastpath_ready ? 1 : 0)
@@ -16398,6 +16426,45 @@ void native_bios_misc(SH4Context& ctx, DCRuntime& runtime) {
 } // namespace
 
 void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
+    // v0.1.1 CT2: retail IP.BIN expects the main executable in Dreamcast
+    // 32-byte-slice scrambled layout and descrambles it in-place.  The generated
+    // image embeds the plain executable for static analysis, so restage it only
+    // for the opt-in CT2 compatibility profile before IP.BIN runs.
+    if (runtime.ct2_compat) {
+        constexpr std::size_t boot_off = 0x10000u;
+        constexpr std::size_t boot_size = 0x164794u;
+        constexpr std::size_t max_chunk = 2048u * 1024u;
+        struct BootRand {
+            std::uint32_t seed;
+            explicit BootRand(std::uint32_t n) : seed(n & 0xFFFFu) {}
+            std::uint32_t next() { seed = (seed * 2109u + 9273u) & 0x7FFFu; return (seed + 0xC000u) & 0xFFFFu; }
+        };
+        if (boot_off + boot_size > runtime.main_ram.size())
+            throw std::runtime_error("CT2 commercial boot staging exceeds main RAM");
+        std::vector<std::uint8_t> src(boot_size), dst(boot_size);
+        std::copy_n(runtime.main_ram.data() + boot_off, boot_size, src.data());
+        BootRand rng(static_cast<std::uint32_t>(boot_size));
+        std::size_t src_pos = 0u, dst_pos = 0u, remain = boot_size;
+        std::vector<std::size_t> idx(max_chunk / 32u);
+        for (std::size_t chunk = max_chunk; chunk >= 32u; chunk >>= 1u) {
+            while (remain >= chunk) {
+                const std::size_t slices = chunk / 32u;
+                for (std::size_t i = 0; i < slices; ++i) idx[i] = i;
+                for (std::size_t n = slices; n-- > 0;) {
+                    const std::size_t x = (static_cast<std::uint64_t>(rng.next()) * n) >> 16u;
+                    std::swap(idx[n], idx[x]);
+                    std::copy_n(src.data() + src_pos, 32u, dst.data() + dst_pos + 32u * idx[n]);
+                    src_pos += 32u;
+                }
+                remain -= chunk;
+                dst_pos += chunk;
+            }
+            if (chunk == 32u) break;
+        }
+        if (remain) std::copy_n(src.data() + src_pos, remain, dst.data() + dst_pos);
+        std::copy(dst.begin(), dst.end(), runtime.main_ram.begin() + boot_off);
+        std::cout << "[DCR CT2] staged scrambled commercial executable (" << boot_size << " bytes)\n";
+    }
     // The BIOS leaves low RAM initialised before loading IP.BIN at 0x8C008000.
     // Because the generated image is already embedded when this helper runs,
     // only initialise the pre-IP half so we never overwrite the bootstrap.
@@ -17688,6 +17755,7 @@ void register_native_overrides(DCRuntime& runtime) {
     if (maple_dev_valid_address != 0) out << "    runtime.register_target(" << hex8(maple_dev_valid_address) << ", &native_maple_dev_valid); // Maple validity helper\n";
     out << "}\n\n";
     out << "void register_probe_overrides(DCRuntime& runtime, bool skip_audio, bool no_input, bool default_video, bool controller_a_then_start, bool controller_start_burst) {\n";
+    out << "    runtime.probe_controller_a_then_start_lowlevel = controller_a_then_start;\n";
     if (play_s3m_address != 0) out << "    if (skip_audio) runtime.register_target(" << hex8(play_s3m_address) << ", &native_probe_skip_audio); // graphics-only probe\n";
     else out << "    (void)skip_audio;\n";
     if (maple_enum_type_address != 0) {
@@ -20594,7 +20662,7 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "#endif\n"
                    << "    std::ostringstream out;\n"
                    << "    if (!ec) out << \"logs/\";\n"
-                   << "    out << \"DreamcastRecomp_v0.1_session_\" << std::put_time(&tm, \"%Y%m%d-%H%M%S\") << \".log\";\n"
+                   << "    out << \"DreamcastRecomp_v0.1.1_session_\" << std::put_time(&tm, \"%Y%m%d-%H%M%S\") << \".log\";\n"
                    << "    return out.str();\n"
                    << "}\n\n"
                    << "class DCRSessionLogGuard final {\n"
@@ -20698,7 +20766,11 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "        ctx.r[15] = kStackTop;\n"
                    << "        ctx.pr = kHostReturnSentinel;\n"
                    << "        ctx.pc = " << hex8(function.entry) << ";\n"
-                   << "        for (int ai = 1; ai < argc; ++ai) if (std::string(argv[ai]) == \"--commercial-boot\") { commercial_boot = true; runtime.commercial_boot_active = true; }\n"
+                   << "        for (int ai = 1; ai < argc; ++ai) {\n"
+                   << "            const std::string pre = argv[ai];\n"
+                   << "            if (pre == \"--commercial-boot\") { commercial_boot = true; runtime.commercial_boot_active = true; }\n"
+                   << "            else if (pre == \"--ct2-compat\") runtime.ct2_compat = true;\n"
+                   << "        }\n"
                    << "        if (commercial_boot) { dc_setup_commercial_boot(ctx, runtime); ctx.pc = " << hex8(function.entry) << "; }\n"
                    << "        for (int i = 1; i < argc; ++i) {\n"
                    << "            std::string key = argv[i];\n"
@@ -20725,6 +20797,8 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "                runtime.sh4_abi_audit = true;\n"
                    << "            } else if (key == \"--commercial-boot\") {\n"
                    << "                commercial_boot = true; runtime.commercial_boot_active = true; // setup already applied in pre-scan\n"
+                   << "            } else if (key == \"--ct2-compat\") {\n"
+                   << "                runtime.ct2_compat = true;\n"
                    << "            } else if (key.rfind(\"--commercial-continuation-limit\", 0) == 0) {\n"
                    << "                commercial_continuation_limit = std::stoull(read_value(), nullptr, 0);\n"
                    << "            } else if (key.rfind(\"--disc-map\", 0) == 0) {\n"
@@ -20911,12 +20985,12 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "        runtime.fast_dispatch_enabled = fast_dispatch;\n"
                    << "        runtime.direct_dispatch_enabled = direct_dispatch;\n"
                    << "        dc_refresh_dispatch_ready(runtime);\n"
-                   << "        if (pvr_window) dc_pvr_enable_window(runtime, \"DreamcastRecomp v0.1 Official - PVR live\", pvr_window_scale, pvr_window_interval, pvr_window_throttle_ms, pvr_window_fps);\n"
+                   << "        if (pvr_window) dc_pvr_enable_window(runtime, \"DreamcastRecomp v0.1.1 Official - PVR live\", pvr_window_scale, pvr_window_interval, pvr_window_throttle_ms, pvr_window_fps);\n"
                    << "        runtime.device_clock_host_max_catchup_steps = device_clock_host_max_catchup;\n"
                    << "        if (device_clock) dc_device_clock_enable(runtime, true, device_clock_host);\n"
                    << "        if (diag_heartbeat_ms != 0u) dc_diag_heartbeat_enable(runtime, diag_heartbeat_ms);\n"
-                   << "        if (host_window) dc_host_status_enable(runtime, \"DreamcastRecomp v0.1 Official - runner activo\");\n\n"
-                   << "        std::cout << \"DreamcastRecomp v0.1 Official native runner\\n\"\n"
+                   << "        if (host_window) dc_host_status_enable(runtime, \"DreamcastRecomp v0.1.1 Official - runner activo\");\n\n"
+                   << "        std::cout << \"DreamcastRecomp v0.1.1 Official native runner\\n\"\n"
                    << "                     \"===================================\\n\"\n"
                    << "                     \"Executing " << function.name << " @ " << hex8(function.entry) << "\\n\\n\";\n\n"
                    << "        runtime.sh4_async_redirect = false;\n"
@@ -21239,6 +21313,19 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                                  << estimate_sh4_issue_cycles(block) << "u)) return;\n";
                 }
             }
+            if (block.start_address == 0x8C14C66Cu) {
+                function_out << "    // v0.1.1 CT2: reconstruct Shinobi syMallocInit state only when explicitly enabled.\n"
+                             << "    if (runtime.ct2_compat && dc_read32_hot(runtime, 0x0C2D12B4u) == 0u) {\n"
+                             << "        constexpr std::uint32_t kIf = 0x0C16FF68u, kSentinel = 0x0C2D12B8u, kFreeHead = 0x0C2D12D8u;\n"
+                             << "        constexpr std::uint32_t kHeapBaseGlobal = 0x0C2D12DCu, kHeapSizeGlobal = 0x0C2D12E0u, kHeapCurGlobal = 0x0C2D12E4u;\n"
+                             << "        constexpr std::uint32_t kHeap = 0x8C30BC40u, kHeapSize = 0x00CF43C0u;\n"
+                             << "        dc_write32_hot(runtime, 0x0C2D12B4u, kIf); dc_write32_hot(runtime, kHeapBaseGlobal, kHeap);\n"
+                             << "        dc_write32_hot(runtime, kHeapSizeGlobal, kHeapSize); dc_write32_hot(runtime, kHeapCurGlobal, kHeap);\n"
+                             << "        dc_write32_hot(runtime, kSentinel, kHeap); dc_write32_hot(runtime, kSentinel + 4u, 0u);\n"
+                             << "        dc_write32_hot(runtime, kFreeHead, kSentinel); dc_write32_hot(runtime, kHeap, kSentinel);\n"
+                             << "        dc_write32_hot(runtime, kHeap + 4u, kHeapSize >> 5u);\n"
+                             << "    }\n";
+            }
             const auto fpu_regions = find_fpu_cache_regions(block);
             for (const auto& instruction : block.instructions)
                 if (instruction.op == DCIROp::RawSH4) ++raw_ops;
@@ -21548,7 +21635,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "#endif\n"
                    << "    std::ostringstream out;\n"
                    << "    if (!ec) out << \"logs/\";\n"
-                   << "    out << \"DreamcastRecomp_v0.1_session_\" << std::put_time(&tm, \"%Y%m%d-%H%M%S\") << \".log\";\n"
+                   << "    out << \"DreamcastRecomp_v0.1.1_session_\" << std::put_time(&tm, \"%Y%m%d-%H%M%S\") << \".log\";\n"
                    << "    return out.str();\n"
                    << "}\n\n"
                    << "class DCRSessionLogGuard final {\n"
@@ -21654,7 +21741,11 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "        ctx.r[15] = kStackTop;\n"
                    << "        ctx.pr = kHostReturnSentinel;\n"
                    << "        ctx.pc = " << hex8(program.root_address) << ";\n"
-                   << "        for (int ai = 1; ai < argc; ++ai) if (std::string(argv[ai]) == \"--commercial-boot\") { commercial_boot = true; runtime.commercial_boot_active = true; }\n"
+                   << "        for (int ai = 1; ai < argc; ++ai) {\n"
+                   << "            const std::string pre = argv[ai];\n"
+                   << "            if (pre == \"--commercial-boot\") { commercial_boot = true; runtime.commercial_boot_active = true; }\n"
+                   << "            else if (pre == \"--ct2-compat\") runtime.ct2_compat = true;\n"
+                   << "        }\n"
                    << "        if (commercial_boot) { dc_setup_commercial_boot(ctx, runtime); ctx.pc = " << hex8(program.root_address) << "; }\n"
                    << "        for (int i = 1; i < argc; ++i) {\n"
                    << "            std::string key = argv[i];\n"
@@ -21681,6 +21772,8 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "                runtime.sh4_abi_audit = true;\n"
                    << "            } else if (key == \"--commercial-boot\") {\n"
                    << "                commercial_boot = true; runtime.commercial_boot_active = true; // setup already applied in pre-scan\n"
+                   << "            } else if (key == \"--ct2-compat\") {\n"
+                   << "                runtime.ct2_compat = true;\n"
                    << "            } else if (key.rfind(\"--direct-game-entry\", 0) == 0) {\n"
                    << "                direct_game_entry = true; direct_game_pc = static_cast<std::uint32_t>(std::stoul(read_value(), nullptr, 0));\n"
                    << "            } else if (key.rfind(\"--commercial-continuation-limit\", 0) == 0) {\n"
@@ -21869,11 +21962,11 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "        runtime.fast_dispatch_enabled = fast_dispatch;\n"
                    << "        runtime.direct_dispatch_enabled = direct_dispatch;\n"
                    << "        dc_refresh_dispatch_ready(runtime);\n"
-                   << "        if (pvr_window) dc_pvr_enable_window(runtime, \"DreamcastRecomp v0.1 Official - PVR live\", pvr_window_scale, pvr_window_interval, pvr_window_throttle_ms, pvr_window_fps);\n"
+                   << "        if (pvr_window) dc_pvr_enable_window(runtime, \"DreamcastRecomp v0.1.1 Official - PVR live\", pvr_window_scale, pvr_window_interval, pvr_window_throttle_ms, pvr_window_fps);\n"
                    << "        runtime.device_clock_host_max_catchup_steps = device_clock_host_max_catchup;\n"
                    << "        if (device_clock) dc_device_clock_enable(runtime, true, device_clock_host);\n"
                    << "        if (diag_heartbeat_ms != 0u) dc_diag_heartbeat_enable(runtime, diag_heartbeat_ms);\n"
-                   << "        if (host_window) dc_host_status_enable(runtime, \"DreamcastRecomp v0.1 Official - runner activo\");\n\n"
+                   << "        if (host_window) dc_host_status_enable(runtime, \"DreamcastRecomp v0.1.1 Official - runner activo\");\n\n"
                    << "        std::uint32_t dcr_initial_target = " << hex8(program.root_address) << ";\n"
                    << "        if (direct_game_entry) {\n"
                    << "            if (!commercial_boot) throw std::runtime_error(\"--direct-game-entry requires --commercial-boot\");\n"
@@ -21888,7 +21981,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "            dcr_initial_target = direct_game_pc;\n"
                    << "            std::cerr << \"[DCR DIRECT-GAME] bypass bootstrap; entry=0x\" << std::hex << std::uppercase << direct_game_pc << std::dec << \"\\n\";\n"
                    << "        }\n"
-                   << "        std::cout << \"DreamcastRecomp v0.1 Official native runner\\n\"\n"
+                   << "        std::cout << \"DreamcastRecomp v0.1.1 Official native runner\\n\"\n"
                    << "                     \"===================================\\n\"\n"
                    << "                     \"Reachable functions: " << result.functions.size() << "\\n\"\n"
                    << "                     \"Executing " << program.root_name << " @ " << hex8(program.root_address) << "\\n\\n\";\n\n"
