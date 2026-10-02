@@ -1,0 +1,33 @@
+name: cpp32a validation
+
+on:
+  push:
+    branches:
+      - cpp32a-chuchu-callback-closure
+  workflow_dispatch:
+
+jobs:
+  build-test-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel 2
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package cpp32a source
+        run: git archive --format=zip --output=DreamcastRecomp_v0.1.1_cpp32a_CHUCHU_CALLBACK_CLOSURE.zip HEAD
+
+      - name: Upload cpp32a package
+        uses: actions/upload-artifact@v4
+        with:
+          name: DreamcastRecomp_v0.1.1_cpp32a_CHUCHU_CALLBACK_CLOSURE
+          path: DreamcastRecomp_v0.1.1_cpp32a_CHUCHU_CALLBACK_CLOSURE.zip
+          if-no-files-found: error
