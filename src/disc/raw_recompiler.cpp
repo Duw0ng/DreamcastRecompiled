@@ -1728,6 +1728,155 @@ std::vector<std::uint32_t> anchored_dense_callback_table_targets(
 }
 
 
+
+std::vector<std::uint32_t> nested_state_table_targets(
+    const std::vector<std::uint8_t>& bytes,
+    std::uint32_t base,
+    const std::set<std::uint32_t>& known_entries) {
+    struct StateRow {
+        std::uint32_t address{};
+        std::array<std::uint32_t, 3> methods{};
+        std::size_t known_methods{};
+    };
+
+    std::vector<std::uint32_t> targets;
+    if (bytes.size() < 24u) return targets;
+
+    // Katana state machines commonly use a two-level layout:
+    //
+    //   state_table -> row0,row1,row2,...
+    //   rowN        -> method0,method1,method2,metadata...
+    //
+    // The final state selector may reach a row only at runtime, so none of that
+    // row's three method pointers necessarily appears as a direct call/literal.
+    // Recover only rows that are structurally bracketed by independently-known
+    // rows in the same top-level table.  At most two otherwise-unanchored rows
+    // may bridge a pair of known rows.  This is the conservative 0.0.63-style
+    // rule used for retail menu/state dispatch; it is intentionally not a global
+    // "pointer-looking word == code" scan.
+    constexpr std::size_t kMethodsPerRow = 3u;
+    constexpr std::size_t kMaxBridgeRows = 2u;
+    constexpr std::size_t kMaxFamilyRows = 64u;
+    const std::size_t word_count = bytes.size() / 4u;
+
+    auto strict_callable = [&](std::uint32_t target) {
+        if (known_entries.contains(target)) return true;
+        if (looks_like_pointer_table(bytes, base, target) ||
+            looks_like_probable_ascii_data(bytes, base, target)) return false;
+        return looks_like_strong_abi_prologue(bytes, base, target, false) ||
+               looks_like_stored_callback_entry(bytes, base, target) ||
+               looks_like_local_cfg_callable_entry(bytes, base, target) ||
+               looks_like_argument_callback_entry(bytes, base, target) ||
+               looks_like_compact_callable_entry(bytes, base, target) ||
+               looks_like_saved_gpr_tail_bra_entry(bytes, base, target);
+    };
+
+    std::map<std::uint32_t, std::optional<StateRow>> row_cache;
+    auto decode_row = [&](std::uint32_t row_address) -> std::optional<StateRow> {
+        if (const auto it = row_cache.find(row_address); it != row_cache.end())
+            return it->second;
+
+        std::optional<StateRow> result;
+        if ((row_address & 3u) == 0u && row_address >= base &&
+            static_cast<std::uint64_t>(row_address) + kMethodsPerRow * 4u <=
+                static_cast<std::uint64_t>(base) + bytes.size()) {
+            StateRow row{};
+            row.address = row_address;
+            bool valid = true;
+            for (std::size_t i = 0u; i < kMethodsPerRow; ++i) {
+                const auto method = canonical_local_address(
+                    base, bytes.size(), raw32_at(bytes, base, row_address + static_cast<std::uint32_t>(i * 4u)));
+                if (!method || !strict_callable(*method)) {
+                    valid = false;
+                    break;
+                }
+                row.methods[i] = *method;
+                row.known_methods += known_entries.contains(*method) ? 1u : 0u;
+            }
+            if (valid) result = row;
+        }
+        row_cache.emplace(row_address, result);
+        return result;
+    };
+
+    std::set<std::uint32_t> promoted;
+    std::size_t wi = 0u;
+    while (wi < word_count) {
+        const auto source = static_cast<std::uint32_t>(
+            static_cast<std::uint64_t>(base) + wi * 4u);
+        const auto row_address = canonical_local_address(
+            base, bytes.size(), raw32_at(bytes, base, source));
+        const auto first_row = row_address ? decode_row(*row_address) : std::nullopt;
+        if (!first_row) {
+            ++wi;
+            continue;
+        }
+
+        std::vector<StateRow> family;
+        family.reserve(kMaxFamilyRows);
+        std::size_t cursor = wi;
+        while (cursor < word_count && family.size() < kMaxFamilyRows) {
+            const auto entry_address = static_cast<std::uint32_t>(
+                static_cast<std::uint64_t>(base) + cursor * 4u);
+            const auto row_ptr = canonical_local_address(
+                base, bytes.size(), raw32_at(bytes, base, entry_address));
+            const auto row = row_ptr ? decode_row(*row_ptr) : std::nullopt;
+            if (!row) break;
+            family.push_back(*row);
+            ++cursor;
+        }
+
+        if (family.size() >= 3u) {
+            std::vector<bool> accepted(family.size(), false);
+            std::vector<std::size_t> anchors;
+            for (std::size_t i = 0u; i < family.size(); ++i) {
+                // Two already-known methods make this row independently anchored.
+                if (family[i].known_methods >= 2u) anchors.push_back(i);
+            }
+
+            // Bridge at most two strict rows between independently anchored rows.
+            for (std::size_t ai = 1u; ai < anchors.size(); ++ai) {
+                const auto left = anchors[ai - 1u];
+                const auto right = anchors[ai];
+                if (right <= left || right - left - 1u > kMaxBridgeRows) continue;
+                for (std::size_t i = left; i <= right; ++i) accepted[i] = true;
+            }
+
+            // Exact duplicate adjacent row pointers are strong alias evidence.
+            // They may extend an already accepted state by one alias entry, but
+            // cannot bootstrap a family on their own.
+            bool changed = true;
+            while (changed) {
+                changed = false;
+                for (std::size_t i = 1u; i < family.size(); ++i) {
+                    if (family[i].address != family[i - 1u].address) continue;
+                    if (accepted[i - 1u] && !accepted[i]) {
+                        accepted[i] = true;
+                        changed = true;
+                    } else if (accepted[i] && !accepted[i - 1u]) {
+                        accepted[i - 1u] = true;
+                        changed = true;
+                    }
+                }
+            }
+
+            for (std::size_t i = 0u; i < family.size(); ++i) {
+                if (!accepted[i]) continue;
+                for (const auto method : family[i].methods) {
+                    if (!known_entries.contains(method)) promoted.insert(method);
+                }
+            }
+        }
+
+        // Continue at the first word after this maximal row-pointer family.
+        wi = cursor > wi ? cursor : wi + 1u;
+    }
+
+    targets.assign(promoted.begin(), promoted.end());
+    return targets;
+}
+
+
 std::vector<std::uint32_t> long_dense_callback_table_targets(
     const std::vector<std::uint8_t>& bytes,
     std::uint32_t base) {
@@ -2564,6 +2713,7 @@ struct ClosureStats {
     std::size_t stored_callback_targets{};
     std::size_t callback_object_targets{};
     std::size_t anchored_dense_callback_targets{};
+    std::size_t nested_state_callback_targets{};
     std::size_t long_dense_callback_targets{};
     std::size_t clustered_callback_targets{};
     std::size_t strided_callback_targets{};
@@ -3235,6 +3385,22 @@ std::set<std::uint32_t> discover_function_closure(const std::vector<std::uint8_t
                 additions.insert(target);
                 ++stats.anchored_dense_callback_targets;
             }
+
+            // Recover runtime-selected Katana menu/state methods from conservative
+            // two-level state tables.  This does not add title/address seeds: every
+            // promoted row is bracketed by independently anchored three-method rows
+            // (with at most two strict bridge rows), or is an exact adjacent alias.
+            for (const auto target : nested_state_table_targets(bytes, o.base, anchored_entries)) {
+                if (starts.contains(target) || additions.contains(target)) continue;
+                try {
+                    const auto fragment = dcrecomp::analyze_code_fragment_at(elf, target);
+                    if (fragment.instructions.empty() || fragment.unknown != 0u) continue;
+                } catch (const std::exception&) {
+                    continue;
+                }
+                additions.insert(target);
+                ++stats.nested_state_callback_targets;
+            }
         }
 
 
@@ -3501,6 +3667,7 @@ int main(int argc, char** argv) {
                   << "Returned literal targets:" << std::setw(6) << closure.returned_literal_targets << "\n"
                   << "Callback-object targets:" << std::setw(5) << closure.callback_object_targets << "\n"
                   << "Anchored dense callbacks:" << std::setw(5) << closure.anchored_dense_callback_targets << "\n"
+                  << "Nested state callbacks: " << std::setw(5) << closure.nested_state_callback_targets << "\n"
                   << "Long dense callbacks:    " << std::setw(5) << closure.long_dense_callback_targets << "\n"
                   << "Clustered callbacks:     " << std::setw(5) << closure.clustered_callback_targets << "\n"
                   << "Strided callback targets:" << std::setw(5) << closure.strided_callback_targets << "\n"
