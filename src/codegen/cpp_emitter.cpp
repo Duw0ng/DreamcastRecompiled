@@ -2808,6 +2808,21 @@ std::uint64_t g_sh4_mmu_translations{};
 std::uint64_t g_sh4_mmu_misses{};
 thread_local SH4Context* g_last_sh4_context = nullptr;
 
+// cpp34d: preserve the immutable Sega IP.BIN image for a later chain-load
+// back into the bootstrap. Retail titles can reuse 0x8C008000-0x8C00FFFF after
+// initial boot, but Homepage/browser paths may later jump back into IP.BIN.
+// The AOT instructions remain the original bootstrap, so its data/table bytes
+// must be restored as a unit before re-entry.
+struct CommercialIpBinShadow {
+    DCRuntime* owner{};
+    std::array<std::uint8_t, 0x8000u> bytes{};
+    bool valid{};
+    bool seen_game{};
+    bool reentry_latched{};
+    std::uint64_t restore_count{};
+};
+CommercialIpBinShadow g_ipbin_shadow{};
+
 DCR_FORCEINLINE void sh4_mmu_bind(DCRuntime& runtime) {
     if (g_sh4_mmu.owner == &runtime) return;
     g_sh4_mmu = {};
@@ -13694,6 +13709,43 @@ bool sh4_try_holly_interrupt(SH4Context& ctx, DCRuntime& runtime) {
 bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4_cycles) {
     g_last_sh4_context = &ctx;
     runtime.current_pc = ctx.pc;
+
+    // cpp34d: detect a transition from 1ST_READ.BIN/game code back into the
+    // Sega bootstrap. A real reboot/chain-load reloads IP.BIN; our AOT code is
+    // immutable but its low-RAM tables may have been reused by the title. Put
+    // the original 32 KiB image back before the bootstrap executes far enough
+    // to consume sg_ini's MOVA/BSRF descriptor table.
+    if (g_ipbin_shadow.owner == &runtime && g_ipbin_shadow.valid) {
+        const std::uint32_t physical_pc = physical29(ctx.pc);
+        const bool in_ipbin =
+            physical_pc >= 0x0C008000u && physical_pc < 0x0C010000u;
+        const bool in_game_main_ram =
+            physical_pc >= 0x0C010000u && physical_pc < 0x0D000000u;
+
+        if (in_game_main_ram) {
+            g_ipbin_shadow.seen_game = true;
+            g_ipbin_shadow.reentry_latched = false;
+        } else if (g_ipbin_shadow.seen_game && in_ipbin &&
+                   !g_ipbin_shadow.reentry_latched) {
+            std::memcpy(runtime.main_ram.data() + 0x8000u,
+                        g_ipbin_shadow.bytes.data(),
+                        g_ipbin_shadow.bytes.size());
+
+            constexpr std::size_t first_page =
+                0x8000u >> DCRuntime::kMainRamLiteralDirtyPageShift;
+            constexpr std::size_t last_page =
+                0xFFFFu >> DCRuntime::kMainRamLiteralDirtyPageShift;
+            for (std::size_t page = first_page; page <= last_page; ++page)
+                runtime.main_ram_literal_dirty[page] = 0u;
+
+            g_ipbin_shadow.reentry_latched = true;
+            ++g_ipbin_shadow.restore_count;
+            std::cout << "[DCR IPBIN] chain-load reentry | pc=0x"
+                      << std::hex << std::uppercase << ctx.pc << std::dec
+                      << " | restored=32768 | count="
+                      << g_ipbin_shadow.restore_count << "\n";
+        }
+    }
     runtime.pvr_spg_sh4_cycles += sh4_cycles;
     if (runtime.pvr_render_done_pending &&
         runtime.pvr_spg_sh4_cycles + runtime.sh4_tick_pending_cycles >= runtime.pvr_render_done_due_cycle)
@@ -16469,6 +16521,18 @@ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
     // Because the generated image is already embedded when this helper runs,
     // only initialise the pre-IP half so we never overwrite the bootstrap.
     std::fill_n(runtime.main_ram.begin(), 0x8000u, std::uint8_t{0xFFu});
+
+    // Capture the original 32 KiB IP.BIN image after the generated disc image
+    // has populated main RAM. Keep this runtime-private so Guest ABI v1 stays
+    // unchanged.
+    g_ipbin_shadow = {};
+    g_ipbin_shadow.owner = &runtime;
+    std::memcpy(g_ipbin_shadow.bytes.data(),
+                runtime.main_ram.data() + 0x8000u,
+                g_ipbin_shadow.bytes.size());
+    g_ipbin_shadow.valid = true;
+    std::cout << "[DCR IPBIN] captured 32 KiB bootstrap shadow for chain-load reentry\n";
+
     dc_zero_bytes(runtime, 0x8C000068u, 24u);
 
     constexpr std::uint32_t kSystemHook = 0x8C001000u;
