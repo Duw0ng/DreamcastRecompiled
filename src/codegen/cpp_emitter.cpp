@@ -12689,7 +12689,7 @@ void dc_write8(DCRuntime& runtime, std::uint32_t address, std::uint8_t value) {
         return;
     }
     std::size_t i = 0;
-    if (boot_rom_low_range(address, 1, i)) {
+    if (boot_rom_low_range(address, 1, i) || bios_font_range(address, 1, i)) {
         boot_rom_ignore_write(runtime, address, value, 1u);
         return;
     }
@@ -12721,7 +12721,7 @@ void dc_write16(DCRuntime& runtime, std::uint32_t address, std::uint16_t value) 
         return;
     }
     std::size_t i = 0;
-    if (boot_rom_low_range(address, 2, i)) {
+    if (boot_rom_low_range(address, 2, i) || bios_font_range(address, 2, i)) {
         boot_rom_ignore_write(runtime, address, value, 2u);
         return;
     }
@@ -12777,7 +12777,7 @@ void dc_write32(DCRuntime& runtime, std::uint32_t address, std::uint32_t value) 
         return;
     }
     std::size_t i = 0;
-    if (boot_rom_low_range(address, 4, i)) {
+    if (boot_rom_low_range(address, 4, i) || bios_font_range(address, 4, i)) {
         boot_rom_ignore_write(runtime, address, value, 4u);
         return;
     }
