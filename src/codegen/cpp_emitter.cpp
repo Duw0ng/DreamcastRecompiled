@@ -1364,6 +1364,10 @@ struct DCRuntime {
     std::array<std::uint8_t, kBiosFontNarrowGlyphs> bios_font_narrow_generated{};
     std::vector<std::uint8_t> bios_font_wide_generated;
     std::uint64_t boot_rom_reads{};
+    // cpp34h: writes to the 2 MiB Dreamcast Boot ROM are legal bus accesses
+    // but the device is read-only. Keep them visible without treating them as
+    // unmapped-memory faults.
+    std::uint64_t boot_rom_ignored_writes{};
     bool boot_rom_external{};
     std::uint64_t bios_font_raw_reads{};
     std::uint64_t bios_font_synth_narrow{};
@@ -2818,10 +2822,100 @@ struct CommercialIpBinShadow {
     std::array<std::uint8_t, 0x8000u> bytes{};
     bool valid{};
     bool seen_game{};
+    bool armed{};
     bool reentry_latched{};
     std::uint64_t restore_count{};
+    std::uint64_t suppressed_count{};
 };
 CommercialIpBinShadow g_ipbin_shadow{};
+
+std::uint32_t ipbin_hash32(const std::uint8_t* data, std::size_t size) {
+    std::uint32_t h = 2166136261u;
+    for (std::size_t i = 0; i < size; ++i) {
+        h ^= data[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+bool ipbin_physical_address(std::uint32_t address) {
+    const auto physical = physical29(address);
+    return physical >= 0x0C008000u && physical < 0x0C010000u;
+}
+
+void ipbin_observe_game_execution(DCRuntime& runtime, std::uint32_t pc) {
+    if (g_ipbin_shadow.owner != &runtime || !g_ipbin_shadow.valid) return;
+    const auto physical = physical29(pc);
+    const bool in_game_main_ram =
+        physical >= 0x0C010000u && physical < 0x0D000000u;
+    if (!in_game_main_ram) return;
+
+    g_ipbin_shadow.seen_game = true;
+    g_ipbin_shadow.reentry_latched = false;
+
+    // Do not arm during Sega's initial bootstrap. A real rendered/page-flipped
+    // game frame proves 1ST_READ.BIN is actually running. This avoids cpp34d/e's
+    // false positives at 0x8C00F400/0x8C00FA00.
+    if (!g_ipbin_shadow.armed && runtime.pvr_page_flips > 0u) {
+        g_ipbin_shadow.armed = true;
+        std::cout << "[DCR IPBIN] reentry guard armed | pc=0x"
+                  << std::hex << std::uppercase << pc << std::dec
+                  << " | flips=" << runtime.pvr_page_flips
+                  << " | reason=tick\n";
+    }
+}
+
+void ipbin_restore_on_dispatch(DCRuntime& runtime, std::uint32_t target) {
+    if (g_ipbin_shadow.owner != &runtime || !g_ipbin_shadow.valid ||
+        !g_ipbin_shadow.seen_game || !g_ipbin_shadow.armed ||
+        g_ipbin_shadow.reentry_latched || !ipbin_physical_address(target))
+        return;
+
+    // F400/FA00 are mutable low-RAM copies rebound to immutable AOT templates.
+    // They remain valid across Homepage chain-loads and must not be replaced by
+    // the immutable IP.BIN bytes.
+    if (const auto alias = runtime.relocated_code_aliases.find(target);
+        alias != runtime.relocated_code_aliases.end()) {
+        const auto count = ++g_ipbin_shadow.suppressed_count;
+        if (count <= 8u || (count & (count - 1u)) == 0u) {
+            std::cout << "[DCR IPBIN] reentry suppressed | pc=0x"
+                      << std::hex << std::uppercase << target
+                      << " | live-alias=0x" << alias->second << std::dec
+                      << " | reason=dispatch | count=" << count << "\n";
+        }
+        return;
+    }
+
+    std::memcpy(runtime.main_ram.data() + 0x8000u,
+                g_ipbin_shadow.bytes.data(),
+                g_ipbin_shadow.bytes.size());
+
+    constexpr std::size_t first_page =
+        0x8000u >> DCRuntime::kMainRamLiteralDirtyPageShift;
+    constexpr std::size_t last_page =
+        0xFFFFu >> DCRuntime::kMainRamLiteralDirtyPageShift;
+    for (std::size_t page = first_page; page <= last_page; ++page)
+        runtime.main_ram_literal_dirty[page] = 0u;
+
+    // Re-resolve dynamic dispatch after replacing low RAM, but deliberately
+    // preserve relocated_code_aliases: cpp34g proved F400/FA00 are still live
+    // after the Homepage re-entry.
+    for (auto& entry : runtime.dispatch_cache) entry = {};
+
+    g_ipbin_shadow.reentry_latched = true;
+    ++g_ipbin_shadow.restore_count;
+    const auto restored_hash =
+        ipbin_hash32(runtime.main_ram.data() + 0x8000u, g_ipbin_shadow.bytes.size());
+    const auto expected_hash =
+        ipbin_hash32(g_ipbin_shadow.bytes.data(), g_ipbin_shadow.bytes.size());
+    std::cout << "[DCR IPBIN] confirmed reentry | reason=dispatch | pc=0x"
+              << std::hex << std::uppercase << target
+              << " | restored=32768 | hash=0x" << restored_hash
+              << " | expected=0x" << expected_hash << std::dec
+              << " | dispatch-cache=flushed"
+              << " | reloc-aliases-preserved=" << runtime.relocated_code_aliases.size()
+              << " | count=" << g_ipbin_shadow.restore_count << "\n";
+}
 
 DCR_FORCEINLINE void sh4_mmu_bind(DCRuntime& runtime) {
     if (g_sh4_mmu.owner == &runtime) return;
@@ -2945,6 +3039,22 @@ bool boot_rom_low_range(std::uint32_t address, std::size_t width, std::size_t& i
     if (width > DCRuntime::kBootRomLowSize - offset) return false;
     index = static_cast<std::size_t>(offset);
     return true;
+}
+
+void boot_rom_ignore_write(DCRuntime& runtime, std::uint32_t address,
+                           std::uint32_t value, std::size_t width) {
+    const auto count = ++runtime.boot_rom_ignored_writes;
+    if (count <= 8u || (count & (count - 1u)) == 0u) {
+        const std::uint32_t fault_pc =
+            g_last_sh4_context ? g_last_sh4_context->pc : runtime.current_pc;
+        std::cerr << "[DCR BIOS ROM] ignored write" << (width * 8u)
+                  << " | addr=0x" << std::hex << std::uppercase
+                  << std::setw(8) << std::setfill('0') << address
+                  << " | physical=0x" << std::setw(8) << physical29(address)
+                  << " | value=0x" << std::setw(8) << value
+                  << " | guest_pc=0x" << std::setw(8) << fault_pc
+                  << std::dec << " | count=" << count << "\n";
+    }
 }
 
 bool main_ram_range(std::uint32_t address, std::size_t width, std::size_t& index) {
@@ -12579,6 +12689,10 @@ void dc_write8(DCRuntime& runtime, std::uint32_t address, std::uint8_t value) {
         return;
     }
     std::size_t i = 0;
+    if (boot_rom_low_range(address, 1, i)) {
+        boot_rom_ignore_write(runtime, address, value, 1u);
+        return;
+    }
     if (onchip_ram_range(address, 1, i)) { runtime.onchip_ram[i] = value; return; }
     if (main_ram_range(address, 1, i)) {
         runtime.main_ram[i] = value;
@@ -12607,6 +12721,10 @@ void dc_write16(DCRuntime& runtime, std::uint32_t address, std::uint16_t value) 
         return;
     }
     std::size_t i = 0;
+    if (boot_rom_low_range(address, 2, i)) {
+        boot_rom_ignore_write(runtime, address, value, 2u);
+        return;
+    }
     if (onchip_ram_range(address, 2, i)) {
         runtime.onchip_ram[i + 0] = static_cast<std::uint8_t>(value & 0xFFu);
         runtime.onchip_ram[i + 1] = static_cast<std::uint8_t>((value >> 8) & 0xFFu);
@@ -12659,6 +12777,10 @@ void dc_write32(DCRuntime& runtime, std::uint32_t address, std::uint32_t value) 
         return;
     }
     std::size_t i = 0;
+    if (boot_rom_low_range(address, 4, i)) {
+        boot_rom_ignore_write(runtime, address, value, 4u);
+        return;
+    }
     if (onchip_ram_range(address, 4, i)) {
         runtime.onchip_ram[i + 0] = static_cast<std::uint8_t>(value & 0xFFu);
         runtime.onchip_ram[i + 1] = static_cast<std::uint8_t>((value >> 8) & 0xFFu);
@@ -13710,42 +13832,10 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
     g_last_sh4_context = &ctx;
     runtime.current_pc = ctx.pc;
 
-    // cpp34d: detect a transition from 1ST_READ.BIN/game code back into the
-    // Sega bootstrap. A real reboot/chain-load reloads IP.BIN; our AOT code is
-    // immutable but its low-RAM tables may have been reused by the title. Put
-    // the original 32 KiB image back before the bootstrap executes far enough
-    // to consume sg_ini's MOVA/BSRF descriptor table.
-    if (g_ipbin_shadow.owner == &runtime && g_ipbin_shadow.valid) {
-        const std::uint32_t physical_pc = physical29(ctx.pc);
-        const bool in_ipbin =
-            physical_pc >= 0x0C008000u && physical_pc < 0x0C010000u;
-        const bool in_game_main_ram =
-            physical_pc >= 0x0C010000u && physical_pc < 0x0D000000u;
-
-        if (in_game_main_ram) {
-            g_ipbin_shadow.seen_game = true;
-            g_ipbin_shadow.reentry_latched = false;
-        } else if (g_ipbin_shadow.seen_game && in_ipbin &&
-                   !g_ipbin_shadow.reentry_latched) {
-            std::memcpy(runtime.main_ram.data() + 0x8000u,
-                        g_ipbin_shadow.bytes.data(),
-                        g_ipbin_shadow.bytes.size());
-
-            constexpr std::size_t first_page =
-                0x8000u >> DCRuntime::kMainRamLiteralDirtyPageShift;
-            constexpr std::size_t last_page =
-                0xFFFFu >> DCRuntime::kMainRamLiteralDirtyPageShift;
-            for (std::size_t page = first_page; page <= last_page; ++page)
-                runtime.main_ram_literal_dirty[page] = 0u;
-
-            g_ipbin_shadow.reentry_latched = true;
-            ++g_ipbin_shadow.restore_count;
-            std::cout << "[DCR IPBIN] chain-load reentry | pc=0x"
-                      << std::hex << std::uppercase << ctx.pc << std::dec
-                      << " | restored=32768 | count="
-                      << g_ipbin_shadow.restore_count << "\n";
-        }
-    }
+    // cpp34h: tick is observe-only. Restoration is performed only at a real
+    // dynamic dispatch into IP.BIN, after gameplay has rendered at least one
+    // frame. This keeps the normal F400/FA00 bootstrap relocations intact.
+    ipbin_observe_game_execution(runtime, ctx.pc);
     runtime.pvr_spg_sh4_cycles += sh4_cycles;
     if (runtime.pvr_render_done_pending &&
         runtime.pvr_spg_sh4_cycles + runtime.sh4_tick_pending_cycles >= runtime.pvr_render_done_due_cycle)
@@ -16664,6 +16754,21 @@ void dc_trace_print_history(const DCRuntime& runtime, std::ostream& out) {
 }
 
 void call_recompiled(SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) {
+    // SH-4 instructions are 16-bit aligned. An odd target is corrupted state,
+    // never a function that should be promoted into the native closure.
+    if ((target & 1u) != 0u) {
+        std::ostringstream out;
+        out << "[DCR SH4 GUARD] rejected odd instruction target 0x"
+            << std::hex << std::uppercase << target
+            << " from 0x" << ctx.pc
+            << " | target-align=odd-invalid-sh4";
+        throw std::runtime_error(out.str());
+    }
+
+    // cpp34h: confirm/restore a Homepage IP.BIN chain-load at dispatch time.
+    // Live F400/FA00 relocation aliases are explicitly preserved.
+    ipbin_restore_on_dispatch(runtime, target);
+
     // Performance fast path for the overwhelmingly common retail case: the
     // direct-mapped cache already knows the exact non-relocated generated
     // function, no verbose trace is requested, and no KOS scene observer needs
