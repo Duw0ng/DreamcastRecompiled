@@ -1,0 +1,38 @@
+name: Portable launcher CI
+
+on:
+  push:
+    branches:
+      - portable-unleashed-preview
+    paths:
+      - 'portable/launcher/**'
+      - '.github/workflows/portable-launcher.yml'
+  workflow_dispatch:
+
+jobs:
+  build-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: pwsh
+        run: cmake -S portable/launcher -B portable/launcher/build -A x64
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build portable/launcher/build --config Release --parallel 2
+
+      - name: Stage
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force portable/launcher/artifact | Out-Null
+          Copy-Item portable/launcher/build/Release/DreamcastRecompiled.exe portable/launcher/artifact/DreamcastRecompiled.exe
+          Get-FileHash portable/launcher/artifact/DreamcastRecompiled.exe -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  DreamcastRecompiled.exe" } |
+            Set-Content portable/launcher/artifact/DreamcastRecompiled.exe.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DreamcastRecompiled-portable-launcher-win64
+          path: portable/launcher/artifact/*
