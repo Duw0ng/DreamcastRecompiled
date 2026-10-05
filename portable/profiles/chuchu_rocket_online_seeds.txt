@@ -1,0 +1,7 @@
+# ChuChu Rocket! online closure known by cpp34x
+0x8C036102
+0x8C036118
+0x8C036160
+0x8C036236
+0x8C036280
+0x8C036526
