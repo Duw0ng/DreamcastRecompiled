@@ -103,7 +103,7 @@ h1 { font-size: clamp(46px, 7vw, 82px); line-height: .94; margin: 18px 0 22px; l
 .live-item span { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.1em; }
 .live-item strong { display:block; margin-top:6px; font-size:17px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
-.status-grid { display:grid; grid-template-columns: repeat(4,1fr); gap:12px; }
+.status-grid { display:grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap:12px; }
 .status-card { padding:18px; border:1px solid var(--border); border-radius:15px; background:var(--panel); cursor:pointer; transition:.18s ease; }
 .status-card:hover { transform:translateY(-2px); border-color:rgba(255,255,255,.18); }
 .status-card .count { font-size:30px; font-weight:900; letter-spacing:-.04em; }
@@ -111,6 +111,7 @@ h1 { font-size: clamp(46px, 7vw, 82px); line-height: .94; margin: 18px 0 22px; l
 .dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex:0 0 auto; }
 .dot.playable, .pill.playable, .state-working { --status:var(--green); }
 .dot.ingame, .pill.ingame, .state-partial { --status:var(--yellow); }
+.dot.ingame-crash, .pill.ingame-crash { --status:#ff9665; }
 .dot.menu, .pill.menu { --status:var(--blue); }
 .dot.intro, .pill.intro { --status:#9d84ff; }
 .dot.bootable, .pill.bootable { --status:#55d0d7; }
