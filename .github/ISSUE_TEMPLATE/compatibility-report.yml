@@ -21,7 +21,7 @@ body:
     id: status
     attributes:
       label: Overall status
-      options: [Playable, Ingame, Menu, Intro, Bootable, Nothing]
+      options: [Playable, Ingame, Ingame-Crash, Menu, Intro, Bootable, Nothing]
     validations:
       required: true
   - type: textarea
