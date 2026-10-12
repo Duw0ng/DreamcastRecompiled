@@ -6,6 +6,7 @@
   "statuses": {
     "Playable": "Playable from the validated path with no known blocker in the tested scenario.",
     "Ingame": "Reaches real or substantial gameplay/runtime paths, but important issues remain.",
+    "Ingame-Crash": "Reaches actual gameplay but then crashes and cannot continue past the verified checkpoint.",
     "Menu": "Reaches menus but not validated into gameplay.",
     "Intro": "Displays rendered content but does not reliably reach menus.",
     "Bootable": "Boots far enough to execute/display initial output.",
