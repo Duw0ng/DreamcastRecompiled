@@ -2443,7 +2443,7 @@
       "menus": "Working",
       "gameplay": "Partial",
       "lastTest": "2026-10-12",
-      "notes": "User-confirmed boot, menus, rendered cinematics and playable gameplay. The game crashed during gameplay after running; FPS were lower than expected, but no measured FPS or diagnostic logs are available yet. Visuals and other observed functions appeared relatively good. Audio, VMU, full graphical accuracy and crash/performance root causes still need targeted verification. Classified Ingame-Crash rather than fully Playable.",
+      "notes": "User-confirmed boot, menus, cinematics and controllable gameplay; framerate below expectations (no measured FPS). Basic session log 2026-10-12 06:53:54 (DreamcastRecomp_v0.1.1_session_20261012-065354.log) confirms 4,131 reachable SH-4 functions, D3D11 PVR initialized at 640x480, interpreter fallback recording new AOT seeds, and 3,270 GD-ROM requests (not inherently errors). Gameplay ends with HOST FATAL Windows 0xC00000FD (host stack overflow), guest PC 0x8C11B1A2, host address 0x00007FFA6327C027, AICA PC 0x000009B4. Last logged IP.BIN reentry suppression count=336,896 (worth profiling but not demonstrated to cause crash). Stack trace/minidump with symbols needed to identify recursive or excessive host call path. Log includes no FPS/PVR timing counters, so bottleneck remains unconfirmed. Audio quality, VMU save, precise GPU correctness and crash reproducibility not fully verified.",
       "source": "https://gamefaqs.gamespot.com/boards/916412-dreamcast/79212415"
     },
     {
