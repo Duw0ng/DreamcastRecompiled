@@ -3173,7 +3173,7 @@
       "group": "Exclusivo/arcade + Dreamcast, sin PC",
       "confidence": "Alta",
       "priority": "Media",
-      "status": "Ingame",
+      "status": "Menu",
       "version": "v0.1",
       "fps": null,
       "graphics": "Partial",
@@ -3181,10 +3181,10 @@
       "controls": "Working",
       "vmu": "Untested",
       "boot": "Working",
-      "menus": "Partial",
-      "gameplay": "Partial",
-      "lastTest": null,
-      "notes": "v0.1 carries secondary-executable/START compatibility work; broader gameplay remains work in progress.",
+      "menus": "Working",
+      "gameplay": "Broken",
+      "lastTest": "2026-10-12",
+      "notes": "Confirmed initial cinematic plays and the main menu is reached. Crashes when attempting to progress into the game; no controllable gameplay has been reached. Previously marked Ingame, corrected after user validation (2026-10-12).",
       "source": "https://gamefaqs.gamespot.com/boards/916412-dreamcast/79212415"
     },
     {
