@@ -4143,7 +4143,7 @@
       "confidence": "Alta",
       "priority": "Alta",
       "status": "Untested",
-      "version": null,
+      "version": "v1.2 cpp38e (CDI probe failed before runtime)",
       "fps": null,
       "graphics": "Untested",
       "audio": "Untested",
@@ -4152,8 +4152,8 @@
       "boot": "Untested",
       "menus": "Untested",
       "gameplay": "Untested",
-      "lastTest": null,
-      "notes": "",
+      "lastTest": "2026-10-12",
+      "notes": "Test attempt with TC.cdi on 2026-10-12 did not reach SH-4 analysis: Windows launcher stage [2/6] dc_disc_probe reported 'Implausible CDI track count'. In repository src/disc/main.cpp parse_cdi() raises this when a session track count is 0 or >99; exact count and file structure not yet inspected. Could be unsupported/variant DiscJuggler CDI metadata or damaged/invalid disc image; not evidence that the game cannot boot in DreamcastRecompiled. Keep Untested pending a verified image or parser diagnostics. No graphical/audio/gameplay validation or FPS data.",
       "source": "https://gamefaqs.gamespot.com/boards/916412-dreamcast/79212415"
     },
     {
