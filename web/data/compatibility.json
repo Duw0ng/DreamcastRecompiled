@@ -2622,7 +2622,7 @@
       "group": "Multiplataforma consola, sin PC",
       "confidence": "Alta",
       "priority": "Media",
-      "status": "Ingame",
+      "status": "Playable",
       "version": "v1.2 cpp38e",
       "fps": null,
       "graphics": "Partial",
@@ -2633,7 +2633,7 @@
       "menus": "Working",
       "gameplay": "Working",
       "lastTest": "2026-10-12",
-      "notes": "Confirmed to reach and run real gameplay on cpp38e. Visible significant rendering/compositing artifacts in the test screenshot (large repeated colored circles and overlay interfering with intended art). Audio has glitches similar to those reported for Segagaga; precise nature and cause not yet isolated. Tester reports gameplay otherwise functional. Play session duration and long-term stability/FPS not yet confirmed; provisional Ingame rather than Playable.",
+      "notes": "Tester confirms stable gameplay, including a demonstrated attract/demo gameplay sequence, on v1.2 cpp38e. Significant graphics/rendering/compositing artifacts occur in some areas, especially menus; see user-provided screenshots. Audio playback also has noticeable glitches, similar to Segagaga. Playable with known visual/audio issues, not perfect compatibility; precise FPS and controller/VMU validation remain unreported.",
       "source": "https://racketboy.com/retro/list-of-dreamcast-ports-on-other-systems/comment-page-2"
     },
     {
