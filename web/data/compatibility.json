@@ -3183,7 +3183,7 @@
       "boot": "Working",
       "menus": "Working",
       "gameplay": "Broken",
-      "lastTest": "2026-10-12",
+      "lastTest": null,
       "notes": "Confirmed initial cinematic plays and the main menu is reached. Crashes when attempting to progress into the game; no controllable gameplay has been reached. Previously marked Ingame, corrected after user validation (2026-10-12).",
       "source": "https://gamefaqs.gamespot.com/boards/916412-dreamcast/79212415"
     },
