@@ -4555,5 +4555,26 @@
       "notes": "",
       "source": "https://gamefaqs.gamespot.com/boards/916412-dreamcast/79212415"
     }
+  ],
+  "additionalGames": [
+    {
+      "title": "Wacky Races",
+      "group": "Prueba adicional (fuera del catálogo original de 239)",
+      "confidence": "Alta",
+      "priority": "Alta",
+      "status": "Bootable",
+      "version": "v1.2 cpp38e + Dynamic SH-4 AOT (experimental)",
+      "fps": null,
+      "graphics": "Broken",
+      "audio": "Untested",
+      "controls": "Untested",
+      "vmu": "Untested",
+      "boot": "Partial",
+      "menus": "Broken",
+      "gameplay": "Broken",
+      "lastTest": "2026-10-12",
+      "notes": "Boot code runs and GD-ROM sectors are read, but no image, logos, cinematics or menu are displayed. SH-4 aborts on invalid odd target 0xE2010009. Initial AOT reports 856 reachable functions; subsequent run activated two dynamic AOT patch DLLs (13+10 native blocks), without reaching a visible boot checkpoint. Not Ingame-Crash: gameplay never starts. Based on user confirmation and session logs from 2026-10-12.",
+      "source": ""
+    }
   ]
 }
