@@ -4575,6 +4575,44 @@
       "lastTest": "2026-10-12",
       "notes": "Boot code runs and GD-ROM sectors are read, but no image, logos, cinematics or menu are displayed. SH-4 aborts on invalid odd target 0xE2010009. Initial AOT reports 856 reachable functions; subsequent run activated two dynamic AOT patch DLLs (13+10 native blocks), without reaching a visible boot checkpoint. Not Ingame-Crash: gameplay never starts. Based on user confirmation and session logs from 2026-10-12.",
       "source": ""
+    },
+    {
+      "title": "Sonic Adventure",
+      "group": "Prueba adicional (fuera del catálogo original de 239)",
+      "confidence": "Alta",
+      "priority": "Alta",
+      "status": "Untested",
+      "version": "v1.2 (builds examined; exact revision pending)",
+      "fps": null,
+      "graphics": "Untested",
+      "audio": "Untested",
+      "controls": "Untested",
+      "vmu": "Untested",
+      "boot": "Untested",
+      "menus": "Untested",
+      "gameplay": "Untested",
+      "lastTest": null,
+      "notes": "Compilation blocked before runtime testing: MSVC cl.exe ran out of memory while compiling very large generated C++/SH-4 AOT source parts. No successful executable run, boot, graphics, menu or gameplay verified. This is a build/compiler blocker, NOT an observed game boot failure. User reconfirmed no successful run on 2026-10-12.",
+      "source": ""
+    },
+    {
+      "title": "Sonic Adventure 2",
+      "group": "Prueba adicional (fuera del catálogo original de 239)",
+      "confidence": "Alta",
+      "priority": "Alta",
+      "status": "Untested",
+      "version": "v1.2 (builds examined; exact revision pending)",
+      "fps": null,
+      "graphics": "Untested",
+      "audio": "Untested",
+      "controls": "Untested",
+      "vmu": "Untested",
+      "boot": "Untested",
+      "menus": "Untested",
+      "gameplay": "Untested",
+      "lastTest": null,
+      "notes": "Compilation blocked before runtime testing: MSVC cl.exe ran out of memory while compiling very large generated C++/SH-4 AOT source parts. No successful executable run, boot, graphics, menu or gameplay verified. This is a build/compiler blocker, NOT an observed game boot failure. User reconfirmed no successful run on 2026-10-12.",
+      "source": ""
     }
   ]
 }
