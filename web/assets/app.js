@@ -71,7 +71,7 @@
     }
   }
 
-  const statusOrder = ['Playable','Ingame','Menu','Intro','Bootable','Nothing','Untested'];
+  const statusOrder = ['Playable','Ingame','Ingame-Crash','Menu','Intro','Bootable','Nothing','Untested'];
   const statusClass = s => (s || 'Untested').toLowerCase().replace(/\s+/g,'-');
   const stateSymbol = s => s === 'Working' ? '✓' : s === 'Partial' ? '~' : s === 'Broken' ? '×' : '·';
   const stateClass = s => `state-${(s||'Untested').toLowerCase()}`;
