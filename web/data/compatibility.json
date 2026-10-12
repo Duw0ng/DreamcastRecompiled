@@ -6,7 +6,7 @@
   "statuses": {
     "Playable": "Playable from the validated path with no known blocker in the tested scenario.",
     "Ingame": "Reaches real or substantial gameplay/runtime paths, but important issues remain.",
-    "Ingame-Crash": "Reaches actual gameplay but then crashes and cannot continue past the verified checkpoint.",
+    "Ingame-Crash": "Reaches actual controllable gameplay but later crashes or hard-freezes (hangs), preventing continued play.",
     "Menu": "Reaches menus but not validated into gameplay.",
     "Intro": "Displays rendered content but does not reliably reach menus.",
     "Bootable": "Boots far enough to execute/display initial output.",
@@ -855,8 +855,8 @@
       "group": "Exclusivo/arcade + Dreamcast, sin PC",
       "confidence": "Alta",
       "priority": "Alta",
-      "status": "Ingame",
-      "version": "v0.1",
+      "status": "Ingame-Crash",
+      "version": "Multiple builds (exact revisions pending)",
       "fps": null,
       "graphics": "Working",
       "audio": "Working",
@@ -866,7 +866,7 @@
       "menus": "Working",
       "gameplay": "Partial",
       "lastTest": null,
-      "notes": "Title/menu and substantial runtime paths work; gameplay remains an active compatibility/performance target.",
+      "notes": "Confirmed controllable in-game play. An earlier build reportedly allowed approximately 20 minutes of stable gameplay; other builds crash during gameplay. Potential improvement from incremental SH-4 AOT is a hypothesis, not a verified fix. Exact build IDs, timing and reproduction steps remain to be confirmed.",
       "source": "https://gamefaqs.gamespot.com/boards/916412-dreamcast/79212415"
     },
     {
@@ -912,8 +912,8 @@
       "group": "Exclusivo/arcade + Dreamcast, sin PC",
       "confidence": "Alta",
       "priority": "Alta",
-      "status": "Ingame",
-      "version": "v0.1",
+      "status": "Ingame-Crash",
+      "version": "Multiple builds (exact revisions pending)",
       "fps": null,
       "graphics": "Working",
       "audio": "Working",
@@ -923,7 +923,7 @@
       "menus": "Working",
       "gameplay": "Partial",
       "lastTest": null,
-      "notes": "Validated through PRESS START and moving 3D attract/demo paths; real race gameplay remains under active validation.",
+      "notes": "Confirmed controllable in-game racing, beyond PRESS START and attract/demo scenes. The game hard-freezes on screen during gameplay rather than necessarily terminating the process. Tracked as Ingame-Crash (in-game hang); exact build and reproduction details pending.",
       "source": "https://gamefaqs.gamespot.com/boards/916412-dreamcast/79212415"
     },
     {
