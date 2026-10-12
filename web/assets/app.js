@@ -95,7 +95,7 @@
 
     try {
       const data = await compatibilitySource();
-      all = data.games || [];
+      all = [...(data.games || []), ...(data.additionalGames || [])];
     } catch(err) {
       body.innerHTML = `<tr><td colspan="9"><div class="notice">Could not load compatibility data.</div></td></tr>`;
       return;
@@ -180,9 +180,10 @@
     try {
       const d = await compatibilitySource();
       const counts = {};
-      (d.games||[]).forEach(g => counts[g.status]=(counts[g.status]||0)+1);
+      const games = [...(d.games||[]), ...(d.additionalGames||[])];
+      games.forEach(g => counts[g.status]=(counts[g.status]||0)+1);
       $$('[data-home-status]').forEach(e => e.textContent = counts[e.dataset.homeStatus] || 0);
-      $$('[data-total-games]').forEach(e => e.textContent = d.games.length);
+      $('[data-total-games]').forEach(e => e.textContent = games.length);
     } catch(_){}
   }
 
