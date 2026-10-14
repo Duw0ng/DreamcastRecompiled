@@ -9,9 +9,9 @@ Each game has its **own GitHub release, version and downloadable ZIP**. This pag
 | **ChuChu Rocket!** | **[Direct Portable V1.2](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-direct-v1.2)** · [Full Aqua portable](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-v1.2) | **Offline gameplay validated** | ~60 FPS achieved in tested sections, not guaranteed everywhere. **Online/DCNet experimental**. Requires compatible CDI (MK-51049 / V1.007 / CHU_CHU_ROCKET_KAL). |
 | **Sega Tetris** | **[Direct Portable V1.2](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sega-tetris-direct-v1.2)** | **Experimental — gameplay reached** | Graphics and audio were correct in the tested community-patched Japanese build; **occasional crashes**. Other revisions unverified. |
 | **Segagaga (SGGG)** | **[Direct Portable V1.2](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sggg-direct-v1.2)** | **Experimental — partial execution** | **Audio glitches and remaining compatibility issues**. Full gameplay not validated. |
-| **Mr. Driller** | **Independent Direct Portable V1.2 — publication pending** | **Experimental — gameplay reached** | **Significant rendering defects in menus**, plus **audio issues**. ZIP verified; current Windows build not retested. |
+| **Mr. Driller** | **[Direct Portable V1.2 (Experimental)](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-mr-driller-direct-v1.2)** | **Experimental — gameplay reached** | **Significant rendering defects in menus**, plus **audio issues**. ZIP verified; current Windows build not retested. |
 
-**Release organization:** Each game uses its own release tag and ZIP. Mr. Driller's standalone upload is still pending; once it is published, this row will link to its individual release. The old combined release is not the download catalog.
+**Release organization:** Each game has its own standalone GitHub release, with its own tag and ZIP. The old combined `Games-Portables` release is no longer the download catalog; use the per-game links above.
 
 Compatible user-provided CDI/GDI disc images are required; no game image or Dreamcast firmware is included. Experimental means that crashes, rendering issues or incorrect audio may occur.
 
