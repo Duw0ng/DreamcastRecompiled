@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "game_id": "CHUCHU_ROCKET",
+  "source_release_tag": "v1.2",
+  "source_asset": "DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip",
+  "source_sha256": "42d08b83ad718214ef19a597332d690c4b5f446fdb7422dd8455df55cca1c127",
+  "target_tag": "portable-chuchu-rocket-v1.2",
+  "target_asset": "DCRV1.2_CHUCHU_ROCKET_WIN64_PORTABLE.zip"
+}

@@ -1,0 +1,23 @@
+name: Validate portable game catalog
+on:
+  pull_request:
+    paths:
+      - 'game-portables/**'
+      - '.github/workflows/validate-portable-games.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'game-portables/**'
+      - '.github/workflows/validate-portable-games.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate game catalog and release specs
+        run: python game-portables/tools/portable_games.py validate

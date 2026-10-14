@@ -4,7 +4,7 @@
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) ![Windows](https://img.shields.io/badge/Windows-x64-blue) ![Compatibility](https://img.shields.io/badge/Compatibility-in%20development-orange)
 
-**[Releases](https://github.com/Duw0ng/DreamcastRecompiled/releases) · [Español](docs/README.es.md) · [ChuChu Rocket! tester guide](docs/CHUCHU_ROCKET_TESTER_V1.2.md) · [Report issues](https://github.com/Duw0ng/DreamcastRecompiled/issues)**
+**[Portable game catalog](game-portables/README.md) · [Releases](https://github.com/Duw0ng/DreamcastRecompiled/releases) · [Español](docs/README.es.md) · [ChuChu Rocket! tester guide](docs/CHUCHU_ROCKET_TESTER_V1.2.md) · [Report issues](https://github.com/Duw0ng/DreamcastRecompiled/issues)**
 
 > **Release status:** V1.2 is the stable baseline for validated paths, **not** a claim of universal Dreamcast compatibility. The public V1.2 GitHub release and downloadable asset have not yet been published.
 

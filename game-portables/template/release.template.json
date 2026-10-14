@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "game_id": "EXAMPLE_GAME",
+  "source_release_tag": "vX.Y",
+  "source_asset": "source-windows.zip",
+  "source_sha256": "REPLACE_WITH_SHA256",
+  "target_tag": "portable-example-game-vX.Y",
+  "target_asset": "DCR_EXAMPLE_GAME_WIN64_PORTABLE.zip"
+}

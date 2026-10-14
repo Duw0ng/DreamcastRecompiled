@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "EXAMPLE_GAME",
+  "title": "Game name",
+  "version": "X.Y",
+  "platform": "windows-x64",
+  "status": "not-yet-validated",
+  "disc": {
+    "required": true,
+    "product_id": "PRODUCT",
+    "revision": "REVISION",
+    "volume_id": "VOLUME_ID",
+    "region_field": "REGION",
+    "validated_formats": [
+      "CDI"
+    ]
+  },
+  "portable": {
+    "guest_abi": 1,
+    "native_module": "games/EXAMPLE_GAME/bin/dcr_game_module.dll",
+    "runtime_module": "games/EXAMPLE_GAME/bin/DreamcastRuntime.dll",
+    "check_file": "games/EXAMPLE_GAME/checksums.sha256",
+    "recompile_on_validated_path": false
+  },
+  "test_notes": [
+    "Add verified boot, graphics, audio, controls, FPS, and crashes."
+  ]
+}

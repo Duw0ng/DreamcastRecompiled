@@ -1,0 +1,62 @@
+name: Publish game-specific portable releases
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'game-portables/releases/*.json'
+  workflow_dispatch:
+    inputs:
+      spec:
+        description: 'Optional game-portables/releases/filename.json; empty = all new games'
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: portable-game-publisher
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'Duw0ng/DreamcastRecompiled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate catalog
+        run: python game-portables/tools/portable_games.py validate
+      - name: Build and publish unpublished portable games
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SELECTED_SPEC: ${{ inputs.spec }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${SELECTED_SPEC:-}" ]]; then
+            [[ "$SELECTED_SPEC" =~ ^game-portables/releases/[a-zA-Z0-9._-]+\.json$ ]] || exit 2
+            [[ -f "$SELECTED_SPEC" ]] || exit 2
+            specs=( "$SELECTED_SPEC" )
+          else
+            specs=( game-portables/releases/*.json )
+          fi
+          mkdir -p dist _portable_source
+          for spec in "${specs[@]}"; do
+            mapfile -t meta < <(python -c 'import json,sys; x=json.load(open(sys.argv[1])); print("\n".join(x[k] for k in ("source_release_tag","source_asset","target_tag","target_asset","game_id")))' "$spec")
+            source_tag="${meta[0]}"
+            source_asset="${meta[1]}"
+            target_tag="${meta[2]}"
+            target_asset="${meta[3]}"
+            game_id="${meta[4]}"
+            if gh release view "$target_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Already published: $target_tag"
+              continue
+            fi
+            mkdir -p "_portable_source/$game_id"
+            gh release download "$source_tag" --repo "$GITHUB_REPOSITORY" --pattern "$source_asset" --dir "_portable_source/$game_id" --clobber
+            python game-portables/tools/portable_games.py pack --spec "$spec" --source "_portable_source/$game_id/$source_asset" --output dist
+            printf '%s\n' "# DreamcastRecompiled Portable — $game_id" 'Windows x64. Extract the whole archive and run DreamcastRecompiled.exe.' 'Bring your own compatible CDI; no game image or firmware is included.' 'Online/DCNet experimental. SHA-256 companion file included.' > "dist/${target_asset%.zip}.notes.md"
+            gh release create "$target_tag" "dist/$target_asset" "dist/$target_asset.sha256" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "DreamcastRecompiled Portable — $game_id" --notes-file "dist/${target_asset%.zip}.notes.md" --latest=false
+          done

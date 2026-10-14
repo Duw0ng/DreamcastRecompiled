@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "id": "CHUCHU_ROCKET",
+  "title": "ChuChu Rocket!",
+  "version": "1.2",
+  "platform": "windows-x64",
+  "status": "tester-offline-validated",
+  "disc": {
+    "required": true,
+    "product_id": "MK-51049",
+    "revision": "V1.007",
+    "volume_id": "CHU_CHU_ROCKET_KAL",
+    "region_field": "JUE",
+    "validated_formats": [
+      "CDI"
+    ],
+    "automatic_selection": "title-and-volume; no executable hash"
+  },
+  "portable": {
+    "guest_abi": 1,
+    "native_module": "games/CHUCHU_ROCKET/bin/dcr_game_module.dll",
+    "runtime_module": "games/CHUCHU_ROCKET/bin/DreamcastRuntime.dll",
+    "check_file": "games/CHUCHU_ROCKET/checksums.sha256",
+    "recompile_on_validated_path": false
+  },
+  "test_notes": [
+    "Offline gameplay observed by maintainer.",
+    "Online/DCNet experimental; other revisions not verified.",
+    "Windows gameplay and VMU visibility not independently retested by packaging CI."
+  ]
+}
