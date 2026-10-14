@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "game_id": "SEGA_TETRIS",
+  "title": "Sega Tetris",
+  "release_tag": "portable-sega-tetris-direct-v1.2",
+  "asset": "SEGA_TETRIS_portable_latest.zip",
+  "sha256": "1f31d4cd04853ad833edc7047ae218489638bc92991abdafc0852929025ef6db",
+  "size_bytes": 11450773,
+  "status": "gameplay-observed-with-occasional-crash",
+  "chunk_encoding": "raw-git-blobs",
+  "chunks": [
+    "415eb67d16a61de1de472acfca5aa6320e854aad",
+    "c4bc727be9b394d70a9a3610cc34a3ebab4f6344",
+    "5387196e877be4b385a011e1c768bd7e193ce62d",
+    "7b34bce8f9df4fad485704bce0a5a773ba3a98a0",
+    "ecab4c9c5e64fc50bdaa2248d98e218b38f63f03",
+    "fe15b9a6fe831a89aa84d1314d324fc39d68ab08",
+    "34ba3624e8e2824af39ca07c1317837389547584",
+    "7c457260ca900074c6ef01e8c5a0b7910668c490"
+  ]
+}
