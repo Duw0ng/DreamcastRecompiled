@@ -33,7 +33,7 @@ jobs:
           for required in DreamcastRecompiled.exe bin/DreamcastRuntime.dll bin/dcr_game_module.dll bin/dreamcast_program.exe portable_manifest.txt; do
             unzip -Z1 "$asset" | grep -Fx "$required"
           done
-          unzip -p "$asset" portable_manifest.txt | tr -d '\r' | grep -Fx 'GAME=MR_DRILLER'
+          unzip -p "$asset" portable_manifest.txt | tr -d '\r' | grep -Fx 'GAME=MR.DRILLER'
           if unzip -Z1 "$asset" | grep -Eiq '\.(cdi|gdi|iso|chd|cue|nrg)$'; then
             echo 'Unexpected game disc image in portable; refusing publication' >&2
             exit 1
