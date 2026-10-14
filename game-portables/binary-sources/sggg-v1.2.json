@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "game_id": "SGGG",
+  "title": "Segagaga (SGGG)",
+  "release_tag": "portable-sggg-direct-v1.2",
+  "asset": "SGGG_portable_latest.zip",
+  "sha256": "cff571dce69468a62adff870242253de998b53e169b930f49a7810ec7ed5dca9",
+  "size_bytes": 15102739,
+  "status": "experimental-partial-audio-issues",
+  "chunk_encoding": "raw-git-blobs",
+  "chunks": [
+    "af3bd0cbdef5b11ec09241d2acc09b0c805c3e17",
+    "bc9fdfa3f150830b23ecde2d00321b378199d56c",
+    "818cce4c7e381b7af83e521ca11d4fac6ea2e4a2",
+    "45d4b9bee6978e1614f93059cbe901bf772afa50",
+    "81a980f5f4d4d37f2bdf2ecb7e2ef10b10ff1250",
+    "6602ee7c9f9d64a445a876445f477082cad41434",
+    "9b17309d65fa270ca01f0ff33168fc17f7cb7a62",
+    "14567be1aa7f63354f298479589f41102be714da",
+    "17df38c5f0a3b73620a385f7a7f69eb1b617537c",
+    "61c4da79dd4b09ed286f9f91eff3edf5d18ada66"
+  ]
+}
