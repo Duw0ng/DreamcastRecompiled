@@ -1,0 +1,16 @@
+name: V1.2 release upload (staging)
+on:
+  workflow_dispatch:
+    inputs:
+      zip_url:
+        description: Download URL for approved V1.2 ZIP
+        required: true
+        type: string
+jobs:
+  staging:
+    if: github.actor == 'Duw0ng'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - run: echo 'Release workflow staging only; no binary uploaded.'
