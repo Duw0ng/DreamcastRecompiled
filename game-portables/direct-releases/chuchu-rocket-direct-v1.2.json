@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "game_id": "CHUCHU_ROCKET",
+  "game_title": "ChuChu Rocket!",
+  "source_release_tag": "v1.2",
+  "source_asset": "DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip",
+  "source_sha256": "42d08b83ad718214ef19a597332d690c4b5f446fdb7422dd8455df55cca1c127",
+  "target_tag": "portable-chuchu-rocket-direct-v1.2",
+  "target_asset": "CHUCHU_ROCKET_portable_latest.zip",
+  "output_sha256": "b5ee29e5411fc6ea250969fef1a9ac6b57049352f97c374031abf636be1ab4ab",
+  "files": [
+    {
+      "source": "portable/DreamcastRecompiled.exe",
+      "target": "DreamcastRecompiled.exe"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/README_TESTER.txt",
+      "target": "README_TESTER.txt"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/bin/DreamcastRuntime.dll",
+      "target": "bin/DreamcastRuntime.dll"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/bin/dc_boot_prepare.exe",
+      "target": "bin/dc_boot_prepare.exe"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/bin/dc_disc_probe.exe",
+      "target": "bin/dc_disc_probe.exe"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/bin/dcr_game_module.dll",
+      "target": "bin/dcr_game_module.dll"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/bin/dreamcast_program.exe",
+      "target": "bin/dreamcast_program.exe"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/bin/plugins/dcr_gdrom.dll",
+      "target": "bin/plugins/dcr_gdrom.dll"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/bin/plugins/dcr_maple.dll",
+      "target": "bin/plugins/dcr_maple.dll"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/bin/plugins/dcr_network.dll",
+      "target": "bin/plugins/dcr_network.dll"
+    },
+    {
+      "source": "games/CHUCHU_ROCKET/portable_manifest.txt",
+      "target": "portable_manifest.txt"
+    }
+  ]
+}

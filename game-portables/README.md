@@ -4,9 +4,9 @@
 
 | Game | Package | Status | Required disc |
 |---|---|---|---|
-| **ChuChu Rocket!** | [Standalone portable v1.2](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-v1.2) | Offline gameplay observed | Your own compatible **CDI**, MK-51049 / V1.007 / CHU_CHU_ROCKET_KAL |
+| **ChuChu Rocket!** | **[Direct portable v1.2 (recommended)](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-direct-v1.2)** · [Full Aqua-based package](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-v1.2) | Offline gameplay observed | Your own compatible **CDI**, MK-51049 / V1.007 / CHU_CHU_ROCKET_KAL |
 
-Every title uses the common Aqua launcher and host runtime, but its **own** SH-4 native game module. A module compiled for one game is not interchangeable with another. Releases contain no CDI/GDI/ISO game media or Sega firmware; testers must supply their own compatible disc images.
+The **recommended ChuChu direct portable** includes only 11 files, 13.6 MiB; it launches via DreamcastRecompiled.exe without Aqua. See [direct portable template](DIRECT_PORTABLES.md). The full portable format uses the common Aqua launcher and host runtime, but its **own** SH-4 native game module. A module compiled for one game is not interchangeable with another. Releases contain no CDI/GDI/ISO game media or Sega firmware; testers must supply their own compatible disc images.
 
 ## Install
 

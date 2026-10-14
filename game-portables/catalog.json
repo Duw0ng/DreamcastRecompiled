@@ -10,7 +10,13 @@
       "status": "tester-offline-validated",
       "release_tag": "portable-chuchu-rocket-v1.2",
       "release_asset": "DCRV1.2_CHUCHU_ROCKET_WIN64_PORTABLE.zip",
-      "requires_user_game_image": true
+      "requires_user_game_image": true,
+      "direct_portable": {
+        "preferred": true,
+        "release_tag": "portable-chuchu-rocket-direct-v1.2",
+        "release_asset": "CHUCHU_ROCKET_portable_latest.zip",
+        "sha256": "b5ee29e5411fc6ea250969fef1a9ac6b57049352f97c374031abf636be1ab4ab"
+      }
     }
   ]
 }

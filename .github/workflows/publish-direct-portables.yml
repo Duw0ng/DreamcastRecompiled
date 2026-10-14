@@ -1,0 +1,78 @@
+name: Publish direct game portables
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'game-portables/direct-releases/*.json'
+      - 'game-portables/tools/pack_direct.go'
+      - '.github/workflows/publish-direct-portables.yml'
+  workflow_dispatch:
+    inputs:
+      manifest:
+        description: 'Optional direct-release manifest path; leave empty for all unpublished'
+        type: string
+        required: false
+permissions:
+  contents: read
+concurrency:
+  group: direct-game-portables
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'Duw0ng/DreamcastRecompiled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.2'
+      - name: Verify, reproduce exact direct ZIP, and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SELECTED_MANIFEST: ${{ inputs.manifest }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${SELECTED_MANIFEST:-}" ]]; then
+            [[ "$SELECTED_MANIFEST" =~ ^game-portables/direct-releases/[a-zA-Z0-9._-]+\.json$ ]] || exit 2
+            [[ -f "$SELECTED_MANIFEST" ]] || exit 2
+            manifests=( "$SELECTED_MANIFEST" )
+          else
+            manifests=( game-portables/direct-releases/*.json )
+          fi
+          mkdir -p dist _direct_sources
+          for manifest in "${manifests[@]}"; do
+            mapfile -t fields < <(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("\n".join(d[k] for k in ("source_release_tag","source_asset","target_tag","target_asset","game_title")))' "$manifest")
+            source_tag="${fields[0]}"
+            source_asset="${fields[1]}"
+            target_tag="${fields[2]}"
+            target_asset="${fields[3]}"
+            game_title="${fields[4]}"
+            if gh release view "$target_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Release already exists: $target_tag (not overwritten)"
+              continue
+            fi
+            gh release download "$source_tag" --repo "$GITHUB_REPOSITORY" --pattern "$source_asset" --dir _direct_sources --clobber
+            go run game-portables/tools/pack_direct.go -spec "$manifest" -source "_direct_sources/$source_asset" -out dist
+            (cd dist && sha256sum --check "$target_asset.sha256")
+            notes="dist/${target_asset%.zip}.md"
+            printf '%s\n' "# $game_title — Direct Portable V1.2" "" \
+              '## English' \
+              'Windows x64. Extract all files and run DreamcastRecompiled.exe directly. Supply your own compatible CDI/GDI; the ZIP contains no disc image.' \
+              'This portable contains the precompiled native SH-4 module. No per-launch compilation is needed on the validated ChuChu Rocket! path.' \
+              'Online/DCNet is experimental. Compatibility is title/revision-specific.' \
+              '' '## Español' \
+              'Windows x64. Extraé todo el ZIP y ejecutá directamente DreamcastRecompiled.exe. Seleccioná tu propia imagen CDI/GDI compatible; no incluye el juego en formato disco.' \
+              'El módulo nativo SH-4 ya está compilado. No hace falta recompilarlo en cada inicio para la revisión validada de ChuChu Rocket!.' \
+              'La conexión online/DCNet es experimental. Compatibilidad limitada al título y revisión probados.' \
+              '' '## Verificación / Verification' \
+              'Binary-identical to CHUCHU_ROCKET_portable_latest.zip supplied by the project maintainer. SHA-256 is provided alongside the ZIP.' \
+              'No claim of authorization to redistribute third-party commercial code is made; applicable rights remain with their owners.' \
+              > "$notes"
+            gh release create "$target_tag" "dist/$target_asset" "dist/$target_asset.sha256" \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "DreamcastRecompiled — $game_title Direct Portable V1.2" \
+              --notes-file "$notes" --latest=false
+          done

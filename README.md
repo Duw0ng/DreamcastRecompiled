@@ -36,6 +36,9 @@ User-provided Dreamcast disc image
 
 ## ChuChu Rocket! — primary tester game
 
+**Direct portable download:** [ChuChu Rocket! V1.2 — 11-file, 13.6 MiB standalone ZIP](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-direct-v1.2). This lightweight EXE + game-module package starts directly and is distinct from the full Aqua launcher distribution.
+
+
 **The V1.2 Windows tester build contains an SH-4 native game module compiled from ChuChu Rocket! code.** On the validated disc path the launcher checks the disc title and the bundle integrity and runs the native module without rebuilding SH-4 locally. This lets testers exercise the recompilation pipeline and measure performance.
 
 **The compiled module alone is NOT a playable game.** Testers must supply their **own compatible original CDI disc image**. The game still loads boot data and disc assets through the GD-ROM path; no game image is included.
