@@ -1,0 +1,73 @@
+name: Publish DreamcastRecompiled V1.2 Stable Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/release-assets/v1.2-source-url.txt'
+  workflow_dispatch:
+    inputs:
+      drive_url:
+        description: 'Google Drive sharing link for approved V1.2 Stable ZIP'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.repository == 'Duw0ng/DreamcastRecompiled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download approved binary
+        shell: bash
+        env:
+          DRIVE_LINK: ${{ inputs.drive_url }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$DRIVE_LINK" ]]; then
+            DRIVE_LINK="$(tr -d '\r\n' < .github/release-assets/v1.2-source-url.txt)"
+          fi
+          case "$DRIVE_LINK" in
+            https://drive.google.com/*) ;;
+            *) echo 'Expected public drive.google.com file sharing link' >&2; exit 1;;
+          esac
+          python3 -m pip install --disable-pip-version-check 'gdown==5.2.0'
+          gdown --fuzzy "$DRIVE_LINK" --output DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip
+      - name: Verify SHA-256, archive integrity and tester contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip
+          echo "42d08b83ad718214ef19a597332d690c4b5f446fdb7422dd8455df55cca1c127  $archive" | sha256sum --check -
+          unzip -tq "$archive"
+          unzip -Z1 "$archive" | grep -Fx 'DreamcastRecompiled.exe'
+          unzip -Z1 "$archive" | grep -Fx 'launcher/vmu_standalone.py'
+          unzip -Z1 "$archive" | grep -Fx 'games/CHUCHU_ROCKET/bin/dcr_game_module.dll'
+          if unzip -Z1 "$archive" | grep -Eiq '\.cdi$'; then
+            echo 'Retail CDI unexpectedly found in archive, refusing publication.' >&2
+            exit 1
+          fi
+          sha256sum "$archive" > "$archive.sha256"
+      - name: Create V1.2 GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v1.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'v1.2 already exists; refusing to overwrite existing release.' >&2
+            exit 1
+          fi
+          gh release create v1.2 \
+            DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip \
+            DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target main \
+            --title 'DreamcastRecompiled V1.2 Stable Release' \
+            --notes-file RELEASE_NOTES_V1.2.md \
+            --latest
