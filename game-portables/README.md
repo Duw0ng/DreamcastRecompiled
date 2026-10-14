@@ -1,12 +1,17 @@
 # DreamcastRecompiled — Game Portables
 
-**Windows x64 precompiled releases, one entry per compatible title.**
+**Windows x64 · [Games-Portables: all game downloads in one release](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/Games-Portables)**
 
-| Game | Package | Status | Required disc |
+Each portable is a separate ZIP, with a game-specific precompiled SH-4 module. **Download one game at a time; do not mix game DLLs.** Previous individual releases remain available as legacy links.
+
+| Game | Download from Games-Portables | Status | Known issues / notes |
 |---|---|---|---|
-| **ChuChu Rocket!** | **[Direct portable v1.2 (recommended)](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-direct-v1.2)** · [Full Aqua-based package](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-v1.2) | Offline gameplay observed | Your own compatible **CDI**, MK-51049 / V1.007 / CHU_CHU_ROCKET_KAL |
+| **ChuChu Rocket!** | [ZIP](https://github.com/Duw0ng/DreamcastRecompiled/releases/download/Games-Portables/CHUCHU_ROCKET_portable_latest.zip) | **Tester — offline gameplay validated** | Approximately **60 FPS** observed in some tested sections, not universally guaranteed; **DCNet/online experimental**. Requires compatible CDI MK-51049 / V1.007 / CHU_CHU_ROCKET_KAL. |
+| **Sega Tetris** | [ZIP](https://github.com/Duw0ng/DreamcastRecompiled/releases/download/Games-Portables/SEGA_TETRIS_portable_latest.zip) | **Experimental — gameplay reached** | Graphics and audio worked during tests of a community-patched Japanese revision; **intermittent crashes**. Other revisions unverified. |
+| **Segagaga (SGGG)** | [ZIP](https://github.com/Duw0ng/DreamcastRecompiled/releases/download/Games-Portables/SGGG_portable_latest.zip) | **Experimental — partial execution** | Known **audio problems**, remaining **compatibility defects**; full gameplay unverified. |
+| **Mr. Driller** | [ZIP](https://github.com/Duw0ng/DreamcastRecompiled/releases/download/Games-Portables/MR_DRILLER_portable_latest.zip) | **Experimental — gameplay reached** | Significant **graphics/rendering errors in menus** plus **audio defects** in previous tests; latest ZIP integrity checked, but not re-tested on Windows. |
 
-The **recommended ChuChu direct portable** includes only 11 files, 13.6 MiB; it launches via DreamcastRecompiled.exe without Aqua. See [direct portable template](DIRECT_PORTABLES.md). The full portable format uses the common Aqua launcher and host runtime, but its **own** SH-4 native game module. A module compiled for one game is not interchangeable with another. Releases contain no CDI/GDI/ISO game media or Sega firmware; testers must supply their own compatible disc images.
+All games require a compatible user-provided disc image. The portable packages contain no CDI/GDI game images or Dreamcast firmware. Experimental status does not guarantee complete gameplay or stable performance. The full application release **v1.2 Stable** remains separate from this collection.
 
 ## Install
 
@@ -31,8 +36,7 @@ Individual ZIPs include `DreamcastRecompiled.exe`, `_internal/`, `launcher/`, on
 
 DreamcastRecompiled is unaffiliated with Sega. MIT covers original DCR source only, **not** proprietary or game-derived code; maintainers must ensure they have the necessary distribution rights. Do not submit games, game executables, proprietary firmware or disc images as issues. Include CPU/GPU, Windows version, disc revision, controller and logs when reporting defects.
 
-## Additional lightweight portables
-
+## Previous individual portable releases
 - [Sega Tetris V1.2 tester](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sega-tetris-direct-v1.2) — tested gameplay, but intermittent crash reported.
 - [SGGG V1.2 experimental](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sggg-direct-v1.2) — partial execution, known audio issues.
 
