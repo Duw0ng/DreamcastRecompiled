@@ -1,6 +1,6 @@
 # DreamcastRecompiled — Segagaga (SGGG) Direct Portable V1.2 (Experimental)
 
-**Windows x64 — native SH-4 recompilation compatibility preview.**
+**Windows x64 — standalone, game-specific SH-4 recompilation compatibility preview.**
 
 Contains a title-specific precompiled SH-4 native module, portable host runtime and hardware plugins. The minimal `DreamcastRecompiled.exe` launches without an additional Python or C++ build setup.
 
