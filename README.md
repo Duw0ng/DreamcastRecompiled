@@ -51,7 +51,7 @@ User-provided Dreamcast disc image
 
 These values come from the disc probe of the project's reference copy; a different revision or rebuilt CDI may not be compatible. See **[exact tester steps and limitations](docs/CHUCHU_ROCKET_TESTER_V1.2.md)**.
 
-> **Redistribution notice:** A compiled native DLL derived from a commercial title can still contain copyrighted program code even when no `.cdi` is bundled. DreamcastRecompiled's MIT license does not grant permission to redistribute Sega's code. **Do not upload the game-derived tester DLL publicly until distribution rights have been established.** A source-only release with users generating the module locally is a safer alternative.
+> **Tester distribution model:** The V1.2 archive includes precompiled SH-4 code for the validated ChuChu Rocket! build but **does not contain a retail CDI or game assets**. A user-supplied compatible game image is required to start. The project MIT license covers original project code, not third-party commercial program rights; no ownership or rights over ChuChu Rocket! are claimed. Distribution of compiled game-derived code remains subject to applicable rights and law.
 
 ## Getting started on Windows
 
