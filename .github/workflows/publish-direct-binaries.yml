@@ -1,0 +1,95 @@
+name: Publish Sega Tetris and SGGG direct portables
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'game-portables/binary-sources/*.json'
+      - 'game-portables/tools/assemble_blob_portable.py'
+      - '.github/workflows/publish-direct-binaries.yml'
+  workflow_dispatch:
+    inputs:
+      game_id:
+        description: 'Optional SEGA_TETRIS or SGGG; empty publishes all missing releases'
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: game-portable-assets
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'Duw0ng/DreamcastRecompiled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble, verify and publish the original Windows ZIPs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SELECTED_GAME: ${{ inputs.game_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          shopt -s nullglob
+          for manifest in game-portables/binary-sources/*.json; do
+            game_id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["game_id"])' "$manifest")"
+            if [[ -n "${SELECTED_GAME:-}" && "$game_id" != "$SELECTED_GAME" ]]; then continue; fi
+            release_tag="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["release_tag"])' "$manifest")"
+            if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Skipping existing release $release_tag"
+              continue
+            fi
+            python3 game-portables/tools/assemble_blob_portable.py --manifest "$manifest" --output dist --repo "$GITHUB_REPOSITORY"
+            asset="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["asset"])' "$manifest")"
+            title="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["title"])' "$manifest")"
+            notes="dist/${game_id}_RELEASE_NOTES.md"
+            if [[ "$game_id" == 'SEGA_TETRIS' ]]; then
+              cat > "$notes" <<'EOF'
+# DreamcastRecompiled — Sega Tetris Direct Portable V1.2 (Tester)
+
+Standalone Windows x64 build with a precompiled native SH-4 game module and incremental native patch modules. No separate local recompilation is required for the packaged, validated game path.
+
+## Test status
+- Gameplay, graphics and audio have been observed working by the maintainer on a community-patched Japanese build.
+- An intermittent crash has also been reported. Please consider this an experimental tester, not a guaranteed stable release.
+- Only the tested disc/revision is known to work; other discs may fail.
+
+## Install
+1. Extract the entire ZIP.
+2. Run `DreamcastRecompiled.exe`.
+3. Select your own compatible CDI/GDI.
+4. Report hardware, gameplay issues, and logs (no commercial disc or game files).
+
+**No game image or Sega firmware is bundled.** DreamcastRecompiled is independent of Sega; proprietary game-derived content retains its legal status.
+EOF
+            elif [[ "$game_id" == 'SGGG' ]]; then
+              cat > "$notes" <<'EOF'
+# DreamcastRecompiled — Segagaga (SGGG) Direct Portable V1.2 (Experimental)
+
+Standalone Windows x64 tester with a precompiled native SH-4 game module. This is an **experimental compatibility preview**, not a finished playable release.
+
+## Test status
+- The project previously reached partial execution in SGGG.
+- Audio issues and other compatibility defects remain unresolved.
+- No 60 FPS or full-gameplay compatibility claim is made for SGGG.
+
+## Install
+1. Extract the entire ZIP.
+2. Run `DreamcastRecompiled.exe`.
+3. Select your own compatible CDI/GDI.
+4. Report boot progress, graphics/audio, crashes and logs (no commercial disc or game files).
+
+**No game image or Sega firmware is bundled.** DreamcastRecompiled is independent of Sega; proprietary game-derived content retains its legal status.
+EOF
+            else
+              echo "Unknown game ID: $game_id" >&2
+              exit 2
+            fi
+            gh release create "$release_tag" "dist/$asset" "dist/$asset.sha256" \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "DreamcastRecompiled — $title Direct Portable V1.2" \
+              --notes-file "$notes" --latest=false
+          done

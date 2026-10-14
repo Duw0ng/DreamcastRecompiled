@@ -70,6 +70,8 @@ No Python installation is required for the packaged Aqua launcher. **Other games
 
 **Advanced developer runner:** `scripts\windows\run_game.bat "C:\Games\example.cdi"`.
 
+**Additional portable testers:** [Sega Tetris](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sega-tetris-direct-v1.2) (gameplay observed; occasional crash) and [Segagaga](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sggg-direct-v1.2) (experimental; known audio issues). See the [multi-game release guide](game-portables/MULTI_GAME_PORTABLES.md).
+
 ## Compatibility snapshot
 
 | Title | Tested progress | Notes |

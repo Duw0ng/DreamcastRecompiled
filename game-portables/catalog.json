@@ -18,5 +18,29 @@
         "sha256": "b5ee29e5411fc6ea250969fef1a9ac6b57049352f97c374031abf636be1ab4ab"
       }
     }
+  ],
+  "direct_releases": [
+    {
+      "id": "CHUCHU_ROCKET",
+      "title": "ChuChu Rocket!",
+      "release_tag": "portable-chuchu-rocket-direct-v1.2",
+      "status": "tested-offline-gameplay"
+    },
+    {
+      "id": "SEGA_TETRIS",
+      "title": "Sega Tetris",
+      "release_tag": "portable-sega-tetris-direct-v1.2",
+      "status": "tester-gameplay-occasional-crash",
+      "asset": "SEGA_TETRIS_portable_latest.zip",
+      "sha256": "1f31d4cd04853ad833edc7047ae218489638bc92991abdafc0852929025ef6db"
+    },
+    {
+      "id": "SGGG",
+      "title": "Segagaga (SGGG)",
+      "release_tag": "portable-sggg-direct-v1.2",
+      "status": "experimental-partial-audio-issues",
+      "asset": "SGGG_portable_latest.zip",
+      "sha256": "cff571dce69468a62adff870242253de998b53e169b930f49a7810ec7ed5dca9"
+    }
   ]
 }

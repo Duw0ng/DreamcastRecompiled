@@ -30,3 +30,10 @@ Individual ZIPs include `DreamcastRecompiled.exe`, `_internal/`, `launcher/`, on
 ## Rights and bug reports
 
 DreamcastRecompiled is unaffiliated with Sega. MIT covers original DCR source only, **not** proprietary or game-derived code; maintainers must ensure they have the necessary distribution rights. Do not submit games, game executables, proprietary firmware or disc images as issues. Include CPU/GPU, Windows version, disc revision, controller and logs when reporting defects.
+
+## Additional lightweight portables
+
+- [Sega Tetris V1.2 tester](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sega-tetris-direct-v1.2) — tested gameplay, but intermittent crash reported.
+- [SGGG V1.2 experimental](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sggg-direct-v1.2) — partial execution, known audio issues.
+
+Read the [multi-game packaging guide](MULTI_GAME_PORTABLES.md). Each title uses its own native module; no commercial CDI is included.
