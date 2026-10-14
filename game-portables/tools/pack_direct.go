@@ -1,112 +1,89 @@
-// Build a minimal, game-specific DreamcastRecompiled portable from a verified
-// source release. Go standard library only. File ordering is intentional.
 package main
 
 import (
- "archive/zip"
- "crypto/sha256"
- "encoding/hex"
- "encoding/json"
- "errors"
- "flag"
- "fmt"
- "io"
- "os"
- "path"
- "path/filepath"
- "strings"
+  "archive/zip"
+  "crypto/sha256"
+  "encoding/hex"
+  "encoding/json"
+  "errors"
+  "flag"
+  "fmt"
+  "io"
+  "os"
+  "path"
+  "path/filepath"
+  "strings"
 )
-type File struct { Source string `json:"source"`; Target string `json:"target"` }
-type Spec struct {
- SchemaVersion int `json:"schema_version"`
- GameID string `json:"game_id"`
- GameTitle string `json:"game_title"`
- SourceReleaseTag string `json:"source_release_tag"`
- SourceAsset string `json:"source_asset"`
- SourceSHA256 string `json:"source_sha256"`
- TargetTag string `json:"target_tag"`
- TargetAsset string `json:"target_asset"`
- OutputSHA256 string `json:"output_sha256"`
- Files []File `json:"files"`
+
+func fail(err error) { fmt.Fprintln(os.Stderr, "ERROR:", err); os.Exit(1) }
+func sha(name string) (string, error) {
+  f, e := os.Open(name); if e != nil { return "", e }; defer f.Close()
+  h := sha256.New(); if _,e=io.Copy(h,f);e!=nil { return "", e }
+  return hex.EncodeToString(h.Sum(nil)),nil
 }
-func digest(name string) (string,error) {
- f,e:=os.Open(name);if e!=nil{return "",e};defer f.Close()
- h:=sha256.New();if _,e=io.Copy(h,f);e!=nil{return "",e}
- return hex.EncodeToString(h.Sum(nil)),nil
-}
-func safe(s string)bool{
- return s!=""&&!strings.HasPrefix(s,"/")&&!strings.Contains(s,"\")&&!strings.Contains(s,":")&&path.Clean(s)==s&&!strings.HasPrefix(s,"../")&&s!=".."
-}
-func build(specFile,src,dstDir string)error{
- raw,e:=os.ReadFile(specFile);if e!=nil{return e}
- var s Spec;if e=json.Unmarshal(raw,&s);e!=nil{return e}
- if s.SchemaVersion!=1||s.GameID==""||len(s.Files)==0{return errors.New("bad portable spec")}
- if !safe(s.SourceAsset)||!safe(s.TargetAsset)||path.Base(s.SourceAsset)!=s.SourceAsset||path.Base(s.TargetAsset)!=s.TargetAsset{return errors.New("unsafe asset names")}
- if len(s.SourceSHA256)!=64||len(s.OutputSHA256)!=64{return errors.New("both SHA-256 digests must be pinned")}
- hash,e:=digest(src);if e!=nil{return e}
- if !strings.EqualFold(hash,s.SourceSHA256){return fmt.Errorf("source SHA-256 mismatch: %s",hash)}
- source,e:=zip.OpenReader(src);if e!=nil{return e};defer source.Close()
- members:=map[string]*zip.File{}
- for _,f:=range source.File{
-  if !safe(f.Name){return fmt.Errorf("unsafe source member: %s",f.Name)}
-  if _,ok:=members[f.Name];ok{return fmt.Errorf("duplicate source member: %s",f.Name)}
-  members[f.Name]=f
- }
- mandatory:=map[string]bool{"DreamcastRecompiled.exe":false,"bin/DreamcastRuntime.dll":false,"bin/dcr_game_module.dll":false,"portable_manifest.txt":false}
- taken:=map[string]bool{};correctGame:=false
- for _,m:=range s.Files{
-  if !safe(m.Source)||!safe(m.Target)||taken[m.Target]{return fmt.Errorf("unsafe/duplicate mapping: %+v",m)}
-  taken[m.Target]=true
-  ext:=strings.ToLower(path.Ext(m.Target))
-  switch ext{case ".cdi",".gdi",".iso",".chd",".cue",".nrg":return fmt.Errorf("game disc image prohibited: %s",m.Target)}
-  f,ok:=members[m.Source];if !ok||f.FileInfo().IsDir(){return fmt.Errorf("missing file: %s",m.Source)}
-  if _,ok=mandatory[m.Target];ok{mandatory[m.Target]=true}
-  if m.Target=="portable_manifest.txt"{
-   r,err:=f.Open();if err!=nil{return err}
-   data,err:=io.ReadAll(r);r.Close();if err!=nil{return err}
-   for _,ln:=range strings.Split(strings.ReplaceAll(string(data),"
-","
-"),"
-"){
-    if ln=="GAME="+s.GameID{correctGame=true}
-   }
+func safe(s string) bool { return s!="" && !strings.HasPrefix(s,"/") && !strings.Contains(s,"\\") && !strings.Contains(s,":") && path.Clean(s)==s }
+func main() {
+  manifest := flag.String("spec", "", "release JSON spec")
+  source := flag.String("source", "", "source release ZIP")
+  outdir := flag.String("out", "dist", "destination directory")
+  flag.Parse()
+  if *manifest=="" || *source=="" { fail(errors.New("missing -spec / -source")) }
+  contents,e:=os.ReadFile(*manifest);if e!=nil {fail(e)}
+  var data map[string]json.RawMessage
+  if e=json.Unmarshal(contents,&data);e!=nil {fail(e)}
+  str:=func(key string) string { var v string; if e:=json.Unmarshal(data[key],&v);e!=nil { fail(fmt.Errorf("missing or invalid %s: %w",key,e)) }; return v }
+  var schema int; if e=json.Unmarshal(data["schema_version"],&schema);e!=nil || schema!=1 {fail(errors.New("unknown spec schema"))}
+  id:=str("game_id");originalSHA:=str("source_sha256");expectedSHA:=str("output_sha256")
+  asset:=str("target_asset")
+  if !safe(id) || !safe(asset) || path.Base(asset)!=asset || len(originalSHA)!=64 || len(expectedSHA)!=64 {fail(errors.New("invalid game / ZIP name / checksum"))}
+  var files []map[string]string
+  if e=json.Unmarshal(data["files"],&files);e!=nil || len(files)<4 {fail(errors.New("invalid file mapping list"))}
+  actual,e:=sha(*source);if e!=nil{fail(e)}
+  if !strings.EqualFold(actual,originalSHA){fail(fmt.Errorf("source SHA-256 mismatch: %s",actual))}
+  input,e:=zip.OpenReader(*source);if e!=nil{fail(e)};defer input.Close()
+  members:=map[string]*zip.File{}
+  for _,f:=range input.File {
+    if !safe(f.Name){fail(fmt.Errorf("unsafe source ZIP member: %q",f.Name))}
+    if _,found:=members[f.Name];found{fail(fmt.Errorf("duplicate source member: %s",f.Name))}
+    members[f.Name]=f
   }
- }
- for name,ok:=range mandatory{if !ok{return fmt.Errorf("required file missing: %s",name)}}
- if !correctGame{return errors.New("game identity mismatch")}
- if e=os.MkdirAll(dstDir,0755);e!=nil{return e}
- dest:=filepath.Join(dstDir,s.TargetAsset)
- fd,e:=os.Create(dest);if e!=nil{return e}
- writer:=zip.NewWriter(fd)
- for _,m:=range s.Files{
-  reader,err:=members[m.Source].Open()
-  if err!=nil{writer.Close();fd.Close();return err}
-  header:=&zip.FileHeader{Name:m.Target,Method:zip.Deflate}
-  to,err:=writer.CreateHeader(header)
-  if err==nil{_,err=io.Copy(to,reader)}
-  reader.Close()
-  if err!=nil{writer.Close();fd.Close();return err}
- }
- if e=writer.Close();e!=nil{fd.Close();return e}
- if e=fd.Close();e!=nil{return e}
- outputHash,e:=digest(dest);if e!=nil{return e}
- if !strings.EqualFold(outputHash,s.OutputSHA256){return fmt.Errorf("EXACT output SHA-256 mismatch: %s",outputHash)}
- check,e:=zip.OpenReader(dest);if e!=nil{return e};defer check.Close()
- for _,f:=range check.File{
-  r,err:=f.Open();if err!=nil{return err}
-  _,err=io.Copy(io.Discard,r);r.Close();if err!=nil{return err}
- }
- if e=os.WriteFile(dest+".sha256",[]byte(outputHash+"  "+s.TargetAsset+"
-"),0644);e!=nil{return e}
- fmt.Printf("EXACT PORTABLE VERIFIED: %s | %d files | sha256 %s
-",dest,len(s.Files),outputHash)
- return nil
-}
-func main(){
- spec:=flag.String("spec","","Portable release manifest")
- src:=flag.String("source","","Pinned source release ZIP")
- dst:=flag.String("out","dist","Output directory")
- flag.Parse()
- if *spec==""||*src==""{fmt.Fprintln(os.Stderr,"-spec and -source required");os.Exit(2)}
- if e:=build(*spec,*src,*dst);e!=nil{fmt.Fprintln(os.Stderr,"ERROR:",e);os.Exit(1)}
+  needed:=map[string]bool{"DreamcastRecompiled.exe":false,"bin/DreamcastRuntime.dll":false,"bin/dcr_game_module.dll":false,"portable_manifest.txt":false}
+  used:=map[string]bool{}
+  validID:=false
+  for _,m:=range files {
+    src,dst:=m["source"],m["target"]
+    if !safe(src)||!safe(dst)||used[dst]{fail(fmt.Errorf("unsafe/duplicate file mapping: %s",dst))}
+    used[dst]=true
+    switch strings.ToLower(path.Ext(dst)) {case ".cdi",".gdi",".iso",".chd",".cue",".nrg":fail(errors.New("no game discs may be packaged"))}
+    f,found:=members[src];if !found || f.FileInfo().IsDir(){fail(fmt.Errorf("source member missing: %s",src))}
+    if _,ok:=needed[dst];ok{needed[dst]=true}
+    if dst=="portable_manifest.txt"{
+      r,err:=f.Open();if err!=nil{fail(err)}
+      v,err:=io.ReadAll(r);r.Close();if err!=nil{fail(err)}
+      for _,line:=range strings.Split(strings.ReplaceAll(string(v),"\r\n","\n"),"\n"){
+        if line=="GAME="+id{validID=true}
+      }
+    }
+  }
+  for filename,found:=range needed{if !found{fail(fmt.Errorf("required file missing: %s",filename))}}
+  if !validID{fail(errors.New("guest ID does not match manifest"))}
+  if e=os.MkdirAll(*outdir,0755);e!=nil{fail(e)}
+  target:=filepath.Join(*outdir,asset)
+  output,e:=os.Create(target);if e!=nil{fail(e)}
+  archive:=zip.NewWriter(output)
+  for _,m:=range files {
+    sourceFile,err:=members[m["source"]].Open();if err!=nil{fail(err)}
+    destFile,err:=archive.CreateHeader(&zip.FileHeader{Name:m["target"],Method:zip.Deflate})
+    if err==nil{_,err=io.Copy(destFile,sourceFile)}
+    sourceFile.Close();if err!=nil{fail(err)}
+  }
+  if e=archive.Close();e!=nil{fail(e)}
+  if e=output.Close();e!=nil{fail(e)}
+  digest,e:=sha(target);if e!=nil{fail(e)}
+  if !strings.EqualFold(digest,expectedSHA){fail(fmt.Errorf("exact ZIP checksum mismatch: %s",digest))}
+  check,e:=zip.OpenReader(target);if e!=nil{fail(e)}
+  for _,f:=range check.File {r,err:=f.Open();if err!=nil{fail(err)};_,err=io.Copy(io.Discard,r);r.Close();if err!=nil{fail(err)}}
+  check.Close()
+  if e=os.WriteFile(target+".sha256",[]byte(digest+"  "+asset+"\n"),0644);e!=nil{fail(e)}
+  fmt.Printf("VERIFIED EXACT portable %s (%d files, sha256 %s)\n",target,len(files),digest)
 }
