@@ -1,0 +1,68 @@
+--- /mnt/data/cpp17_stage/src/codegen/cpp_emitter.cpp	2026-09-21 20:03:26.558679952 +0000
++++ /mnt/data/sggg_work/src/codegen/cpp_emitter.cpp	2026-09-21 22:06:57.330186892 +0000
+@@ -10104,9 +10104,35 @@
+     if (runtime.maple_host_input) dc_maple_poll_host(runtime);
+     auto c = runtime.maple_controller;
+ 
++    // When both legacy controller probes are enabled we treat that combination
++    // as the dedicated SGGG New Game autopilot. This keeps the runtime ABI
++    // unchanged while giving SGGG an explicit opt-in route that uses the real
++    // low-level Maple GETCOND path.
++    const bool sggg_newgame_probe = runtime.probe_controller_a_then_start_lowlevel
++                                 && runtime.probe_controller_start_burst_lowlevel;
++
++    if (sggg_newgame_probe) {
++        const std::uint32_t poll = runtime.probe_controller_poll++;
++        const std::uint64_t frame = runtime.pvr_frames;
++        const bool start = frame >= 1800u && frame <= 5000u && ((poll % 90u) < 4u);
++        const bool press_a = frame >= 2750u && frame <= 20000u && ((poll % 48u) < 10u);
++        if (start) {
++            c.buttons = static_cast<std::uint16_t>(c.buttons | (1u << 3));
++            if ((poll % 90u) == 0u)
++                std::cout << "[DreamcastRecomp SGGG autopilot] START at GETCOND=" << poll
++                          << " pvr-frame=" << frame << "\n";
++        }
++        if (press_a) {
++            c.buttons = static_cast<std::uint16_t>(c.buttons | (1u << 2));
++            if ((poll % 48u) == 0u)
++                std::cout << "[DreamcastRecomp SGGG autopilot] A at GETCOND=" << poll
++                          << " pvr-frame=" << frame << "\n";
++        }
++    }
++
+     // v0.1.1 CT2 regression harness: inject discrete buttons through the real
+     // low-level Maple GETCOND path. It is opt-in via --probe-controller-a-then-start.
+-    if (runtime.probe_controller_a_then_start_lowlevel) {
++    if (runtime.probe_controller_a_then_start_lowlevel && !sggg_newgame_probe) {
+         const std::uint32_t poll = runtime.probe_controller_poll++;
+         std::uint32_t buttons = 0u;
+         // Keep the stages non-overlapping so an A pulse cannot cancel a START
+@@ -10134,7 +10160,7 @@
+     // KOS maple_dev_status override and consume raw Maple GETCOND packets.
+     // Keep the probe opt-in, but inject its finite START burst here so both
+     // SDK and custom/low-level Maple paths observe the same button pulses.
+-    if (runtime.probe_controller_start_burst_lowlevel) {
++    if (runtime.probe_controller_start_burst_lowlevel && !sggg_newgame_probe) {
+         // SGGG/long-intro diagnostic mode: do not perturb logos or early boot.
+         // Once real presentation has reached the late intro/title window, pulse
+         // START through the actual low-level GETCOND response. This remains
+@@ -20977,6 +21003,9 @@
+                    << "                probe_controller_a_then_start = true;\n"
+                    << "            } else if (key == \"--probe-controller-start-burst\") {\n"
+                    << "                probe_controller_start_burst = true;\n"
++                   << "            } else if (key == \"--probe-sggg-newgame\") {\n"
++                   << "                probe_controller_a_then_start = true;\n"
++                   << "                probe_controller_start_burst = true;\n"
+                    << "            } else if (key == \"--maple-host-input\") {\n"
+                    << "                maple_host_input = true;\n"
+                    << "            } else if (key.rfind(\"--controller-profile=\", 0) == 0) {\n"
+@@ -21976,6 +22005,9 @@
+                    << "                probe_controller_a_then_start = true;\n"
+                    << "            } else if (key == \"--probe-controller-start-burst\") {\n"
+                    << "                probe_controller_start_burst = true;\n"
++                   << "            } else if (key == \"--probe-sggg-newgame\") {\n"
++                   << "                probe_controller_a_then_start = true;\n"
++                   << "                probe_controller_start_burst = true;\n"
+                    << "            } else if (key == \"--maple-host-input\") {\n"
+                    << "                maple_host_input = true;\n"
+                    << "            } else if (key.rfind(\"--controller-profile=\", 0) == 0) {\n"

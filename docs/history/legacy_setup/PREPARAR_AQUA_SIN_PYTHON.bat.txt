@@ -1,0 +1,18 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+echo ===========================================================
+echo  Dreamcast Recompiled v1.2 - Preparar launcher Aqua portable
+ echo  Construccion local la primera vez; necesita conexion a Internet.
+echo ===========================================================
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0PREPARAR_AQUA_SIN_PYTHON.ps1"
+set "RESULT=%ERRORLEVEL%"
+if not "%RESULT%"=="0" (
+  echo.
+  echo [ERROR] No se completo el empaquetado. Ver: .dcr_builder\preparacion.log
+  pause
+  exit /b %RESULT%
+)
+echo.
+echo [OK] Ejecutá DreamcastRecompiled.exe para abrir Aqua Python.
+exit /b 0

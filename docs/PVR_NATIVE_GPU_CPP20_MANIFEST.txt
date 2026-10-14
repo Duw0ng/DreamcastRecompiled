@@ -1,0 +1,38 @@
+DreamcastRecomp v0.1.1 - cpp20 native GPU 7-step checkpoint
+
+Primary changed source:
+- src/codegen/cpp_emitter.cpp
+- tests/cpp_emitter_tests.cpp
+- README.md
+- CHANGELOG.md
+
+Added validation/documentation:
+- docs/PVR_NATIVE_GPU_CPP20.md
+- docs/PVR_NATIVE_GPU_CPP20_VALIDATION.txt
+- docs/PVR_NATIVE_GPU_CPP20_SOURCE_CHANGES.patch
+- docs/PVR_NATIVE_GPU_CPP20_CTEST_NORMAL.log
+- docs/PVR_NATIVE_GPU_CPP20_CTEST_GENERATED.log
+- docs/PVR_NATIVE_GPU_CPP20_MANIFEST.txt
+
+Included generated test fixtures:
+- samples/sh4_*.elf (16 small synthetic SH-4 ELF fixtures)
+
+Commercial game/CDI content is NOT included.
+Build directories are NOT included.
+
+Implemented native-GPU plan:
+1 GPU texture decode
+2 direct TA vertex upload (no PVRSoftVertex -> PVRGpuVertex conversion scratch)
+3 persistent triple-buffered VB/IB stream ring
+4 GPU-resident RTT with lazy VRAM synchronization
+5 PVR pipeline/state cache
+6 expanded GPU fast path / lazy compatibility materialization
+7 PVRRendererBackend abstraction with D3D11 implementation
+
+Validation:
+- 52/52 normal tests PASS
+- generated_single_build PASS
+- generated_program_build PASS
+- total logical tests: 54/54 PASS
+- actual D3D11 execution requires Windows; not claimed tested in this Linux container
+- clean self-contained smoke configure/build of cpp_emitter_tests: PASS

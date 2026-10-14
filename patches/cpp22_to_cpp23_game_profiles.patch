@@ -1,0 +1,1084 @@
+--- a/run_game.bat
++++ b/run_game.bat
+@@ -2,12 +2,12 @@
+ setlocal EnableExtensions EnableDelayedExpansion
+ cd /d "%~dp0"
+ 
+-set "DCR_VERSION=v0.1.1 Official"
++set "DCR_VERSION=v0.1.1 cpp23 Profile Regression Fix"
+ set "PERF=0"
+ set "DEBUG=0"
+ set "PVR_PROFILE=0"
+ set "SOFTWARE=0"
+-set "RENDERER=AUTO"
++set "RENDERER=auto"
+ set "RENDERER_EXPLICIT=0"
+ set "NO_AUDIO=0"
+ set "CLEAN=0"
+@@ -78,7 +78,6 @@
+ shift
+ if "%~1"=="" (
+   echo [ERROR] --renderer requiere un backend.
+-  echo [INFO] Disponibles hoy: auto, dx11, software.
+   exit /b 1
+ )
+ set "RENDERER=%~1"
+@@ -87,7 +86,262 @@
+ goto :parse_args
+ 
+ :args_done
+-rem Normaliza aliases de renderer. Solo DX11 esta implementado como backend GPU hoy.
++if not exist "%DISC%" (
++  echo [ERROR] No encuentro el juego: "%DISC%"
++  exit /b 1
++)
++
++where cmake >nul 2>nul
++if errorlevel 1 (
++  echo [ERROR] CMake no esta disponible en PATH.
++  echo [INFO] Instala Visual Studio 2022 o Build Tools con C++ y CMake.
++  exit /b 2
++)
++where powershell >nul 2>nul
++if errorlevel 1 (
++  echo [ERROR] PowerShell no esta disponible y es necesario para los perfiles por juego.
++  exit /b 2
++)
++
++set "PROBE=generated\_profile_probe"
++if exist "%PROBE%" rmdir /s /q "%PROBE%"
++mkdir "%PROBE%" >nul 2>nul
++
++cls
++echo ============================================================
++echo  DreamcastRecomp %DCR_VERSION%
++echo  Universal CDI runner + per-game profiles
++echo ============================================================
++echo  Juego : %DISC%
++echo  Perf  : %PERF%   Debug: %DEBUG%   PVR profile: %PVR_PROFILE%
++echo ============================================================
++echo.
++
++echo [1/6] Preparando herramientas...
++cmake -S . -B build -A x64
++if errorlevel 1 exit /b 2
++cmake --build build --config Release --target dc_disc_probe dc_boot_prepare dc_raw_recomp --parallel 1
++if errorlevel 1 exit /b 2
++
++for %%T in (dc_disc_probe dc_boot_prepare dc_raw_recomp) do (
++  if not exist "build\Release\%%T.exe" (
++    echo [ERROR] Falta build\Release\%%T.exe despues del build.
++    exit /b 2
++  )
++)
++
++echo.
++echo [2/6] Analizando CDI y resolviendo perfil...
++build\Release\dc_disc_probe.exe "%DISC%" ^
++  --extract-ip="%PROBE%\IP.BIN" ^
++  --extract-boot="%PROBE%\BOOT.DISC.BIN" ^
++  --extract-disc-map="%PROBE%\disc.map"
++if errorlevel 1 exit /b 3
++
++set "TITLE="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "title=" "%PROBE%\disc.map"') do set "TITLE=%%B"
++set "VOLUME="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "volume=" "%PROBE%\disc.map"') do set "VOLUME=%%B"
++
++set "PROFILE_CMD=%TEMP%\dcr_profile_%RANDOM%_%RANDOM%.cmd"
++powershell -NoProfile -ExecutionPolicy Bypass -File "tools\game_profiles\ResolveGameProfile.ps1" ^
++  -Title "!TITLE!" -Volume "!VOLUME!" -Disc "%DISC%" -Root "games" -EmitCmd "!PROFILE_CMD!"
++if errorlevel 1 (
++  echo [ERROR] No se pudo crear/resolver el perfil por juego.
++  exit /b 3
++)
++call "!PROFILE_CMD!"
++del /q "!PROFILE_CMD!" >nul 2>nul
++
++set "OUT=!DCR_GAME_DIR!\generated"
++set "CPP=!OUT!\cpp"
++set "CB=!DCR_GAME_DIR!\build"
++
++if "%CLEAN%"=="1" (
++  echo [CLEAN] Limpiando solo el cache de !DCR_GAME_SLUG!...
++  if exist "!OUT!" rmdir /s /q "!OUT!"
++  if exist "!CB!" rmdir /s /q "!CB!"
++)
++if not exist "!OUT!" mkdir "!OUT!" >nul 2>nul
++if not exist "!CB!" mkdir "!CB!" >nul 2>nul
++
++if "%REUSE%"=="1" goto :reuse_existing
++
++copy /y "%PROBE%\IP.BIN" "!OUT!\IP.BIN" >nul
++copy /y "%PROBE%\BOOT.DISC.BIN" "!OUT!\BOOT.DISC.BIN" >nul
++copy /y "%PROBE%\disc.map" "!OUT!\disc.map" >nul
++
++goto :profile_ready
++
++:reuse_existing
++if not exist "!OUT!\disc.map" (
++  echo [ERROR] --reuse requiere una generacion previa para !DCR_GAME_SLUG!.
++  echo [INFO] Falta !OUT!\disc.map
++  exit /b 9
++)
++if not exist "!CB!\Release\dreamcast_program.exe" (
++  echo [ERROR] --reuse requiere el runner compilado de este juego.
++  echo [INFO] Falta !CB!\Release\dreamcast_program.exe
++  exit /b 9
++)
++set "MAP_IMAGE="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "image=" "!OUT!\disc.map"') do set "MAP_IMAGE=%%B"
++if defined MAP_IMAGE if /I not "!MAP_IMAGE!"=="%DISC%" (
++  echo [ERROR] El cache de !DCR_GAME_SLUG! pertenece a otro CDI/ruta:
++  echo [CACHE] !MAP_IMAGE!
++  echo [PEDIDO] %DISC%
++  echo [INFO] Ejecuta sin --reuse para regenerar de forma segura.
++  exit /b 9
++)
++
++:profile_ready
++call :normalize_renderer
++if errorlevel 1 exit /b !errorlevel!
++
++if "%RENDERER_EXPLICIT%"=="0" (
++  set "ACTIVE_RENDERER=!DCR_PROFILE_RENDERER!"
++) else (
++  set "ACTIVE_RENDERER=!RENDERER!"
++)
++if /I "!ACTIVE_RENDERER!"=="auto" set "ACTIVE_RENDERER=dx11"
++set "RENDERER=!ACTIVE_RENDERER!"
++call :normalize_renderer
++if errorlevel 1 exit /b !errorlevel!
++set "ACTIVE_RENDERER=!RENDERER!"
++
++set "PADARG="
++if defined DCR_CONTROLLER_PROFILE (
++  if exist "!DCR_CONTROLLER_PROFILE!" set "PADARG=--controller-profile=!DCR_CONTROLLER_PROFILE!"
++)
++if not defined PADARG if exist "profiles\controller_profile.ini" (
++  set "PADARG=--controller-profile=profiles\controller_profile.ini"
++)
++
++set "GPU_ARGS="
++if /I "!ACTIVE_RENDERER!"=="dx11" (
++  set "GPU_ARGS=--pvr-gpu --pvr-render-done-scheduled --pvr-mt"
++) else (
++  set "GPU_ARGS=--pvr-mt"
++)
++
++set "DCR_TRACE_HISTORY=0"
++set "HEARTBEAT=1000"
++set "EXTRA_RUN=!DCR_PROFILE_EXTRA_RUN!"
++if "%PERF%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --perf-profile --perf-sample-stride=64"
++if "%DEBUG%"=="1" (
++  set "DCR_TRACE_HISTORY=1"
++  set "HEARTBEAT=500"
++  set "EXTRA_RUN=!EXTRA_RUN! --host-window"
++)
++if "%PVR_PROFILE%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --pvr-profile --host-window"
++
++set "AUDIO_ARGS=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768 --aica-play"
++if /I "!DCR_AUDIO_PROFILE!"=="basic" set "AUDIO_ARGS=--aica-arm7 --aica-play"
++if "%NO_AUDIO%"=="1" (
++  set "AUDIO_ARGS=--aica-arm7"
++  if /I not "!DCR_AUDIO_PROFILE!"=="basic" set "AUDIO_ARGS=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768"
++)
++
++set "CLOCK_ARGS=--device-clock-host --device-clock-host-max-catchup=4096"
++if /I "!DCR_DEVICE_CLOCK!"=="device" set "CLOCK_ARGS=--device-clock"
++
++echo.
++echo [INFO] Titulo     : !TITLE!
++echo [INFO] Volumen    : !VOLUME!
++echo [INFO] Perfil     : !DCR_MODE!
++echo [INFO] CFG        : !DCR_PROFILE_CFG!
++echo [INFO] Workspace  : !DCR_GAME_DIR!
++echo [INFO] Render     : !ACTIVE_RENDERER!
++echo [INFO] Boot stage : !DCR_BOOT_STAGE!
++if defined DCR_SEED_FILE echo [INFO] Seeds      : !DCR_SEED_FILE!
++if defined PADARG (echo [INFO] Mando      : !PADARG!) else (echo [INFO] Mando      : default teclado/XInput/DirectInput)
++
++if "%REUSE%"=="1" goto :execute_runner
++
++if defined DCR_SPECIAL_BOOT_FILE goto :prepare_special_boot
++
++echo.
++echo [3/6] Preparando bootstrap comercial...
++build\Release\dc_boot_prepare.exe "!OUT!\IP.BIN" "!OUT!\BOOT.DISC.BIN" ^
++  --mode=auto ^
++  --boot-out="!OUT!\BOOT.BIN" ^
++  --combined-out="!OUT!\BOOTSTRAP.BIN"
++if errorlevel 1 exit /b 4
++
++set "RECOMP_INPUT=!OUT!\BOOTSTRAP.BIN"
++goto :recompile
++
++:prepare_special_boot
++echo.
++echo [3/6] Extrayendo ejecutable especial !DCR_SPECIAL_BOOT_FILE!...
++build\Release\dc_disc_probe.exe "%DISC%" --extract-file=!DCR_SPECIAL_BOOT_FILE!="!OUT!\!DCR_SPECIAL_BOOT_FILE!"
++if errorlevel 1 exit /b 4
++set "RECOMP_INPUT=!OUT!\!DCR_SPECIAL_BOOT_FILE!"
++
++:recompile
++echo.
++echo [4/6] Recompilando closure SH-4 para !DCR_MODE!...
++set "SEED_ARGS="
++if defined DCR_ENTRY_SEED set "SEED_ARGS=!SEED_ARGS! --seed=!DCR_ENTRY_SEED!"
++if defined DCR_SEED_FILE (
++  if exist "!DCR_SEED_FILE!" (
++    set "SEED_ARGS=!SEED_ARGS! --seed-file="!DCR_SEED_FILE!""
++  ) else (
++    echo [WARN] El seed_file del perfil no existe: !DCR_SEED_FILE!
++  )
++)
++
++build\Release\dc_raw_recomp.exe "!RECOMP_INPUT!" ^
++  --base=!DCR_RAW_BASE! --entry=!DCR_RAW_ENTRY! !SEED_ARGS! ^
++  --max-functions=!DCR_MAX_FUNCTIONS! ^
++  --max-closure-entries=!DCR_MAX_CLOSURE_ENTRIES! ^
++  --closure-passes=!DCR_CLOSURE_PASSES! ^
++  --map="!OUT!\function_map.csv" --output="!CPP!"
++if errorlevel 1 exit /b 5
++
++echo.
++echo [5/6] Compilando runner nativo generado...
++cmake -S "!CPP!" -B "!CB!" -A x64
++if errorlevel 1 exit /b 6
++cmake --build "!CB!" --config Release --target dreamcast_program --parallel 1
++if errorlevel 1 exit /b 7
++
++:execute_runner
++echo.
++if "%REUSE%"=="1" (echo [CACHE] Ejecutando cache independiente de !DCR_GAME_SLUG!.) else (echo [6/6] Ejecutando !DCR_MODE!...)
++echo [INFO] Controles: flechas=D-pad, WASD=analogico, Z/J/Space=A, X/K=B, C/U=X, V/I=Y, Enter=START.
++echo.
++
++set "EXE=!CB!\Release\dreamcast_program.exe"
++if not exist "!EXE!" (
++  echo [ERROR] No se genero !EXE!
++  exit /b 7
++)
++
++set "ENTRY_ARG="
++if defined DCR_DIRECT_GAME_ENTRY set "ENTRY_ARG=--direct-game-entry=!DCR_DIRECT_GAME_ENTRY!"
++set "CT2_ARG="
++if "!DCR_CT2_COMPAT!"=="1" set "CT2_ARG=--ct2-compat"
++set "BOOT_ARG="
++if "!DCR_COMMERCIAL_BOOT!"=="1" set "BOOT_ARG=--commercial-boot --commercial-boot-stage=!DCR_BOOT_STAGE!"
++
++"!EXE!" ^
++  !ENTRY_ARG! !BOOT_ARG! !CT2_ARG! --disc-map="!OUT!\disc.map" ^
++  --pvr-window --pvr-frame-sync !GPU_ARGS! ^
++  --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++  --maple-host-input !PADARG! !AUDIO_ARGS! !CLOCK_ARGS! ^
++  --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++
++set "RC=!ERRORLEVEL!"
++echo.
++echo [INFO] DreamcastRecomp termino con RC=!RC!.
++echo [INFO] Perfil persistente: !DCR_PROFILE_CFG!
++echo [INFO] Cache por juego    : !DCR_GAME_DIR!
++if "!RC!"=="130" echo [INFO] RC=130 = cierre manual de la ventana.
++if exist "%PROBE%" rmdir /s /q "%PROBE%" >nul 2>nul
++exit /b !RC!
++
++:normalize_renderer
+ if /I "!RENDERER!"=="AUTO" set "RENDERER=auto"
+ if /I "!RENDERER!"=="D3D11" set "RENDERER=dx11"
+ if /I "!RENDERER!"=="DIRECT3D11" set "RENDERER=dx11"
+@@ -96,16 +350,10 @@
+ if /I "!RENDERER!"=="SW" set "RENDERER=software"
+ if /I "!RENDERER!"=="CPU" set "RENDERER=software"
+ if /I "!RENDERER!"=="SOFTWARE" set "RENDERER=software"
++if /I "!RENDERER!"=="VK" set "RENDERER=vulkan"
+ if /I "!RENDERER!"=="D3D12" set "RENDERER=dx12"
+-if /I "!RENDERER!"=="DIRECT3D12" set "RENDERER=dx12"
+-if /I "!RENDERER!"=="DIRECTX12" set "RENDERER=dx12"
+ if /I "!RENDERER!"=="D3D10" set "RENDERER=dx10"
+-if /I "!RENDERER!"=="DIRECT3D10" set "RENDERER=dx10"
+-if /I "!RENDERER!"=="DIRECTX10" set "RENDERER=dx10"
+ if /I "!RENDERER!"=="D3D9" set "RENDERER=dx9"
+-if /I "!RENDERER!"=="DIRECT3D9" set "RENDERER=dx9"
+-if /I "!RENDERER!"=="DIRECTX9" set "RENDERER=dx9"
+-if /I "!RENDERER!"=="VK" set "RENDERER=vulkan"
+ 
+ if /I "!RENDERER!"=="vulkan" goto :renderer_not_implemented
+ if /I "!RENDERER!"=="dx12" goto :renderer_not_implemented
+@@ -113,337 +361,41 @@
+ if /I "!RENDERER!"=="dx9" goto :renderer_not_implemented
+ if /I not "!RENDERER!"=="auto" if /I not "!RENDERER!"=="dx11" if /I not "!RENDERER!"=="software" (
+   echo [ERROR] Renderer desconocido: !RENDERER!
+-  echo [INFO] Disponibles hoy: auto, dx11, software.
+-  echo [INFO] Reservados para futuros backends: vulkan, dx12, dx10, dx9.
+-  exit /b 1
+-)
+-if not exist "%DISC%" (
+-  echo [ERROR] No encuentro el juego: "%DISC%"
+-  exit /b 1
+-)
+-
+-where cmake >nul 2>nul
+-if errorlevel 1 (
+-  echo [ERROR] CMake no esta disponible en PATH.
+-  echo [INFO] Instala Visual Studio 2022 o Build Tools con "Desktop development with C++" y CMake.
+-  exit /b 2
+-)
+-
+-set "OUT=generated\official_v0.1.1"
+-set "CPP=%OUT%\cpp"
+-set "CB=_cb_v0.1.1"
+-set "PADARG="
+-if exist "profiles\controller_profile.ini" (
+-  set "PADARG=--controller-profile=profiles\controller_profile.ini"
+-)
+-
+-if "%REUSE%"=="1" goto :reuse_existing
+-
+-if "%CLEAN%"=="1" (
+-  echo [CLEAN] Eliminando cache de la release oficial...
+-  if exist "%OUT%" rmdir /s /q "%OUT%"
+-  if exist "%CB%" rmdir /s /q "%CB%"
+-)
+-if not exist "%OUT%" mkdir "%OUT%"
+-
+-set "DCR_TRACE_HISTORY=0"
+-set "HEARTBEAT=1000"
+-set "EXTRA_RUN="
+-if "%PERF%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --perf-profile --perf-sample-stride=64"
+-if "%DEBUG%"=="1" (
+-  set "DCR_TRACE_HISTORY=1"
+-  set "HEARTBEAT=500"
+-  set "EXTRA_RUN=!EXTRA_RUN! --host-window"
+-)
+-if "%PVR_PROFILE%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --pvr-profile --host-window"
+-
+-set "GPU_ARGS="
+-set "ACTIVE_RENDERER="
+-set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768 --aica-play"
+-set "AUDIO_ARGS_BASIC=--aica-arm7 --aica-play"
+-if "%NO_AUDIO%"=="1" (
+-  set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768"
+-  set "AUDIO_ARGS_BASIC=--aica-arm7"
+-)
+-
+-cls
+-echo ============================================================
+-echo  DreamcastRecomp %DCR_VERSION%
+-echo  Universal CDI runner
+-echo ============================================================
+-echo  Juego : %DISC%
+-echo  Perf  : %PERF%   Debug: %DEBUG%   PVR profile: %PVR_PROFILE%
+-echo  Render pedido: !RENDERER!
+-echo  Audio : %NO_AUDIO% ^(0=on, 1=muted^)
+-echo ============================================================
+-echo.
+-
+-rem Build only the tools needed by the universal path. CMake/MSBuild remain incremental.
+-echo [1/6] Preparando herramientas %DCR_VERSION%...
+-cmake -S . -B build -A x64
+-if errorlevel 1 exit /b 2
+-cmake --build build --config Release --target dc_disc_probe dc_boot_prepare dc_raw_recomp --parallel 1
+-if errorlevel 1 exit /b 2
+-
+-for %%T in (dc_disc_probe dc_boot_prepare dc_raw_recomp) do (
+-  if not exist "build\Release\%%T.exe" (
+-    echo [ERROR] Falta build\Release\%%T.exe despues del build.
+-    exit /b 2
+-  )
+-)
+-
+-echo.
+-echo [2/6] Analizando CDI y creando mapa GD-ROM...
+-build\Release\dc_disc_probe.exe "%DISC%" ^
+-  --extract-ip="%OUT%\IP.BIN" ^
+-  --extract-boot="%OUT%\BOOT.DISC.BIN" ^
+-  --extract-disc-map="%OUT%\disc.map"
+-if errorlevel 1 exit /b 3
+-
+-set "TITLE="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "title=" "%OUT%\disc.map"') do set "TITLE=%%B"
+-set "VOLUME="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "volume=" "%OUT%\disc.map"') do set "VOLUME=%%B"
+-
+-set "MODE=GENERIC"
+-if /I "!TITLE!"=="PIZZICATO POLKA" set "MODE=DAYTONA"
+-if /I "!TITLE!"=="RECORD OF LODOSS WAR" set "MODE=LODOSS"
+-if /I "!TITLE!"=="CHUCHU ROCKET" set "MODE=CHUCHU"
+-if /I "!TITLE!"=="CRAZY TAXI 2" set "MODE=CT2"
+-
+-rem AUTO conserva el comportamiento previo por perfil.
+-set "ACTIVE_RENDERER=!RENDERER!"
+-if /I "!ACTIVE_RENDERER!"=="auto" (
+-  if /I "!MODE!"=="DAYTONA" (
+-    set "ACTIVE_RENDERER=software"
+-  ) else if /I "!MODE!"=="LODOSS" (
+-    set "ACTIVE_RENDERER=software"
+-  ) else (
+-    set "ACTIVE_RENDERER=dx11"
+-  )
+-)
+-
+-if /I "!ACTIVE_RENDERER!"=="dx11" (
+-  rem Backend GPU disponible hoy: Direct3D 11.
+-  set "GPU_ARGS=--pvr-gpu --pvr-render-done-scheduled --pvr-mt"
+-) else (
+-  rem Renderer CPU/software. Mantiene PVR multithread.
+-  set "GPU_ARGS=--pvr-mt"
+-)
+-
+-echo [INFO] Titulo : !TITLE!
+-echo [INFO] Volumen: !VOLUME!
+-echo [INFO] Perfil : !MODE!
+-echo [INFO] Render : !ACTIVE_RENDERER!
+-if defined PADARG (echo [INFO] Mando  : profiles\controller_profile.ini) else (echo [INFO] Mando  : default teclado/XInput/PS4-DirectInput)
+-
+-if /I "!MODE!"=="LODOSS" goto :prepare_lodoss
+-
+-echo.
+-echo [3/6] Preparando bootstrap comercial...
+-build\Release\dc_boot_prepare.exe "%OUT%\IP.BIN" "%OUT%\BOOT.DISC.BIN" ^
+-  --mode=auto ^
+-  --boot-out="%OUT%\BOOT.BIN" ^
+-  --combined-out="%OUT%\BOOTSTRAP.BIN"
+-if errorlevel 1 exit /b 4
+-
+-echo.
+-echo [4/6] Recompilando closure SH-4...
+-if /I "!MODE!"=="DAYTONA" (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 ^
+-    --seed-file="profiles\daytona_usa_known_seeds.txt" ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-) else if /I "!MODE!"=="CT2" (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
+-    --seed-file="profiles\crazy_taxi_2_known_seeds.txt" ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-) else (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-)
+-if errorlevel 1 exit /b 5
+-goto :compile_runner
+-
+-:prepare_lodoss
+-echo.
+-echo [3/6] Extrayendo ejecutable secundario 1NOSDC.BIN de Lodoss...
+-build\Release\dc_disc_probe.exe "%DISC%" --extract-file=1NOSDC.BIN="%OUT%\1NOSDC.BIN"
+-if errorlevel 1 exit /b 4
+-
+-echo.
+-echo [4/6] Recompilando closure SH-4 de Lodoss...
+-build\Release\dc_raw_recomp.exe "%OUT%\1NOSDC.BIN" ^
+-  --base=0x8C010000 --entry=0x8C010000 ^
+-  --seed-file="profiles\record_of_lodoss_war_known_seeds.txt" ^
+-  --max-functions=10000 --max-closure-entries=9000 --closure-passes=64 ^
+-  --map="%OUT%\function_map.csv" --output="%CPP%"
+-if errorlevel 1 exit /b 5
+-
+-:compile_runner
+-echo.
+-echo [5/6] Compilando runner nativo generado...
+-cmake -S "%CPP%" -B "%CB%" -A x64
+-if errorlevel 1 exit /b 6
+-cmake --build "%CB%" --config Release --target dreamcast_program --parallel 1
+-if errorlevel 1 exit /b 7
+-
+-goto :execute_runner
+-
+-:execute_runner
+-echo.
+-if "%REUSE%"=="1" (echo [CACHE] Ejecutando runner ya compilado; no se regenera SH-4.) else (echo [6/6] Ejecutando !MODE!...)
+-echo [INFO] Controles: flechas=D-pad, WASD=analogico, Z/J/Space=A, X/K=B, C/U=X, V/I=Y, Enter=START.
+-echo [INFO] Opciones activas: !EXTRA_RUN!
+-echo.
+-
+-set "EXE=%CB%\Release\dreamcast_program.exe"
+-if not exist "!EXE!" (
+-  echo [ERROR] No se genero !EXE!
+-  exit /b 7
+-)
+-
+-if /I "!MODE!"=="DAYTONA" (
+-  "!EXE!" ^
+-    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else if /I "!MODE!"=="CT2" (
+-  "!EXE!" ^
+-    --commercial-boot --ct2-compat --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
+-    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
+-    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else if /I "!MODE!"=="LODOSS" (
+-  "!EXE!" ^
+-    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else (
+-  "!EXE!" ^
+-    --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
+-    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
+-    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-)
+-
+-set "RC=!ERRORLEVEL!"
+-echo.
+-echo [INFO] DreamcastRecomp %DCR_VERSION% termino con RC=!RC!.
+-if "!RC!"=="130" echo [INFO] RC=130 = cierre manual de la ventana.
+-exit /b !RC!
+-
+-:reuse_existing
+-if not exist "%OUT%\disc.map" (
+-  echo [ERROR] --reuse requiere una generacion previa: falta %OUT%\disc.map
+-  echo [INFO] Ejecuta run_game.bat normalmente una sola vez para este juego.
+-  exit /b 9
+-)
+-if not exist "%CB%\Release\dreamcast_program.exe" (
+-  echo [ERROR] --reuse requiere el runner ya compilado: falta %CB%\Release\dreamcast_program.exe
+-  exit /b 9
+-)
+-set "MAP_IMAGE="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "image=" "%OUT%\disc.map"') do set "MAP_IMAGE=%%B"
+-if defined MAP_IMAGE if /I not "!MAP_IMAGE!"=="%DISC%" (
+-  echo [ERROR] El cache generado pertenece a otro CDI:
+-  echo [CACHE] !MAP_IMAGE!
+-  echo [PEDIDO] %DISC%
+-  echo [INFO] Para cambiar de juego hace falta una generacion normal.
+-  exit /b 9
+-)
+-set "TITLE="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "title=" "%OUT%\disc.map"') do set "TITLE=%%B"
+-set "VOLUME="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "volume=" "%OUT%\disc.map"') do set "VOLUME=%%B"
+-set "MODE=GENERIC"
+-if /I "!TITLE!"=="PIZZICATO POLKA" set "MODE=DAYTONA"
+-if /I "!TITLE!"=="RECORD OF LODOSS WAR" set "MODE=LODOSS"
+-if /I "!TITLE!"=="CHUCHU ROCKET" set "MODE=CHUCHU"
+-if /I "!TITLE!"=="CRAZY TAXI 2" set "MODE=CT2"
+-set "ACTIVE_RENDERER=!RENDERER!"
+-if /I "!ACTIVE_RENDERER!"=="auto" (
+-  if /I "!MODE!"=="DAYTONA" (
+-    set "ACTIVE_RENDERER=software"
+-  ) else if /I "!MODE!"=="LODOSS" (
+-    set "ACTIVE_RENDERER=software"
+-  ) else (
+-    set "ACTIVE_RENDERER=dx11"
+-  )
+-)
+-if /I "!ACTIVE_RENDERER!"=="dx11" (set "GPU_ARGS=--pvr-gpu --pvr-render-done-scheduled --pvr-mt") else (set "GPU_ARGS=--pvr-mt")
+-set "DCR_TRACE_HISTORY=0"
+-set "HEARTBEAT=1000"
+-set "EXTRA_RUN="
+-if "%PERF%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --perf-profile --perf-sample-stride=64"
+-if "%DEBUG%"=="1" (
+-  set "DCR_TRACE_HISTORY=1"
+-  set "HEARTBEAT=500"
+-  set "EXTRA_RUN=!EXTRA_RUN! --host-window"
+-)
+-if "%PVR_PROFILE%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --pvr-profile --host-window"
+-set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768 --aica-play"
+-set "AUDIO_ARGS_BASIC=--aica-arm7 --aica-play"
+-if "%NO_AUDIO%"=="1" (
+-  set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768"
+-  set "AUDIO_ARGS_BASIC=--aica-arm7"
+-)
+-echo ============================================================
+-echo  DreamcastRecomp %DCR_VERSION% - CACHE REUSE
+-echo ============================================================
+-echo  Juego  : %DISC%
+-echo  Perfil : !MODE!
+-echo  Render : !ACTIVE_RENDERER!
+-echo ============================================================
+-goto :execute_runner
++  exit /b 8
++)
++exit /b 0
+ 
+ :renderer_not_implemented
+ echo.
+ echo [ERROR] El backend !RENDERER! esta reservado pero todavia no esta implementado.
+-echo [INFO] Backend GPU disponible actualmente: dx11 ^(Direct3D 11^).
+-echo [INFO] Software tambien esta disponible con --renderer=software.
+-echo [INFO] La seleccion ya queda estructurada para Vulkan / DX12 / DX10 / DX9.
++echo [INFO] Disponibles hoy: dx11 y software.
+ exit /b 8
+ 
+ :usage
+ echo.
+-echo DreamcastRecomp v0.1.1 Official
++echo DreamcastRecomp %DCR_VERSION%
+ echo.
+ echo Uso:
+ echo   %~nx0 "juego.cdi" [opciones]
+ echo.
+-echo Ejemplos:
+-echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi"
+-echo   %~nx0 "C:\Juegos\Crazy Taxi 2.cdi" --perf
+-echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi" --renderer=dx11
+-echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi" --reuse --renderer=dx11
+-echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --renderer=dx11
+-echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --debug
+-echo   %~nx0 "C:\Juegos\Record of Lodoss War.cdi" --clean
+- echo.
++echo Perfiles:
++echo   La primera ejecucion crea games\TITULO\game.cfg y un cache separado.
++echo   ChuChu, CT2, Daytona, Lodoss y SGGG reciben defaults conocidos.
++echo   Juegos nuevos reciben un CFG GENERIC editable sin tocar otros juegos.
++echo.
+ echo Opciones:
+-echo   --perf       Perfil de rendimiento de bajo overhead.
+-echo   --debug      Diagnostico adicional + heartbeat cada 500 ms.
+-echo   --profile    Perfil detallado PVR ^(mas lento^).
+-echo   --renderer=BACKEND  Selecciona renderer: auto, dx11 o software.
+-echo   --renderer BACKEND  Igual que arriba, con valor separado.
+-echo   --gpu                Alias de --renderer=dx11.
+-echo   --gpu=BACKEND        Alias preparado para seleccionar backend GPU.
+-echo   --software           Alias legacy de --renderer=software.
+-echo                       Reservados: vulkan, dx12, dx10, dx9.
+-echo   --no-audio   Ejecuta ARM7/AICA sin salida de audio al host.
+-echo   --reuse       Usa closure/objetos/EXE existentes; no recompila el juego.
+-echo   --no-recompile Alias de --reuse.
+-echo   --clean      Regenera el workspace oficial desde cero.
+-echo   --no-pause   Reservado para wrappers/automatizacion.
+-echo   --help, -h   Muestra esta ayuda.
++echo   --perf            Perfil de rendimiento de bajo overhead.
++echo   --debug           Diagnostico adicional.
++echo   --profile         Perfil detallado PVR.
++echo   --renderer=dx11   Fuerza Direct3D 11.
++echo   --renderer=software Fuerza renderer CPU.
++echo   --gpu             Alias de --renderer=dx11.
++echo   --software        Alias de --renderer=software.
++echo   --no-audio        Ejecuta AICA/ARM7 sin salida host.
++echo   --reuse           Reutiliza SOLO el cache del titulo detectado.
++echo   --no-recompile    Alias de --reuse.
++echo   --clean           Limpia SOLO el cache del titulo detectado.
++echo   --help, -h        Muestra esta ayuda.
+ echo.
+ echo Tambien puedes arrastrar un archivo .cdi sobre run_game.bat.
+ exit /b 1
+--- a/README.md
++++ b/README.md
+@@ -87,9 +87,35 @@
+ | `--gpu` | Alias for `--renderer=dx11`. |
+ | `--software` | Legacy alias for `--renderer=software`. |
+ | `--no-audio` | Disable host audio output while keeping ARM7/AICA execution active. |
+-| `--clean` | Rebuild the v0.1 generated workspace from scratch. |
++| `--reuse` | Reuse only the detected game's generated closure/build. |
++| `--clean` | Rebuild only the detected game workspace; its `game.cfg` is preserved. |
+ | `--help` | Show the launcher help. |
+ 
++
++
++### Per-game compatibility profiles (cpp23)
++
++The canonical launcher now creates an isolated workspace for every detected disc title:
++
++```text
++games\<TITLE>\game.cfg
++games\<TITLE>\generated\
++games\<TITLE>\build\
++```
++
++The CFG is generated automatically from `dc_disc_probe` metadata the first time a title is seen. Known games receive compatibility defaults for boot staging, renderer, seeds and entry path; unknown games receive a `GENERIC` profile that can be edited without changing source code.
++
++This also prevents cross-game cache contamination: `--reuse` reuses only the currently detected title, and `--clean` cleans only that title.
++
++Boot staging is now explicit in the known profiles:
++
++- ChuChu Rocket: `plain`
++- Crazy Taxi 2: `scrambled`
++- Daytona USA / `PIZZICATO POLKA`: `plain`
++- Record of Lodoss War: `plain`
++- Segagaga / SGGG: `scrambled`
++
++See `docs/CPP23_GAME_PROFILE_REGRESSION_FIX.md` for the regression audit and profile format.
+ 
+ ### Renderer selection
+ 
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,3 +1,9 @@
++# cpp23 game-profile regression repair
++- Adds persistent per-game `game.cfg` files and isolated generated/build workspaces.
++- Restores pre-cpp11 plain commercial staging for Daytona/Lodoss while keeping CT2/SGGG scrambled and ChuChu plain.
++- Makes boot stage, renderer, seeds, entry path, closure limits, audio/clock policy and extra runtime args profile-driven.
++- `--reuse` and `--clean` are now scoped to the detected title.
++
+ # Native GPU PVR checkpoint (cpp20)
+ 
+ - Moves Dreamcast texture decoding for the D3D11 fast path to a feature-level-11 compute shader, retaining CPU decode only as a compatibility/fallback path.
+--- /dev/null
++++ b/tools/game_profiles/ResolveGameProfile.ps1
+@@ -0,0 +1,196 @@
++param(
++    [Parameter(Mandatory=$true)][AllowEmptyString()][string]$Title,
++    [string]$Volume = "",
++    [Parameter(Mandatory=$true)][string]$Disc,
++    [string]$Root = "games",
++    [Parameter(Mandatory=$true)][string]$EmitCmd
++)
++
++$ErrorActionPreference = "Stop"
++
++function Normalize-Token([string]$s) {
++    if ([string]::IsNullOrWhiteSpace($s)) { return "" }
++    return (($s.Trim().ToUpperInvariant()) -replace '\s+', ' ')
++}
++
++function Get-SafeSlug([string]$s) {
++    if ([string]::IsNullOrWhiteSpace($s)) {
++        $s = [IO.Path]::GetFileNameWithoutExtension($Disc)
++    }
++    foreach ($c in [IO.Path]::GetInvalidFileNameChars()) {
++        $s = $s.Replace([string]$c, "_")
++    }
++    $s = ($s -replace '[^A-Za-z0-9._ -]', '_')
++    $s = ($s -replace '\s+', '_').Trim([char[]]' ._')
++    if ([string]::IsNullOrWhiteSpace($s)) { $s = "UNKNOWN_GAME" }
++    if ($s.Length -gt 72) { $s = $s.Substring(0,72).TrimEnd([char[]]'_.') }
++    return $s
++}
++
++function New-Defaults {
++    $p = [ordered]@{
++        profile_version       = "1"
++        title                 = $Title.Trim()
++        volume                = $Volume.Trim()
++        mode                  = "GENERIC"
++        renderer              = "dx11"
++        commercial_boot       = "1"
++        commercial_boot_stage = "auto"
++        direct_game_entry     = ""
++        ct2_compat             = "0"
++        seed_file              = ""
++        entry_seed             = "0x8C010000"
++        raw_base               = "0x8C008000"
++        raw_entry              = "0x8C008300"
++        max_functions          = "8192"
++        max_closure_entries    = "6144"
++        closure_passes         = "64"
++        audio_profile          = "full"
++        device_clock           = "host"
++        special_boot_file      = ""
++        controller_profile     = ""
++        extra_run_args         = ""
++    }
++
++    $t = Normalize-Token $Title
++    $v = Normalize-Token $Volume
++    $id = "$t $v"
++
++    if ($id -match 'CHUCHU\s*ROCKET') {
++        $p.mode = "CHUCHU"
++        $p.renderer = "dx11"
++        # cpp21 proved cooked 2048/0 media must stay plain.
++        $p.commercial_boot_stage = "plain"
++    }
++    elseif ($id -match 'CRAZY\s*TAXI\s*2') {
++        $p.mode = "CT2"
++        $p.renderer = "dx11"
++        # v0.1.1 historical CT2 path intentionally restaged the executable.
++        $p.commercial_boot_stage = "scrambled"
++        $p.ct2_compat = "1"
++        $p.seed_file = "profiles\crazy_taxi_2_known_seeds.txt"
++    }
++    elseif ($id -match 'PIZZICATO\s+POLKA|DAYTONA') {
++        $p.mode = "DAYTONA"
++        $p.renderer = "software"
++        # Regression fix: pre-cpp11 Daytona used --commercial-boot without CT2
++        # scramble staging. Keep the old plain behavior explicitly.
++        $p.commercial_boot_stage = "plain"
++        $p.direct_game_entry = "0x8C010000"
++        $p.seed_file = "profiles\daytona_usa_known_seeds.txt"
++        $p.entry_seed = ""
++        $p.audio_profile = "basic"
++        $p.device_clock = "device"
++    }
++    elseif ($id -match 'RECORD\s+OF\s+LODOSS\s+WAR|LODOSS') {
++        $p.mode = "LODOSS"
++        $p.renderer = "software"
++        $p.commercial_boot_stage = "plain"
++        $p.direct_game_entry = "0x8C010000"
++        $p.seed_file = "profiles\record_of_lodoss_war_known_seeds.txt"
++        $p.entry_seed = ""
++        $p.raw_base = "0x8C010000"
++        $p.raw_entry = "0x8C010000"
++        $p.max_functions = "10000"
++        $p.max_closure_entries = "9000"
++        $p.special_boot_file = "1NOSDC.BIN"
++        $p.audio_profile = "basic"
++        $p.device_clock = "device"
++    }
++    elseif ($id -match 'SEGAGAGA|SEGA\s*GAGA|SGGG') {
++        $p.mode = "SGGG"
++        # Preserve the cpp17/cpp18 validated software/PVR path first; users can
++        # opt into DX11 by editing the per-game cfg or with --renderer=dx11.
++        $p.renderer = "software"
++        $p.commercial_boot_stage = "scrambled"
++        $p.seed_file = "profiles\sggg_known_seeds.txt"
++    }
++
++    return $p
++}
++
++function Read-Cfg([string]$path, $defaults) {
++    $p = [ordered]@{}
++    foreach ($k in $defaults.Keys) { $p[$k] = [string]$defaults[$k] }
++    if (Test-Path -LiteralPath $path) {
++        foreach ($line in Get-Content -LiteralPath $path -Encoding UTF8) {
++            $trim = $line.Trim()
++            if ($trim.Length -eq 0 -or $trim.StartsWith("#") -or $trim.StartsWith(";")) { continue }
++            $eq = $trim.IndexOf("=")
++            if ($eq -lt 1) { continue }
++            $key = $trim.Substring(0,$eq).Trim().ToLowerInvariant()
++            $value = $trim.Substring($eq+1).Trim()
++            if ($p.Contains($key)) { $p[$key] = $value }
++        }
++    }
++    # Metadata always follows the disc probe, settings remain user-editable.
++    $p["title"] = $Title.Trim()
++    $p["volume"] = $Volume.Trim()
++    return $p
++}
++
++function Write-Cfg([string]$path, $p) {
++    $lines = New-Object System.Collections.Generic.List[string]
++    $lines.Add("# DreamcastRecompiled per-game profile")
++    $lines.Add("# Generated from disc metadata. Settings are preserved on later runs.")
++    $lines.Add("# commercial_boot_stage: auto | plain | scrambled")
++    $lines.Add("# renderer: auto | dx11 | software")
++    foreach ($k in $p.Keys) {
++        $lines.Add(("{0}={1}" -f $k, [string]$p[$k]))
++    }
++    [IO.File]::WriteAllLines($path, $lines, [Text.UTF8Encoding]::new($false))
++}
++
++function Cmd-Escape([string]$s) {
++    if ($null -eq $s) { return "" }
++    # Values emitted here are consumed as SET "K=V". Escape cmd expansion tokens.
++    return $s.Replace("%","%%").Replace('"','""')
++}
++
++$defaults = New-Defaults
++$slug = Get-SafeSlug $(if ([string]::IsNullOrWhiteSpace($Title)) { [IO.Path]::GetFileNameWithoutExtension($Disc) } else { $Title })
++$gameDir = Join-Path $Root $slug
++$generatedDir = Join-Path $gameDir "generated"
++$buildDir = Join-Path $gameDir "build"
++$logsDir = Join-Path $gameDir "logs"
++$capturesDir = Join-Path $gameDir "captures"
++
++New-Item -ItemType Directory -Force -Path $gameDir,$generatedDir,$buildDir,$logsDir,$capturesDir | Out-Null
++$cfg = Join-Path $gameDir "game.cfg"
++$p = Read-Cfg $cfg $defaults
++Write-Cfg $cfg $p
++
++$vars = [ordered]@{
++    DCR_GAME_SLUG            = $slug
++    DCR_GAME_DIR             = $gameDir
++    DCR_PROFILE_CFG          = $cfg
++    DCR_MODE                 = $p.mode
++    DCR_PROFILE_RENDERER     = $p.renderer
++    DCR_COMMERCIAL_BOOT      = $p.commercial_boot
++    DCR_BOOT_STAGE           = $p.commercial_boot_stage
++    DCR_DIRECT_GAME_ENTRY    = $p.direct_game_entry
++    DCR_CT2_COMPAT           = $p.ct2_compat
++    DCR_SEED_FILE            = $p.seed_file
++    DCR_ENTRY_SEED           = $p.entry_seed
++    DCR_RAW_BASE             = $p.raw_base
++    DCR_RAW_ENTRY            = $p.raw_entry
++    DCR_MAX_FUNCTIONS        = $p.max_functions
++    DCR_MAX_CLOSURE_ENTRIES  = $p.max_closure_entries
++    DCR_CLOSURE_PASSES       = $p.closure_passes
++    DCR_AUDIO_PROFILE        = $p.audio_profile
++    DCR_DEVICE_CLOCK         = $p.device_clock
++    DCR_SPECIAL_BOOT_FILE    = $p.special_boot_file
++    DCR_CONTROLLER_PROFILE   = $p.controller_profile
++    DCR_PROFILE_EXTRA_RUN    = $p.extra_run_args
++}
++
++$cmdLines = New-Object System.Collections.Generic.List[string]
++foreach ($kv in $vars.GetEnumerator()) {
++    $cmdLines.Add(('set "{0}={1}"' -f $kv.Key, (Cmd-Escape ([string]$kv.Value))))
++}
++[IO.File]::WriteAllLines($EmitCmd, $cmdLines, [Text.ASCIIEncoding]::new())
++
++Write-Host ("[PROFILE] title={0}" -f $Title)
++Write-Host ("[PROFILE] mode={0} slug={1}" -f $p.mode, $slug)
++Write-Host ("[PROFILE] cfg={0}" -f $cfg)
++Write-Host ("[PROFILE] renderer={0} boot-stage={1}" -f $p.renderer, $p.commercial_boot_stage)
+--- /dev/null
++++ b/profiles/game_profile_template.cfg
+@@ -0,0 +1,22 @@
++# DreamcastRecompiled per-game profile template
++profile_version=1
++title=
++volume=
++mode=GENERIC
++renderer=dx11
++commercial_boot=1
++commercial_boot_stage=auto
++direct_game_entry=
++ct2_compat=0
++seed_file=
++entry_seed=0x8C010000
++raw_base=0x8C008000
++raw_entry=0x8C008300
++max_functions=8192
++max_closure_entries=6144
++closure_passes=64
++audio_profile=full
++device_clock=host
++special_boot_file=
++controller_profile=
++extra_run_args=
+--- /dev/null
++++ b/docs/CPP23_GAME_PROFILE_REGRESSION_FIX.md
+@@ -0,0 +1,104 @@
++# cpp23 — per-game profiles + commercial boot regression repair
++
++Base: `DreamcastRecomp_v0.1.1_cpp22_GPU_TEXTURE_CACHE_HOTFIX_checkpoint`.
++
++## Regression audit
++
++The first broad compatibility regression after the GitHub/v0.1.1 baseline is introduced by **cpp11**.
++
++In v0.1.1, `dc_setup_commercial_boot()` only performed Dreamcast 32-byte scramble restaging when `runtime.ct2_compat` was enabled. Daytona and Lodoss used `--commercial-boot` without CT2 compatibility, so their historical path stayed plain.
++
++cpp11 changed that behavior from CT2-only to generic:
++
++- new `commercial_boot_image_address` / `commercial_boot_image_size` metadata;
++- every generated commercial image with a non-zero `.raw_boot` was restaged as scrambled;
++- the first cpp11 implementation also included the synthetic 32 KiB IP.BIN region in that restaging.
++
++That was correct for the SGGG path being developed at the time, but it changed previously working titles globally.
++
++Later repairs were partial:
++
++- **cpp15** stopped scrambling the first 32 KiB IP.BIN and kept only the main executable in the generic restaging range.
++- **cpp21** added `--commercial-boot-stage={auto,plain,scrambled}` and used disc geometry in `auto`.
++- cpp21 restored cooked 2048/0 ChuChu behavior, but raw 2336-style titles still default to scrambled even when their pre-cpp11 launcher path was historically plain.
++
++This explains the current symptom: ChuChu can be healthy again while other games that had reached a useful milestone before cpp11 can regress.
++
++## cpp23 fix
++
++Boot staging is no longer treated as one global compatibility rule by the launcher. It is now part of a persistent per-game profile.
++
++Known defaults:
++
++| Game/profile | renderer | boot stage | important compatibility state |
++|---|---|---|---|
++| ChuChu Rocket | dx11 | plain | cooked retail path |
++| Crazy Taxi 2 | dx11 | scrambled | CT2 compatibility + CT2 seeds |
++| Daytona USA / PIZZICATO POLKA | software | plain | restores pre-cpp11 commercial-boot behavior |
++| Record of Lodoss War | software | plain | direct secondary executable path |
++| Segagaga / SGGG | software | scrambled | preserves cpp17/cpp18 validated restaging |
++| Unknown title | dx11 | auto | conservative generic profile, editable |
++
++The runtime cpp21 staging selector is retained. cpp23 changes **which mode the launcher requests per title**.
++
++## Persistent per-game workspace
++
++The first run of a title creates:
++
++```text
++games/
++  <DISC_TITLE>/
++    game.cfg
++    generated/
++      IP.BIN
++      BOOT.DISC.BIN
++      disc.map
++      BOOT.BIN
++      BOOTSTRAP.BIN
++      function_map.csv
++      cpp/
++    build/
++    logs/
++    captures/
++```
++
++`game.cfg` is generated from the title/volume discovered by `dc_disc_probe`. Existing values are preserved on later runs.
++
++`--reuse` and `--clean` now operate only on the detected game's workspace. This prevents one title's generated closure/build from being reused accidentally for another title.
++
++## Editable `game.cfg`
++
++Important keys:
++
++```ini
++mode=GENERIC
++renderer=dx11
++commercial_boot=1
++commercial_boot_stage=auto
++direct_game_entry=
++ct2_compat=0
++seed_file=
++entry_seed=0x8C010000
++raw_base=0x8C008000
++raw_entry=0x8C008300
++max_functions=8192
++max_closure_entries=6144
++closure_passes=64
++audio_profile=full
++device_clock=host
++special_boot_file=
++controller_profile=
++extra_run_args=
++```
++
++A new/unknown game therefore gets a safe reproducible profile instead of changing hard-coded launcher branches.
++
++## Validation in this environment
++
++- CMake configure: PASS.
++- `dc_disc_probe`: builds.
++- `dc_boot_prepare`: builds.
++- `dc_raw_recomp`: builds.
++- `cpp_emitter_tests`: PASS.
++
++Real Windows/D3D11/gameplay acceptance still has to be performed on the user's Windows machine with the owned CDI images.
+--- /dev/null
++++ b/validation/CPP23_GAME_PROFILES_VALIDATION.txt
+@@ -0,0 +1,32 @@
++DreamcastRecomp v0.1.1 cpp23 GAME_PROFILES_REGRESSION_FIX
++Validation date: 2026-09-22
++
++Base:
++  DreamcastRecomp_v0.1.1_cpp22_GPU_TEXTURE_CACHE_HOTFIX_checkpoint
++
++Regression audit:
++  Earliest broad commercial-boot behavior change after the GitHub/v0.1.1 baseline: cpp11.
++  v0.1.1 scramble-restaged only CT2 compatibility.
++  cpp11 generalized restaging to every commercial .raw_boot.
++  cpp15 repaired IP.BIN inclusion but retained generic restaging.
++  cpp21 added auto/plain/scrambled and restored cooked 2048/0 ChuChu.
++  cpp23 moves the selection into persistent per-game profiles.
++
++Linux/source validation:
++  cmake configure: PASS
++  dc_disc_probe build: PASS
++  dc_boot_prepare build: PASS
++  dc_raw_recomp build: PASS
++  cpp_emitter_tests: PASS (1/1)
++
++Windows/game validation:
++  Not executable in this Linux environment.
++  Required acceptance tests: ChuChu, CT2, Daytona, SGGG (and Lodoss if available).
++
++Profile defaults:
++  CHUCHU : dx11 / plain
++  CT2    : dx11 / scrambled / ct2_compat / crazy_taxi_2 seeds
++  DAYTONA: software / plain / direct 0x8C010000 / Daytona seeds
++  LODOSS : software / plain / 1NOSDC.BIN direct path
++  SGGG   : software / scrambled / SGGG seeds
++  GENERIC: dx11 / auto

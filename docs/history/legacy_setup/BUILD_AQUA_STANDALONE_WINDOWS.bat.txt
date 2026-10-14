@@ -1,0 +1,2 @@
+@echo off
+call "%~dp0PREPARAR_AQUA_SIN_PYTHON.bat"

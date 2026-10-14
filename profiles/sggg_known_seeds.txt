@@ -1,0 +1,9 @@
+# Segagaga (SGGG) — compatibility seeds recovered during live commercial tracing.
+# These are ordinary SH-4 code entrypoints observed at runtime; no game data is stored here.
+0x8C19676C
+0x8C164480
+0x8C182822
+0x8C1B6860
+0x8C212C0C
+0x8C21249E
+0x8C181BF8

@@ -1,0 +1,11 @@
+Dreamcast Recompiled v1.2 AQUA — dependencias del paquete Windows offline
+
+El artefacto Windows recompila un host Python con PyInstaller, incluyendo
+las bibliotecas de CPython 3.12 y Tkinter/Tcl/Tk necesarias para la interfaz.
+Estas dependencias tienen sus propias licencias. Deben conservarse los textos
+de licencia oficiales del entorno de construcción al redistribuir.
+CPython: https://docs.python.org/3/license.html
+Tcl/Tk: https://www.tcl.tk/software/tcltk/license.html
+PyInstaller: https://pyinstaller.org/en/stable/license.html
+
+La licencia propia del proyecto se encuentra en LICENSE.

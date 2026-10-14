@@ -1,0 +1,20 @@
+#pragma once
+#include "dc_runtime.hpp"
+#include <cstdint>
+
+namespace dcrecomp_generated {
+inline constexpr std::uint32_t DCR_GUEST_ABI_V1 = 0x00010000u;
+
+#if defined(_WIN32)
+#  if defined(DCR_GAME_MODULE_BUILD)
+#    define DCR_GAME_EXPORT extern "C" __declspec(dllexport)
+#  else
+#    define DCR_GAME_EXPORT extern "C" __declspec(dllimport)
+#  endif
+#else
+#  define DCR_GAME_EXPORT extern "C" __attribute__((visibility("default")))
+#endif
+
+DCR_GAME_EXPORT std::uint32_t dcr_game_abi_version_v1();
+DCR_GAME_EXPORT bool dcr_game_attach_v1(DCRuntime* runtime);
+} // namespace dcrecomp_generated

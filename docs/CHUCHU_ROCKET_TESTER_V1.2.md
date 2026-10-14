@@ -1,6 +1,6 @@
 # ChuChu Rocket! — V1.2 native tester guide
 
-DreamcastRecompiled V1.2 uses **ChuChu Rocket!** as its primary reference title for game-specific SH-4 native recompilation. The validated private Windows tester archive includes `games/CHUCHU_ROCKET/bin/dcr_game_module.dll` and the relevant host runtime/plugins.
+DreamcastRecompiled V1.2 uses **ChuChu Rocket!** as its primary reference title for game-specific SH-4 native recompilation. The validated Windows tester archive includes `games/CHUCHU_ROCKET/bin/dcr_game_module.dll` and the relevant host runtime/plugins.
 
 ## The compiled DLL is not a replacement for the disc
 
@@ -26,13 +26,15 @@ CDI  6e95281b2feaa98e8b1327b33d8e60147c329cd314f633bba88eb25229031d3b
 
 This hash identifies the disc used in the earlier validation record, **not** every compatible region/revision. `JUE` is the disc header's region field, not evidence that every released version has the same executable.
 
+The automatic loader matches the disc title/volume, not a cryptographic executable hash or exact product/revision. Different revisions can therefore select the same module and are not validated by this release.
+
 ## Launch procedure (authorized tester package)
 
 1. Extract the complete Windows x64 archive; keep `games/CHUCHU_ROCKET/`, `_internal/`, and `launcher/` alongside the launcher.
 2. Start `DreamcastRecompiled.exe`.
 3. Open **Games / Juegos** and select your own compatible ChuChu Rocket! CDI file. File name does not determine the game identity.
 4. Start the game. The validated precompiled path checks the disc title and bundle manifest/checksums, prepares temporary boot files, and runs the native guest module. It should not regenerate the SH-4 module every time.
-5. If a title/region check fails, do not force the ChuChu DLL onto a different game. Use the normal recompilation workflow for other titles.
+5. If the title check fails, do not force the ChuChu DLL onto a different game. Use the normal recompilation workflow for other titles.
 
 Other titles may need Microsoft C++ Build Tools, CMake, and Windows SDK. Online/DCNet support remains experimental; this tester milestone validates **offline** gameplay first.
 

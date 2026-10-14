@@ -1,0 +1,33 @@
+Renderer selection cpp19 static validation
+
+Checks:
+- renderer_eq: PASS
+- renderer_space: PASS
+- gpu_alias: PASS
+- dx11_args: PASS
+- software_args: PASS
+- future_vulkan: PASS
+- future_dx12: PASS
+- future_dx10: PASS
+- future_dx9: PASS
+- all_runner_paths: PASS
+- no_duplicate_labels: PASS
+
+AUTO / explicit mapping:
+- GENERIC  request=auto     -> active=dx11
+- GENERIC  request=dx11     -> active=dx11
+- GENERIC  request=software -> active=software
+- CT2      request=auto     -> active=dx11
+- CT2      request=dx11     -> active=dx11
+- CT2      request=software -> active=software
+- DAYTONA  request=auto     -> active=software
+- DAYTONA  request=dx11     -> active=dx11
+- DAYTONA  request=software -> active=software
+- LODOSS   request=auto     -> active=software
+- LODOSS   request=dx11     -> active=dx11
+- LODOSS   request=software -> active=software
+
+Notes:
+- DX11 maps to the existing PVR GPU flags; no renderer implementation was fabricated.
+- Vulkan/DX12/DX10/DX9 names are reserved and intentionally return not-implemented.
+- Only run_game.bat, README.md, CHANGELOG.md, and renderer docs changed from cpp18.

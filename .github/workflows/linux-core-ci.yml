@@ -1,0 +1,28 @@
+name: Linux core build and smoke tests
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/**'
+      - 'runtime/**'
+      - 'include/**'
+      - 'tests/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/linux-core-ci.yml'
+  pull_request:
+
+jobs:
+  linux-core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build recompilation CLI for Linux
+        run: |
+          cmake -S . -B .build-linux-core -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build .build-linux-core --target dc_recomp dc_analyzer -j 2
+      - name: Build runtime and Maple/GD-ROM/network .so
+        run: |
+          cmake -S runtime -B .build-linux-runtime -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build .build-linux-runtime -j 2
+      - name: Run runtime smoke tests
+        run: ctest --test-dir .build-linux-runtime --output-on-failure

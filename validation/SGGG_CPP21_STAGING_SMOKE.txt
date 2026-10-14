@@ -1,0 +1,5 @@
+SGGG cpp21 commercial-boot staging smoke
+========================================
+[GDROM] disc map loaded | format=DCR_DISC_MAP_V2 | image=/mnt/data/cpp20_sggg_test/SGGG.cdi | tracks=2 | boot-fad=11852 | physical-sector=2336 | user-offset=8 | logical-sector=2048
+[DCR BOOT] staging auto | physical-sector=2336 | user-offset=8 | mode=scrambled
+[DCR BOOT] staged scrambled commercial executable @0x8C010000 (3106103 bytes)

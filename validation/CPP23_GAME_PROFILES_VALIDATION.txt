@@ -1,0 +1,32 @@
+DreamcastRecomp v0.1.1 cpp23 GAME_PROFILES_REGRESSION_FIX
+Validation date: 2026-09-22
+
+Base:
+  DreamcastRecomp_v0.1.1_cpp22_GPU_TEXTURE_CACHE_HOTFIX_checkpoint
+
+Regression audit:
+  Earliest broad commercial-boot behavior change after the GitHub/v0.1.1 baseline: cpp11.
+  v0.1.1 scramble-restaged only CT2 compatibility.
+  cpp11 generalized restaging to every commercial .raw_boot.
+  cpp15 repaired IP.BIN inclusion but retained generic restaging.
+  cpp21 added auto/plain/scrambled and restored cooked 2048/0 ChuChu.
+  cpp23 moves the selection into persistent per-game profiles.
+
+Linux/source validation:
+  cmake configure: PASS
+  dc_disc_probe build: PASS
+  dc_boot_prepare build: PASS
+  dc_raw_recomp build: PASS
+  cpp_emitter_tests: PASS (1/1)
+
+Windows/game validation:
+  Not executable in this Linux environment.
+  Required acceptance tests: ChuChu, CT2, Daytona, SGGG (and Lodoss if available).
+
+Profile defaults:
+  CHUCHU : dx11 / plain
+  CT2    : dx11 / scrambled / ct2_compat / crazy_taxi_2 seeds
+  DAYTONA: software / plain / direct 0x8C010000 / Daytona seeds
+  LODOSS : software / plain / 1NOSDC.BIN direct path
+  SGGG   : software / scrambled / SGGG seeds
+  GENERIC: dx11 / auto

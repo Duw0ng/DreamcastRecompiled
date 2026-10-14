@@ -1,0 +1,55 @@
+cmake_minimum_required(VERSION 3.20)
+project(DreamcastRecompGeneratedModular LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS OFF)
+
+set(DCR_RUNTIME_ROOT "" CACHE PATH "DreamcastRecompiled modular runtime source directory")
+if(NOT DCR_RUNTIME_ROOT OR NOT EXISTS "${DCR_RUNTIME_ROOT}/CMakeLists.txt")
+    message(FATAL_ERROR "DCR_RUNTIME_ROOT must point to the cpp34+ runtime directory")
+endif()
+set(DCR_RUNTIME_OUTPUT_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "" FORCE)
+add_subdirectory("${DCR_RUNTIME_ROOT}" "${CMAKE_BINARY_DIR}/dcr_runtime_build")
+
+set(DCR_GUEST_SOURCES
+    __DCR_GUEST_SOURCES__
+)
+
+# The SH-4 closure is now its own DLL. Its object files are independent from
+# runtime/device/plugin changes and remain reusable across DreamcastRecompiled releases.
+add_library(dcr_game_module SHARED
+    dcr_game_exports.cpp
+    dc_image.cpp
+    ${DCR_GUEST_SOURCES}
+)
+target_compile_definitions(dcr_game_module PRIVATE DCR_GAME_MODULE_BUILD=1 DCR_GUEST_ABI_VERSION=1)
+target_compile_definitions(dcr_game_module PRIVATE DCR_FIXED_FPU_REGION_METRICS=0)
+target_include_directories(dcr_game_module PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(dcr_game_module PRIVATE DreamcastRuntime)
+set_target_properties(dcr_game_module PROPERTIES
+    PREFIX ""
+    INTERPROCEDURAL_OPTIMIZATION FALSE
+)
+option(DCR_HOST_AVX2 "Tune guest code for AVX2/FMA hosts" ON)
+if(MSVC)
+    target_compile_options(dcr_game_module PRIVATE
+        $<$<CONFIG:Release>:/O2> $<$<CONFIG:Release>:/Oi> $<$<CONFIG:Release>:/Ot> $<$<CONFIG:Release>:/Gy>)
+    if(DCR_HOST_AVX2)
+        target_compile_options(dcr_game_module PRIVATE $<$<CONFIG:Release>:/arch:AVX2>)
+        target_compile_definitions(dcr_game_module PRIVATE DCR_HOST_AVX2=1)
+    endif()
+else()
+    target_compile_options(dcr_game_module PRIVATE $<$<CONFIG:Release>:-O3> -pipe)
+endif()
+
+add_executable(generated_compile_test generated_compile_test.cpp)
+target_link_libraries(generated_compile_test PRIVATE dcr_game_module DreamcastRuntime)
+
+add_executable(dreamcast_program generated_runner.cpp)
+target_link_libraries(dreamcast_program PRIVATE dcr_game_module DreamcastRuntime)
+add_dependencies(dreamcast_program dcr_network dcr_maple)
+if(MSVC)
+    target_link_options(dreamcast_program PRIVATE $<$<CONFIG:Release>:/OPT:REF> $<$<CONFIG:Release>:/OPT:ICF>)
+endif()

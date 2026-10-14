@@ -1,0 +1,19 @@
+Dreamcast Recompiled v1.2 AQUA — RC7
+
+RAIZ: solo ABRIR_LAUNCHER.bat y COMPILAR_LAUNCHER.bat para usuarios.
+
+launcher/                  UI Aqua Python, 3 temas, VMU independiente y AquaPet
+scripts/windows/           Runner interno y scripts de compilacion/empaquetado
+scripts/controller/        Controles, calibrador
+scripts/legacy/            Accesos y pruebas historicos, no destinados a testers
+scripts/stable/, tests/    Desarrollo y pruebas de regresion
+runtime/, src/, include/   Recompilador y motor nativo original sin modificar
+safe_guests/, profiles/    AOT conservado y perfiles por juego
+docs/                      Notas, historial y guia Linux
+
+dist/                      ZIP offline REAL despues de compilar en Windows
+_internal/                 Biblioteca Python 3.12 + Tcl/Tk producida en Windows
+DreamcastRecompiled.exe    Host construido en Windows (no incluido en ZIP fuente)
+
+El ZIP FUENTE RC7 NO incluye las DLL Windows. El paquete final construido por
+COMPILAR_LAUNCHER.bat o GitHub Actions SI contiene las DLL verificadas.

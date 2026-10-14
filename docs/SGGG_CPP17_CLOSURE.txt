@@ -1,0 +1,74 @@
+[SH4 closure] pass 1/64 entries=8/9000
+[SH4 closure] pass 2/64 entries=1745/9000
+[SH4 closure] pass 3/64 entries=3844/9000
+[SH4 closure] pass 4/64 entries=5064/9000
+[SH4 closure] pass 5/64 entries=5732/9000
+[SH4 closure] pass 6/64 entries=6147/9000
+[SH4 closure] pass 7/64 entries=6277/9000
+[SH4 closure] pass 8/64 entries=6330/9000
+[SH4 closure] pass 9/64 entries=6349/9000
+[SH4 closure] pass 10/64 entries=6361/9000
+[SH4 closure] pass 11/64 entries=6368/9000
+[SH4 closure] pass 12/64 entries=6373/9000
+[SH4 closure] pass 13/64 entries=6378/9000
+[SH4 closure] pass 14/64 entries=6383/9000
+[SH4 closure] pass 15/64 entries=6387/9000
+[SH4 closure] pass 16/64 entries=6391/9000
+[SH4 closure] pass 17/64 entries=6393/9000
+DreamcastRecomp Raw Commercial Recompiler 0.0.210
+=============================================
+Input:                  generated/sggg_cpp15/BOOTSTRAP.BIN
+Image bytes:            3138871
+Load base:              0x8C008000
+Entry:                  0x8C008300
+Manual seed entries:    7
+Closure passes:         17
+Closure entry budget:   9000 / 10000
+Synthetic entries:      6393
+Reachable functions:    6393
+Call-graph edges:       16592
+External/unresolved:    1532
+Reachable instructions: 676914
+Known SH-4:             676914
+Unknown SH-4:           0
+CFG blocks:             106395
+DCIR ops:               692677
+RAW_SH4:                0
+Closure resolved calls: 417312
+Closure unresolved:     20619
+Rejected nonlocal:      1911
+Inline BSRF thunks:      11
+Literal callback targets:     0
+Stored callback targets:    31
+Direct literal targets:       5
+CFG literal call targets:    2
+Returned literal targets:    24
+Callback-object targets:  445
+Anchored dense callbacks:  109
+Long dense callbacks:     1276
+Clustered callbacks:       312
+Strided callback targets:    3
+Relocatable templates:       3
+Argument callbacks:         63
+Promoted CFG fragments:     89
+VBR vector callbacks:        0
+Sparse callback targets:     0
+Dense dispatch targets:     984
+Indexed tail dispatchers:    0
+Indexed tail targets:        0
+Scaled-index targets:        17
+Branch-selected calls:        1
+Packed BRA selectors:         1
+Rejected dirty fragments:     0
+Rejected dirty sources:       0
+Rejected dirty candidates:  476
+Address-taken candidates:  2180
+Address-taken proven:        128
+Function map:            generated/sggg_cpp17/function_map.csv
+SH-4 evidence map:       generated/sggg_cpp17/cpp/sh4_address_taken_evidence.csv
+Generated output:        generated/sggg_cpp17/cpp
+Embedded raw image:      3138871 bytes
+Registered functions:    6393
+
+[OK] Reachable commercial closure emitted without RAW_SH4.
+[NEXT] Runtime execution will identify the first unresolved dynamic/hardware dependency.

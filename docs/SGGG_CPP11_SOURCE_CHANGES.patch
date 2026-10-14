@@ -1,0 +1,343 @@
+--- a/src/codegen/cpp_emitter.cpp
++++ b/src/codegen/cpp_emitter.cpp
+@@ -2381,6 +2381,17 @@
+     std::uint64_t trace_call_count{};
+     bool commercial_boot_active{};
+     bool ct2_compat{};
++    // Commercial raw-boot staging metadata emitted from the synthetic .raw_boot section.
++    // Keeping this in the runtime makes the Katana/IP.BIN scramble-restage path title-agnostic.
++    std::uint32_t commercial_boot_image_address{};
++    std::uint32_t commercial_boot_image_size{};
++
++    // 128 KiB Dreamcast system flash image used by BIOS FlashROM HLE.
++    // Initialized lazily to erased 0xFF state; INFO/READ are sufficient for boot/title code.
++    std::array<std::uint8_t, 128u * 1024u> bios_flash{};
++    bool bios_flash_initialized{};
++    std::uint64_t bios_flash_info_calls{};
++    std::uint64_t bios_flash_read_calls{};
+     // Set when a device event redirects SH-4 execution to VBR+0x600. Generated
+     // nested C++ calls propagate this back to the top-level dispatcher so a
+     // host call/return cannot overwrite the asynchronous guest PC.
+@@ -10118,21 +10129,21 @@
+     // Keep the probe opt-in, but inject its finite START burst here so both
+     // SDK and custom/low-level Maple paths observe the same button pulses.
+     if (runtime.probe_controller_start_burst_lowlevel) {
++        // SGGG/long-intro diagnostic mode: do not perturb logos or early boot.
++        // Once real presentation has reached the late intro/title window, pulse
++        // START through the actual low-level GETCOND response. This remains
++        // strictly opt-in and never affects normal/manual input.
++        const std::uint64_t frame = runtime.pvr_frames;
+         const std::uint64_t poll = runtime.maple_getcond_responses;
+-        const auto in_pulse = [](std::uint64_t n, std::uint64_t base) {
+-            return n >= base && n < base + 3u;
+-        };
+-        const bool start = in_pulse(poll, 8u) || in_pulse(poll, 20u) ||
+-                           in_pulse(poll, 40u) || in_pulse(poll, 80u) ||
+-                           in_pulse(poll, 140u) || in_pulse(poll, 220u);
++        const bool in_window = frame >= 1800u && frame <= 5000u;
++        const bool start = in_window && ((poll % 90u) < 4u);
+         if (start) {
+             c.buttons = static_cast<std::uint16_t>(c.buttons | (1u << 3));
+-            if (poll == 8u || poll == 20u || poll == 40u || poll == 80u ||
+-                poll == 140u || poll == 220u) {
++            if ((poll % 90u) == 0u) {
+                 ++runtime.probe_start_burst_presses;
+-                std::cout << "[DreamcastRecomp smoke] low-level Maple START pulse "
+-                          << runtime.probe_start_burst_presses << "/6 at GETCOND #"
+-                          << poll << " pvr-frame=" << runtime.pvr_frames << "\n";
++                std::cout << "[DreamcastRecomp smoke] late low-level Maple START pulse "
++                          << runtime.probe_start_burst_presses << " at GETCOND #"
++                          << poll << " pvr-frame=" << frame << "\n";
+             }
+         }
+     }
+@@ -16270,10 +16281,78 @@
+     ctx.pc = ctx.pr;
+ }
+ 
+-void native_bios_flash(SH4Context& ctx, DCRuntime&) {
+-    // Partition-backed flash is a later milestone. Fail calls explicitly rather
+-    // than returning host garbage through an uninitialised BIOS vector.
+-    ctx.r[0] = 0xFFFFFFFFu;
++void bios_flash_ensure_initialized(DCRuntime& runtime) {
++    if (runtime.bios_flash_initialized) return;
++    runtime.bios_flash.fill(0xFFu);
++
++    // Factory/system settings live in the 8 KiB partition at 0x1A000.
++    // Use a deterministic Japanese NTSC console identity, which is the least
++    // surprising default for SGGG while keeping erased user/game partitions.
++    // SYSINFO reads five property bytes from 0x1A000 and eight ID bytes from
++    // 0x1A056. Values here are intentionally minimal rather than a copied BIOS dump.
++    runtime.bios_flash[0x1A000u] = 0x00u; // region: Japan
++    runtime.bios_flash[0x1A001u] = 0x00u; // language/default flags
++    runtime.bios_flash[0x1A002u] = 0x00u;
++    runtime.bios_flash[0x1A003u] = 0x00u;
++    runtime.bios_flash[0x1A004u] = 0x00u;
++    for (std::size_t i = 0; i < 8u; ++i) runtime.bios_flash[0x1A056u + i] = 0u;
++    runtime.bios_flash_initialized = true;
++}
++
++bool bios_flash_partition(std::uint32_t part, std::uint32_t& offset, std::uint32_t& size) {
++    // Katana flash partition map (128 KiB total). Partition IDs match the BIOS ABI.
++    switch (part) {
++        case 0u: offset = 0x1A000u; size = 0x02000u; return true; // factory/system
++        case 1u: offset = 0x18000u; size = 0x02000u; return true; // reserved
++        case 2u: offset = 0x1C000u; size = 0x04000u; return true; // block 1 / user
++        case 3u: offset = 0x10000u; size = 0x08000u; return true; // game settings
++        case 4u: offset = 0x00000u; size = 0x10000u; return true; // block 2
++        default: return false;
++    }
++}
++
++void native_bios_flash(SH4Context& ctx, DCRuntime& runtime) {
++    bios_flash_ensure_initialized(runtime);
++    switch (ctx.r[7]) {
++        case 0u: { // FLASHROM_INFO: r4=partition, r5={offset,size}
++            ++runtime.bios_flash_info_calls;
++            std::uint32_t offset = 0u, size = 0u;
++            if (!ctx.r[5] || !bios_flash_partition(ctx.r[4], offset, size)) {
++                ctx.r[0] = 0xFFFFFFFFu;
++                break;
++            }
++            dc_write32(runtime, ctx.r[5] + 0u, offset);
++            dc_write32(runtime, ctx.r[5] + 4u, size);
++            ctx.r[0] = 0u;
++            if (runtime.bios_flash_info_calls <= 8u)
++                std::cout << "[BIOS FLASH] INFO part=" << ctx.r[4]
++                          << " -> off=0x" << std::hex << std::uppercase << offset
++                          << " size=0x" << size << std::dec << "\n";
++            break;
++        }
++        case 1u: { // FLASHROM_READ: r4=offset, r5=destination, r6=bytes
++            ++runtime.bios_flash_read_calls;
++            const std::uint64_t end = static_cast<std::uint64_t>(ctx.r[4]) + ctx.r[6];
++            if (!ctx.r[5] || end > runtime.bios_flash.size()) {
++                ctx.r[0] = 0xFFFFFFFFu;
++                break;
++            }
++            if (ctx.r[6] != 0u)
++                dc_load_bytes(runtime, ctx.r[5], runtime.bios_flash.data() + ctx.r[4], ctx.r[6]);
++            ctx.r[0] = ctx.r[6];
++            if (runtime.bios_flash_read_calls <= 12u)
++                std::cout << "[BIOS FLASH] READ off=0x" << std::hex << std::uppercase << ctx.r[4]
++                          << " bytes=0x" << ctx.r[6] << " dst=0x" << ctx.r[5] << std::dec << "\n";
++            break;
++        }
++        // PROGRAM/ERASE are deliberately not enabled by the compatibility milestone.
++        // Returning failure preserves flash contents and makes unsupported writes explicit.
++        case 2u:
++        case 3u:
++        default:
++            ctx.r[0] = 0xFFFFFFFFu;
++            break;
++    }
+     ctx.pc = ctx.pr;
+ }
+ 
+@@ -16426,13 +16505,16 @@
+ } // namespace
+ 
+ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
+-    // v0.1.1 CT2: retail IP.BIN expects the main executable in Dreamcast
+-    // 32-byte-slice scrambled layout and descrambles it in-place.  The generated
+-    // image embeds the plain executable for static analysis, so restage it only
+-    // for the opt-in CT2 compatibility profile before IP.BIN runs.
+-    if (runtime.ct2_compat) {
+-        constexpr std::size_t boot_off = 0x10000u;
+-        constexpr std::size_t boot_size = 0x164794u;
++    // Retail IP.BIN expects the main executable in Dreamcast 32-byte-slice
++    // scrambled layout and descrambles it in-place. Static analysis embeds the
++    // plain .raw_boot image, so restage that exact generated section before
++    // IP.BIN executes. This is generic for commercial titles rather than CT2-only.
++    if (runtime.commercial_boot_image_size != 0u) {
++        const std::uint32_t canonical = runtime.commercial_boot_image_address & 0x1FFFFFFFu;
++        if (canonical < DCRuntime::kMainRamPhysicalBase)
++            throw std::runtime_error("commercial boot staging address is outside main RAM");
++        const std::size_t boot_off = static_cast<std::size_t>(canonical - DCRuntime::kMainRamPhysicalBase);
++        const std::size_t boot_size = runtime.commercial_boot_image_size;
+         constexpr std::size_t max_chunk = 2048u * 1024u;
+         struct BootRand {
+             std::uint32_t seed;
+@@ -16440,7 +16522,7 @@
+             std::uint32_t next() { seed = (seed * 2109u + 9273u) & 0x7FFFu; return (seed + 0xC000u) & 0xFFFFu; }
+         };
+         if (boot_off + boot_size > runtime.main_ram.size())
+-            throw std::runtime_error("CT2 commercial boot staging exceeds main RAM");
++            throw std::runtime_error("commercial boot staging exceeds main RAM");
+         std::vector<std::uint8_t> src(boot_size), dst(boot_size);
+         std::copy_n(runtime.main_ram.data() + boot_off, boot_size, src.data());
+         BootRand rng(static_cast<std::uint32_t>(boot_size));
+@@ -16463,7 +16545,8 @@
+         }
+         if (remain) std::copy_n(src.data() + src_pos, remain, dst.data() + dst_pos);
+         std::copy(dst.begin(), dst.end(), runtime.main_ram.begin() + boot_off);
+-        std::cout << "[DCR CT2] staged scrambled commercial executable (" << boot_size << " bytes)\n";
++        std::cout << "[DCR BOOT] staged scrambled commercial executable @0x" << std::hex << std::uppercase
++                  << runtime.commercial_boot_image_address << std::dec << " (" << boot_size << " bytes)\n";
+     }
+     // The BIOS leaves low RAM initialised before loading IP.BIN at 0x8C008000.
+     // Because the generated image is already embedded when this helper runs,
+@@ -20298,6 +20381,16 @@
+     result.compile_test_source = options.output_directory / "generated_compile_test.cpp";
+     result.printf_address = find_symbol_address(elf, "_printf").value_or(0);
+ 
++    std::uint32_t raw_boot_address = 0u;
++    std::uint32_t raw_boot_size = 0u;
++    for (const auto& section : elf.sections) {
++        if (section.name == ".raw_boot" && section.size != 0u) {
++            raw_boot_address = section.address;
++            raw_boot_size = section.size;
++            break;
++        }
++    }
++
+     std::ostringstream header;
+     header << "#pragma once\n\n"
+            << "#include \"dc_runtime.hpp\"\n\n"
+@@ -20705,6 +20798,8 @@
+                    << "    DCRSessionLogGuard dcr_session_log;\n"
+                    << "    if (dcr_session_log.enabled()) std::cout << \"[DCR LOG] session-log=\" << dcr_session_log.path() << \"\\n\";\n"
+                    << "    DCRuntime runtime;\n"
++                   << "    runtime.commercial_boot_image_address = " << hex8(raw_boot_address) << ";\n"
++                   << "    runtime.commercial_boot_image_size = " << raw_boot_size << "u;\n"
+                    << "#ifdef _WIN32\n"
+                    << "    g_dcr_crash_runtime = &runtime;\n"
+                    << "    SetUnhandledExceptionFilter(dcr_unhandled_exception_filter);\n"
+@@ -21132,6 +21227,16 @@
+     result.compile_test_source = options.output_directory / "generated_compile_test.cpp";
+     result.printf_address = find_symbol_address(elf, "_printf").value_or(0);
+ 
++    std::uint32_t raw_boot_address = 0u;
++    std::uint32_t raw_boot_size = 0u;
++    for (const auto& section : elf.sections) {
++        if (section.name == ".raw_boot" && section.size != 0u) {
++            raw_boot_address = section.address;
++            raw_boot_size = section.size;
++            break;
++        }
++    }
++
+     std::ostringstream header;
+     header << "#pragma once\n\n"
+            << "#include \"dc_runtime.hpp\"\n\n"
+@@ -21678,6 +21783,8 @@
+                    << "    DCRSessionLogGuard dcr_session_log;\n"
+                    << "    if (dcr_session_log.enabled()) std::cout << \"[DCR LOG] session-log=\" << dcr_session_log.path() << \"\\n\";\n"
+                    << "    DCRuntime runtime;\n"
++                   << "    runtime.commercial_boot_image_address = " << hex8(raw_boot_address) << ";\n"
++                   << "    runtime.commercial_boot_image_size = " << raw_boot_size << "u;\n"
+                    << "#ifdef _WIN32\n"
+                    << "    g_dcr_crash_runtime = &runtime;\n"
+                    << "    SetUnhandledExceptionFilter(dcr_unhandled_exception_filter);\n"
+--- a/tests/cpp_emitter_tests.cpp
++++ b/tests/cpp_emitter_tests.cpp
+@@ -103,8 +103,14 @@
+             "v0.1.1 pre-scans CT2 compatibility before commercial bootstrap setup");
+     require(runtime.find("staged scrambled commercial executable") != std::string::npos &&
+             runtime.find("BootRand") != std::string::npos &&
+-            runtime.find("if (runtime.ct2_compat)") != std::string::npos,
+-            "v0.1.1 emits CT2 32-byte-slice commercial boot staging");
++            runtime.find("runtime.commercial_boot_image_size != 0u") != std::string::npos &&
++            runtime_header.find("commercial_boot_image_address") != std::string::npos &&
++            runner.find("runtime.commercial_boot_image_size =") != std::string::npos,
++            "commercial runner emits title-agnostic .raw_boot 32-byte-slice staging");
++    require(runtime.find("bios_flash_partition") != std::string::npos &&
++            runtime.find("[BIOS FLASH] INFO") != std::string::npos &&
++            runtime.find("[BIOS FLASH] READ") != std::string::npos,
++            "commercial runtime exposes deterministic Dreamcast FlashROM INFO/READ HLE");
+ 
+     require(runtime.find("const std::uint64_t raster = runtime.pvr_spg_status_reads++") == std::string::npos,
+             "0.0.191 must not advance SPG raster from SPG_STATUS reads");
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,3 +1,11 @@
++# SGGG cpp11 recovery checkpoint
++
++- Restores title-agnostic `.raw_boot` commercial scramble restaging using generated section metadata.
++- Adds BIOS FlashROM INFO/READ HLE and keeps the flash syscall vector at `0x8C001004`.
++- Adds `profiles/sggg_known_seeds.txt` for the six runtime-discovered SH-4 targets through cpp10.
++- Moves the opt-in low-level Maple START diagnostic to the late PVR-frame 1800..5000 window for long-intro titles such as SGGG.
++- Normal/manual controller behavior is unchanged unless the probe flag is explicitly supplied.
++
+ # DreamcastRecomp v0.1.1 Official — Crazy Taxi 2 compatibility recovery
+ 
+ - Restores the commercial Katana boot path for Crazy Taxi 2; the universal launcher no longer uses `--direct-game-entry=0x8C010000` for CT2.
+--- /dev/null
++++ b/profiles/sggg_known_seeds.txt
+@@ -0,0 +1,8 @@
++# Segagaga (SGGG) — compatibility seeds recovered during live commercial tracing.
++# These are ordinary SH-4 code entrypoints observed at runtime; no game data is stored here.
++0x8C19676C
++0x8C164480
++0x8C182822
++0x8C1B6860
++0x8C212C0C
++0x8C21249E
+--- /dev/null
++++ b/docs/SGGG_CHECKPOINT_CPP11.md
+@@ -0,0 +1,23 @@
++# SGGG checkpoint — cpp11 recovery
++
++This checkpoint preserves the SGGG work that had previously lived only in a temporary generated workspace.
++
++## Source changes
++
++- Commercial executable restaging is derived from the generated `.raw_boot` section address/size instead of the Crazy Taxi 2 hard-coded size.
++- Dreamcast BIOS FlashROM vector implements `FLASHROM_INFO` and `FLASHROM_READ` over a deterministic 128 KiB HLE flash image.
++- Flash vector remains installed at `0x8C0000B8 -> 0x8C001004` during commercial boot setup.
++- The existing opt-in `--probe-controller-start-burst` low-level GETCOND diagnostic is moved to a late SGGG-safe window: PVR frames 1800..5000, short START pulses every 90 GETCOND responses.
++- `profiles/sggg_known_seeds.txt` records the six SH-4 entries recovered through cpp9/cpp10 tracing.
++
++## Last known SGGG milestone before this source recovery
++
++The cpp10 generated runtime sustained 2,566 consecutive PVR frames with no missing SH-4 target and reached:
++
++`Hitmaker -> CRI/Sofdec -> Thunderstone -> Mission Statement -> Management Philosophy -> 2025 HANEDA TOKYO -> anime cinematic`
++
++The target for the next diagnostic run is:
++
++`cinematic -> title screen -> PRESS START -> real menu`
++
++The START injection is diagnostic only and is not enabled during normal/manual execution.
+--- /dev/null
++++ b/docs/SGGG_CPP11_VALIDATION.txt
+@@ -0,0 +1,39 @@
++DreamcastRecomp SGGG cpp11 checkpoint validation
++===============================================
++
++Checkpoint purpose
++------------------
++Persist the SGGG recovery work after cpp10 so the progress does not depend on a temporary generated runner.
++
++Source-level changes preserved
++------------------------------
++- Generic commercial .raw_boot restaging instead of CT2-only hard-coded staging.
++- Persistent commercial boot image address/size metadata in generated runtimes.
++- BIOS Flash HLE for INFO and READ with the Dreamcast 128 KiB flash partition map.
++- Deterministic minimal factory/system flash defaults for BIOS HLE reads.
++- Optional late START diagnostic through the real low-level Maple GETCOND path, active only for --probe-controller-start-burst and PVR frames 1800..5000.
++- SGGG known runtime SH-4 seeds stored in profiles/sggg_known_seeds.txt.
++- Updated emitter regression tests for generic staging and BIOS Flash HLE.
++
++Validation completed
++--------------------
++- Full source Release/Ninja build: PASS.
++- CTest: 54/54 PASS, 0 failed.
++- SGGG CDI probe: PASS.
++- SGGG executable 1_SGGG.BIN: 3,106,103 bytes.
++- SGGG load address: 0x8C010000.
++- BOOTSTRAP.BIN entry: 0x8C008300.
++- Reconstructed SGGG.cdi SHA-256: 4177f8ebc71fc9ae42b59827c9f455a70c5442f53e68b353fad91f89a8034de0.
++
++Known cpp10 milestone being recovered
++-------------------------------------
++- 6,391 functions / 676,901 SH-4 instructions / RAW_SH4=0.
++- 2,566 consecutive PVR frames without missing target or SH-4 crash.
++- Reached Hitmaker -> CRI/Sofdec -> Thunderstone -> Mission Statement -> Management Philosophy -> 2025 HANEDA TOKYO -> anime cinematic.
++- Real menu was not yet confirmed.
++
++Current regeneration status at checkpoint time
++----------------------------------------------
++- Fresh closure regeneration was still in progress when frozen; its partial log reached pass 6/64 with 6,109 entries.
++- The incomplete generated_sggg_cpp11 directory is intentionally NOT included as a validated generated runtime.
++- samples/SGGG.cdi is intentionally NOT included in this source checkpoint because it is user game data and ~711 MB.

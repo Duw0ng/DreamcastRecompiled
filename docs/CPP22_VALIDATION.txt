@@ -1,0 +1,21 @@
+DreamcastRecomp cpp22 GPU texture-cache hotfix validation
+=========================================================
+
+Source build: PASS
+CTest logical suite: 54/54 PASS
+- tests 1..52 PASS in main run (generated_single_build included)
+- generated_program_build PASS in isolated continuation
+- controller_visual_tester_package PASS
+
+Incremental rebuild dry-run after touching ONLY dc_runtime.cpp:
+[1/3] Building CXX object CMakeFiles/dreamcast_generated.dir/dc_runtime.cpp.o
+[2/3] Linking CXX static library libdreamcast_generated.a
+[3/3] Linking CXX executable dreamcast_program
+No generated_program_part_XX source is rebuilt.
+
+ABI policy:
+- dc_runtime.hpp / DCRuntime layout unchanged by cpp22 hotfix.
+- Existing commercial SH-4 object files are reusable.
+
+Windows D3D11 execution cannot be performed in this Linux validation container.
+The supplied Windows run should be used to compare pvr-gnative and new pvr-gcache telemetry.

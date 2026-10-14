@@ -1,0 +1,13 @@
+# BEGIN DCR_CPP38E_HOT_BLOCK_RECOVERY
+# cpp38e: ChuChu validated hot-path specialization. These switches remove
+# diagnostic writes from the generated SH-4 fast path, constant-fold the
+# proven 256-cycle tick quantum and inline the common MMU-off main-RAM word
+# path. No guest clocks/timing rules are changed.
+target_compile_definitions(dcr_game_module PRIVATE
+    DCR_ASSUME_MMU_OFF=1
+    DCR_FIXED_SH4_TICK_BATCH=256
+    DCR_DISABLE_HOT_TICK_CALL_COUNTER=1
+    DCR_LIGHTWEIGHT_HOT_METRICS=1
+    DCR_LIGHTWEIGHT_CURRENT_PC=1
+)
+# END DCR_CPP38E_HOT_BLOCK_RECOVERY

@@ -1,0 +1,864 @@
+diff -ruN cpp18_pristine/CHANGELOG.md cpp18_restore/CHANGELOG.md
+--- cpp18_pristine/CHANGELOG.md	2026-09-21 21:55:20.000000000 +0000
++++ cpp18_restore/CHANGELOG.md	2026-09-22 00:56:13.101570038 +0000
+@@ -1,3 +1,12 @@
++# Renderer-selection checkpoint (cpp19)
++
++- Extends the canonical `run_game.bat` with a named renderer backend selector.
++- Adds `--renderer=dx11`, `--renderer dx11`, `--gpu` and `--gpu=dx11` for the existing Direct3D 11 GPU PVR path.
++- Keeps `--software` as a backward-compatible alias for `--renderer=software`.
++- Adds `auto` mode so existing title defaults remain unchanged: Generic/CT2 use DX11; Daytona/Lodoss keep software unless explicitly overridden.
++- Reserves `vulkan`, `dx12`, `dx10` and `dx9` names for future backends and reports them as not implemented instead of silently selecting DX11.
++- Explicit renderer selection now applies consistently across Generic, CT2, Daytona and Lodoss runner paths.
++
+ # SGGG cpp11 recovery checkpoint
+ 
+ - Restores title-agnostic `.raw_boot` commercial scramble restaging using generated section metadata.
+diff -ruN cpp18_pristine/README.md cpp18_restore/README.md
+--- cpp18_pristine/README.md	2026-09-21 21:55:20.000000000 +0000
++++ cpp18_restore/README.md	2026-09-22 00:56:13.100725498 +0000
+@@ -71,7 +71,8 @@
+ run_game.bat "C:\Games\game.cdi" --perf
+ run_game.bat "C:\Games\game.cdi" --debug
+ run_game.bat "C:\Games\game.cdi" --profile
+-run_game.bat "C:\Games\game.cdi" --software
++run_game.bat "C:\Games\game.cdi" --renderer=dx11
++run_game.bat "C:\Games\game.cdi" --renderer=software
+ run_game.bat "C:\Games\game.cdi" --no-audio
+ run_game.bat "C:\Games\game.cdi" --clean
+ ```
+@@ -81,11 +82,29 @@
+ | `--perf` | Low-overhead performance profile. |
+ | `--debug` | Extra diagnostics and 500 ms heartbeat. |
+ | `--profile` | Detailed PVR profiling; slower by design. |
+-| `--software` | Force software PVR instead of the GPU path where applicable. |
++| `--renderer=dx11` | Force the current Direct3D 11 GPU PVR backend. |
++| `--renderer=software` | Force the software PVR path. |
++| `--gpu` | Alias for `--renderer=dx11`. |
++| `--software` | Legacy alias for `--renderer=software`. |
+ | `--no-audio` | Disable host audio output while keeping ARM7/AICA execution active. |
+ | `--clean` | Rebuild the v0.1 generated workspace from scratch. |
+ | `--help` | Show the launcher help. |
+ 
++
++### Renderer selection
++
++`run_game.bat` now treats the renderer as a named backend instead of a simple GPU on/off switch:
++
++```bat
++run_game.bat "C:\Games\game.cdi" --renderer=dx11
++run_game.bat "C:\Games\game.cdi" --renderer=software
++run_game.bat "C:\Games\game.cdi" --renderer=auto
++```
++
++`auto` preserves the compatibility defaults used by the current title profiles: Generic/CT2 select DX11, while Daytona/Lodoss keep their established software path unless DX11 is explicitly requested. `d3d11`, `direct3d11` and `directx11` are accepted aliases for `dx11`.
++
++The launcher namespace is already reserved for future `vulkan`, `dx12`, `dx10` and `dx9` backends. Those names are intentionally rejected with a clear not-implemented message today rather than silently falling back to another renderer. DirectX 9/10 and Vulkan require their own backend implementation before those switches can become functional.
++
+ Historical title/probe BATs are grouped under `tools/bat/` so the root stays focused on normal use. New users should use `run_game.bat`. See [`docs/SCRIPTS_V0.1.md`](docs/SCRIPTS_V0.1.md).
+ 
+ ## Build only
+@@ -211,7 +230,7 @@
+ - launcher command used;
+ - the complete session log;
+ - the last visible screen/state;
+-- whether `--perf`, `--debug`, `--profile` or `--software` was active;
++- whether `--perf`, `--debug`, `--profile` or a non-default `--renderer` was active;
+ - CPU/GPU and Windows version for performance/rendering bugs.
+ 
+ Do **not** upload copyrighted CDI/BIOS files to public bug reports.
+diff -ruN cpp18_pristine/docs/CPP19_RENDERER_PATCH.diff cpp18_restore/docs/CPP19_RENDERER_PATCH.diff
+--- cpp18_pristine/docs/CPP19_RENDERER_PATCH.diff	1970-01-01 00:00:00.000000000 +0000
++++ cpp18_restore/docs/CPP19_RENDERER_PATCH.diff	2026-09-22 00:56:55.519872734 +0000
+@@ -0,0 +1,69 @@
++diff -ruN cpp18_pristine/CHANGELOG.md cpp18_restore/CHANGELOG.md
++--- cpp18_pristine/CHANGELOG.md	2026-09-21 21:55:20.000000000 +0000
+++++ cpp18_restore/CHANGELOG.md	2026-09-22 00:56:13.101570038 +0000
++@@ -1,3 +1,12 @@
+++# Renderer-selection checkpoint (cpp19)
+++
+++- Extends the canonical `run_game.bat` with a named renderer backend selector.
+++- Adds `--renderer=dx11`, `--renderer dx11`, `--gpu` and `--gpu=dx11` for the existing Direct3D 11 GPU PVR path.
+++- Keeps `--software` as a backward-compatible alias for `--renderer=software`.
+++- Adds `auto` mode so existing title defaults remain unchanged: Generic/CT2 use DX11; Daytona/Lodoss keep software unless explicitly overridden.
+++- Reserves `vulkan`, `dx12`, `dx10` and `dx9` names for future backends and reports them as not implemented instead of silently selecting DX11.
+++- Explicit renderer selection now applies consistently across Generic, CT2, Daytona and Lodoss runner paths.
+++
++ # SGGG cpp11 recovery checkpoint
++ 
++ - Restores title-agnostic `.raw_boot` commercial scramble restaging using generated section metadata.
++diff -ruN cpp18_pristine/README.md cpp18_restore/README.md
++--- cpp18_pristine/README.md	2026-09-21 21:55:20.000000000 +0000
+++++ cpp18_restore/README.md	2026-09-22 00:56:13.100725498 +0000
++@@ -71,7 +71,8 @@
++ run_game.bat "C:\Games\game.cdi" --perf
++ run_game.bat "C:\Games\game.cdi" --debug
++ run_game.bat "C:\Games\game.cdi" --profile
++-run_game.bat "C:\Games\game.cdi" --software
+++run_game.bat "C:\Games\game.cdi" --renderer=dx11
+++run_game.bat "C:\Games\game.cdi" --renderer=software
++ run_game.bat "C:\Games\game.cdi" --no-audio
++ run_game.bat "C:\Games\game.cdi" --clean
++ ```
++@@ -81,11 +82,29 @@
++ | `--perf` | Low-overhead performance profile. |
++ | `--debug` | Extra diagnostics and 500 ms heartbeat. |
++ | `--profile` | Detailed PVR profiling; slower by design. |
++-| `--software` | Force software PVR instead of the GPU path where applicable. |
+++| `--renderer=dx11` | Force the current Direct3D 11 GPU PVR backend. |
+++| `--renderer=software` | Force the software PVR path. |
+++| `--gpu` | Alias for `--renderer=dx11`. |
+++| `--software` | Legacy alias for `--renderer=software`. |
++ | `--no-audio` | Disable host audio output while keeping ARM7/AICA execution active. |
++ | `--clean` | Rebuild the v0.1 generated workspace from scratch. |
++ | `--help` | Show the launcher help. |
++ 
+++
+++### Renderer selection
+++
+++`run_game.bat` now treats the renderer as a named backend instead of a simple GPU on/off switch:
+++
+++```bat
+++run_game.bat "C:\Games\game.cdi" --renderer=dx11
+++run_game.bat "C:\Games\game.cdi" --renderer=software
+++run_game.bat "C:\Games\game.cdi" --renderer=auto
+++```
+++
+++`auto` preserves the compatibility defaults used by the current title profiles: Generic/CT2 select DX11, while Daytona/Lodoss keep their established software path unless DX11 is explicitly requested. `d3d11`, `direct3d11` and `directx11` are accepted aliases for `dx11`.
+++
+++The launcher namespace is already reserved for future `vulkan`, `dx12`, `dx10` and `dx9` backends. Those names are intentionally rejected with a clear not-implemented message today rather than silently falling back to another renderer. DirectX 9/10 and Vulkan require their own backend implementation before those switches can become functional.
+++
++ Historical title/probe BATs are grouped under `tools/bat/` so the root stays focused on normal use. New users should use `run_game.bat`. See [`docs/SCRIPTS_V0.1.md`](docs/SCRIPTS_V0.1.md).
++ 
++ ## Build only
++@@ -211,7 +230,7 @@
++ - launcher command used;
++ - the complete session log;
++ - the last visible screen/state;
++-- whether `--perf`, `--debug`, `--profile` or `--software` was active;
+++- whether `--perf`, `--debug`, `--profile` or a non-default `--renderer` was active;
++ - CPU/GPU and Windows version for performance/rendering bugs.
++ 
++ Do **not** upload copyrighted CDI/BIOS files to public bug reports.
+diff -ruN cpp18_pristine/docs/RENDERER_BACKENDS_CPP19.md cpp18_restore/docs/RENDERER_BACKENDS_CPP19.md
+--- cpp18_pristine/docs/RENDERER_BACKENDS_CPP19.md	1970-01-01 00:00:00.000000000 +0000
++++ cpp18_restore/docs/RENDERER_BACKENDS_CPP19.md	2026-09-22 00:56:13.101790032 +0000
+@@ -0,0 +1,26 @@
++# Renderer backend selection — cpp19
++
++## Implemented now
++
++- `auto` — compatibility defaults per title profile.
++- `dx11` — current Direct3D 11 GPU PVR renderer (`--pvr-gpu --pvr-render-done-scheduled --pvr-mt`).
++- `software` — CPU/software PVR renderer (`--pvr-mt`).
++
++Accepted DX11 aliases: `d3d11`, `direct3d11`, `directx11`, and `--gpu`.
++
++## Reserved backends
++
++The launcher recognizes the names below but intentionally stops with a not-implemented error until a real backend exists:
++
++- `vulkan` / `vk`
++- `dx12` / `d3d12` / `direct3d12` / `directx12`
++- `dx10` / `d3d10` / `direct3d10` / `directx10`
++- `dx9` / `d3d9` / `direct3d9` / `directx9`
++
++This keeps the public CLI stable while renderer implementations are added later.
++
++## Backend direction
++
++The current GPU path is D3D11-specific in the generated runtime. Future renderers should sit behind the same PVR-facing operations (device/window creation, texture upload, render-target setup, draw submission, present, and optional readback) instead of branching PVR emulation logic per API. DX10 can likely share most shader/resource concepts with DX11 but needs a separate device/context implementation. DX9 requires a more distinct resource/shader/state path. Vulkan also requires explicit synchronization, command buffers, descriptor/resource management, and swapchain handling.
++
++No reserved backend silently falls back to DX11; this is deliberate so renderer testing remains trustworthy.
+diff -ruN cpp18_pristine/docs/RENDERER_SELECTION_CPP19_VALIDATION.txt cpp18_restore/docs/RENDERER_SELECTION_CPP19_VALIDATION.txt
+--- cpp18_pristine/docs/RENDERER_SELECTION_CPP19_VALIDATION.txt	1970-01-01 00:00:00.000000000 +0000
++++ cpp18_restore/docs/RENDERER_SELECTION_CPP19_VALIDATION.txt	2026-09-22 00:56:45.186773219 +0000
+@@ -0,0 +1,33 @@
++Renderer selection cpp19 static validation
++
++Checks:
++- renderer_eq: PASS
++- renderer_space: PASS
++- gpu_alias: PASS
++- dx11_args: PASS
++- software_args: PASS
++- future_vulkan: PASS
++- future_dx12: PASS
++- future_dx10: PASS
++- future_dx9: PASS
++- all_runner_paths: PASS
++- no_duplicate_labels: PASS
++
++AUTO / explicit mapping:
++- GENERIC  request=auto     -> active=dx11
++- GENERIC  request=dx11     -> active=dx11
++- GENERIC  request=software -> active=software
++- CT2      request=auto     -> active=dx11
++- CT2      request=dx11     -> active=dx11
++- CT2      request=software -> active=software
++- DAYTONA  request=auto     -> active=software
++- DAYTONA  request=dx11     -> active=dx11
++- DAYTONA  request=software -> active=software
++- LODOSS   request=auto     -> active=software
++- LODOSS   request=dx11     -> active=dx11
++- LODOSS   request=software -> active=software
++
++Notes:
++- DX11 maps to the existing PVR GPU flags; no renderer implementation was fabricated.
++- Vulkan/DX12/DX10/DX9 names are reserved and intentionally return not-implemented.
++- Only run_game.bat, README.md, CHANGELOG.md, and renderer docs changed from cpp18.
+diff -ruN cpp18_pristine/run_game.bat cpp18_restore/run_game.bat
+--- cpp18_pristine/run_game.bat	2026-09-20 22:35:32.000000000 +0000
++++ cpp18_restore/run_game.bat	2026-09-22 00:56:13.099544000 +0000
+@@ -1,275 +1,376 @@
+-@echo off
+-setlocal EnableExtensions EnableDelayedExpansion
+-cd /d "%~dp0"
+-
+-set "DCR_VERSION=v0.1.1 Official"
+-set "PERF=0"
+-set "DEBUG=0"
+-set "PVR_PROFILE=0"
+-set "SOFTWARE=0"
+-set "NO_AUDIO=0"
+-set "CLEAN=0"
+-set "NOPAUSE=0"
+-
+-if "%~1"=="" goto :usage
+-if /I "%~1"=="--help" goto :usage_ok
+-if /I "%~1"=="-h" goto :usage_ok
+-
+-set "DISC=%~f1"
+-shift
+-
+-:parse_args
+-if "%~1"=="" goto :args_done
+-if /I "%~1"=="--perf" (
+-  set "PERF=1"
+-) else if /I "%~1"=="--debug" (
+-  set "DEBUG=1"
+-) else if /I "%~1"=="--profile" (
+-  set "PVR_PROFILE=1"
+-) else if /I "%~1"=="--software" (
+-  set "SOFTWARE=1"
+-) else if /I "%~1"=="--no-audio" (
+-  set "NO_AUDIO=1"
+-) else if /I "%~1"=="--clean" (
+-  set "CLEAN=1"
+-) else if /I "%~1"=="--no-pause" (
+-  set "NOPAUSE=1"
+-) else if /I "%~1"=="--help" (
+-  goto :usage_ok
+-) else if /I "%~1"=="-h" (
+-  goto :usage_ok
+-) else (
+-  echo [ERROR] Opcion desconocida: %~1
+-  echo.
+-  goto :usage
+-)
+-shift
+-goto :parse_args
+-
+-:args_done
+-if not exist "%DISC%" (
+-  echo [ERROR] No encuentro el juego: "%DISC%"
+-  exit /b 1
+-)
+-
+-where cmake >nul 2>nul
+-if errorlevel 1 (
+-  echo [ERROR] CMake no esta disponible en PATH.
+-  echo [INFO] Instala Visual Studio 2022 o Build Tools con "Desktop development with C++" y CMake.
+-  exit /b 2
+-)
+-
+-set "OUT=generated\official_v0.1.1"
+-set "CPP=%OUT%\cpp"
+-set "CB=_cb_v0.1.1"
+-set "PADARG="
+-if exist "profiles\controller_profile.ini" (
+-  set "PADARG=--controller-profile=profiles\controller_profile.ini"
+-)
+-
+-if "%CLEAN%"=="1" (
+-  echo [CLEAN] Eliminando cache de la release oficial...
+-  if exist "%OUT%" rmdir /s /q "%OUT%"
+-  if exist "%CB%" rmdir /s /q "%CB%"
+-)
+-if not exist "%OUT%" mkdir "%OUT%"
+-
+-set "DCR_TRACE_HISTORY=0"
+-set "HEARTBEAT=1000"
+-set "EXTRA_RUN="
+-if "%PERF%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --perf-profile --perf-sample-stride=64"
+-if "%DEBUG%"=="1" (
+-  set "DCR_TRACE_HISTORY=1"
+-  set "HEARTBEAT=500"
+-  set "EXTRA_RUN=!EXTRA_RUN! --host-window"
+-)
+-if "%PVR_PROFILE%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --pvr-profile --host-window"
+-
+-set "GPU_ARGS=--pvr-gpu --pvr-render-done-scheduled --pvr-mt"
+-if "%SOFTWARE%"=="1" set "GPU_ARGS=--pvr-mt"
+-set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768 --aica-play"
+-set "AUDIO_ARGS_BASIC=--aica-arm7 --aica-play"
+-if "%NO_AUDIO%"=="1" (
+-  set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768"
+-  set "AUDIO_ARGS_BASIC=--aica-arm7"
+-)
+-
+-cls
+-echo ============================================================
+-echo  DreamcastRecomp %DCR_VERSION%
+-echo  Universal CDI runner
+-echo ============================================================
+-echo  Juego : %DISC%
+-echo  Perf  : %PERF%   Debug: %DEBUG%   PVR profile: %PVR_PROFILE%
+-echo  GPU   : %SOFTWARE% ^(0=D3D11+fallback, 1=software^)
+-echo  Audio : %NO_AUDIO% ^(0=on, 1=muted^)
+-echo ============================================================
+-echo.
+-
+-rem Build only the tools needed by the universal path. CMake/MSBuild remain incremental.
+-echo [1/6] Preparando herramientas %DCR_VERSION%...
+-cmake -S . -B build -A x64
+-if errorlevel 1 exit /b 2
+-cmake --build build --config Release --target dc_disc_probe dc_boot_prepare dc_raw_recomp --parallel 1
+-if errorlevel 1 exit /b 2
+-
+-for %%T in (dc_disc_probe dc_boot_prepare dc_raw_recomp) do (
+-  if not exist "build\Release\%%T.exe" (
+-    echo [ERROR] Falta build\Release\%%T.exe despues del build.
+-    exit /b 2
+-  )
+-)
+-
+-echo.
+-echo [2/6] Analizando CDI y creando mapa GD-ROM...
+-build\Release\dc_disc_probe.exe "%DISC%" ^
+-  --extract-ip="%OUT%\IP.BIN" ^
+-  --extract-boot="%OUT%\BOOT.DISC.BIN" ^
+-  --extract-disc-map="%OUT%\disc.map"
+-if errorlevel 1 exit /b 3
+-
+-set "TITLE="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "title=" "%OUT%\disc.map"') do set "TITLE=%%B"
+-set "VOLUME="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "volume=" "%OUT%\disc.map"') do set "VOLUME=%%B"
+-
+-set "MODE=GENERIC"
+-if /I "!TITLE!"=="PIZZICATO POLKA" set "MODE=DAYTONA"
+-if /I "!TITLE!"=="RECORD OF LODOSS WAR" set "MODE=LODOSS"
+-if /I "!TITLE!"=="CHUCHU ROCKET" set "MODE=CHUCHU"
+-if /I "!TITLE!"=="CRAZY TAXI 2" set "MODE=CT2"
+-
+-echo [INFO] Titulo : !TITLE!
+-echo [INFO] Volumen: !VOLUME!
+-echo [INFO] Perfil : !MODE!
+-if defined PADARG (echo [INFO] Mando  : profiles\controller_profile.ini) else (echo [INFO] Mando  : default teclado/XInput/PS4-DirectInput)
+-
+-if /I "!MODE!"=="LODOSS" goto :prepare_lodoss
+-
+-echo.
+-echo [3/6] Preparando bootstrap comercial...
+-build\Release\dc_boot_prepare.exe "%OUT%\IP.BIN" "%OUT%\BOOT.DISC.BIN" ^
+-  --mode=auto ^
+-  --boot-out="%OUT%\BOOT.BIN" ^
+-  --combined-out="%OUT%\BOOTSTRAP.BIN"
+-if errorlevel 1 exit /b 4
+-
+-echo.
+-echo [4/6] Recompilando closure SH-4...
+-if /I "!MODE!"=="DAYTONA" (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 ^
+-    --seed-file="profiles\daytona_usa_known_seeds.txt" ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-) else if /I "!MODE!"=="CT2" (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
+-    --seed-file="profiles\crazy_taxi_2_known_seeds.txt" ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-) else (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-)
+-if errorlevel 1 exit /b 5
+-goto :compile_runner
+-
+-:prepare_lodoss
+-echo.
+-echo [3/6] Extrayendo ejecutable secundario 1NOSDC.BIN de Lodoss...
+-build\Release\dc_disc_probe.exe "%DISC%" --extract-file=1NOSDC.BIN="%OUT%\1NOSDC.BIN"
+-if errorlevel 1 exit /b 4
+-
+-echo.
+-echo [4/6] Recompilando closure SH-4 de Lodoss...
+-build\Release\dc_raw_recomp.exe "%OUT%\1NOSDC.BIN" ^
+-  --base=0x8C010000 --entry=0x8C010000 ^
+-  --seed-file="profiles\record_of_lodoss_war_known_seeds.txt" ^
+-  --max-functions=10000 --max-closure-entries=9000 --closure-passes=64 ^
+-  --map="%OUT%\function_map.csv" --output="%CPP%"
+-if errorlevel 1 exit /b 5
+-
+-:compile_runner
+-echo.
+-echo [5/6] Compilando runner nativo generado...
+-cmake -S "%CPP%" -B "%CB%" -A x64
+-if errorlevel 1 exit /b 6
+-cmake --build "%CB%" --config Release --target dreamcast_program --parallel 1
+-if errorlevel 1 exit /b 7
+-
+-echo.
+-echo [6/6] Ejecutando !MODE!...
+-echo [INFO] Controles: flechas=D-pad, WASD=analogico, Z/J/Space=A, X/K=B, C/U=X, V/I=Y, Enter=START.
+-echo [INFO] Opciones activas: !EXTRA_RUN!
+-echo.
+-
+-set "EXE=%CB%\Release\dreamcast_program.exe"
+-if not exist "!EXE!" (
+-  echo [ERROR] No se genero !EXE!
+-  exit /b 7
+-)
+-
+-if /I "!MODE!"=="DAYTONA" (
+-  "!EXE!" ^
+-    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else if /I "!MODE!"=="CT2" (
+-  "!EXE!" ^
+-    --commercial-boot --ct2-compat --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
+-    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
+-    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else if /I "!MODE!"=="LODOSS" (
+-  "!EXE!" ^
+-    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync --pvr-mt --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else (
+-  "!EXE!" ^
+-    --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
+-    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
+-    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-)
+-
+-set "RC=!ERRORLEVEL!"
+-echo.
+-echo [INFO] DreamcastRecomp %DCR_VERSION% termino con RC=!RC!.
+-if "!RC!"=="130" echo [INFO] RC=130 = cierre manual de la ventana.
+-exit /b !RC!
+-
+-:usage
+-echo.
+-echo DreamcastRecomp v0.1.1 Official
+-echo.
+-echo Uso:
+-echo   %~nx0 "juego.cdi" [opciones]
+-echo.
+-echo Ejemplos:
+-echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi"
+-echo   %~nx0 "C:\Juegos\Crazy Taxi 2.cdi" --perf
+-echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --debug
+-echo   %~nx0 "C:\Juegos\Record of Lodoss War.cdi" --clean
+- echo.
+-echo Opciones:
+-echo   --perf       Perfil de rendimiento de bajo overhead.
+-echo   --debug      Diagnostico adicional + heartbeat cada 500 ms.
+-echo   --profile    Perfil detallado PVR ^(mas lento^).
+-echo   --software   Fuerza renderer PVR software en perfiles compatibles.
+-echo   --no-audio   Ejecuta ARM7/AICA sin salida de audio al host.
+-echo   --clean      Regenera el workspace oficial desde cero.
+-echo   --no-pause   Reservado para wrappers/automatizacion.
+-echo   --help, -h   Muestra esta ayuda.
+-echo.
+-echo Tambien puedes arrastrar un archivo .cdi sobre run_game.bat.
+-exit /b 1
+-
+-:usage_ok
+-call :usage
+-exit /b 0
++@echo off
++setlocal EnableExtensions EnableDelayedExpansion
++cd /d "%~dp0"
++
++set "DCR_VERSION=v0.1.1 Official"
++set "PERF=0"
++set "DEBUG=0"
++set "PVR_PROFILE=0"
++set "SOFTWARE=0"
++set "RENDERER=AUTO"
++set "RENDERER_EXPLICIT=0"
++set "NO_AUDIO=0"
++set "CLEAN=0"
++set "NOPAUSE=0"
++
++if "%~1"=="" goto :usage
++if /I "%~1"=="--help" goto :usage_ok
++if /I "%~1"=="-h" goto :usage_ok
++
++set "DISC=%~f1"
++shift
++
++:parse_args
++if "%~1"=="" goto :args_done
++set "ARG=%~1"
++
++if /I "!ARG!"=="--renderer" goto :parse_renderer_value
++if /I "!ARG:~0,11!"=="--renderer=" (
++  set "RENDERER=!ARG:~11!"
++  set "RENDERER_EXPLICIT=1"
++  shift
++  goto :parse_args
++)
++if /I "!ARG:~0,6!"=="--gpu=" (
++  set "RENDERER=!ARG:~6!"
++  set "RENDERER_EXPLICIT=1"
++  shift
++  goto :parse_args
++)
++
++if /I "!ARG!"=="--perf" (
++  set "PERF=1"
++) else if /I "!ARG!"=="--debug" (
++  set "DEBUG=1"
++) else if /I "!ARG!"=="--profile" (
++  set "PVR_PROFILE=1"
++) else if /I "!ARG!"=="--software" (
++  set "SOFTWARE=1"
++  set "RENDERER=software"
++  set "RENDERER_EXPLICIT=1"
++) else if /I "!ARG!"=="--gpu" (
++  set "RENDERER=dx11"
++  set "RENDERER_EXPLICIT=1"
++) else if /I "!ARG!"=="--no-audio" (
++  set "NO_AUDIO=1"
++) else if /I "!ARG!"=="--clean" (
++  set "CLEAN=1"
++) else if /I "!ARG!"=="--no-pause" (
++  set "NOPAUSE=1"
++) else if /I "!ARG!"=="--help" (
++  goto :usage_ok
++) else if /I "!ARG!"=="-h" (
++  goto :usage_ok
++) else (
++  echo [ERROR] Opcion desconocida: %~1
++  echo.
++  goto :usage
++)
++shift
++goto :parse_args
++
++:parse_renderer_value
++shift
++if "%~1"=="" (
++  echo [ERROR] --renderer requiere un backend.
++  echo [INFO] Disponibles hoy: auto, dx11, software.
++  exit /b 1
++)
++set "RENDERER=%~1"
++set "RENDERER_EXPLICIT=1"
++shift
++goto :parse_args
++
++:args_done
++rem Normaliza aliases de renderer. Solo DX11 esta implementado como backend GPU hoy.
++if /I "!RENDERER!"=="AUTO" set "RENDERER=auto"
++if /I "!RENDERER!"=="D3D11" set "RENDERER=dx11"
++if /I "!RENDERER!"=="DIRECT3D11" set "RENDERER=dx11"
++if /I "!RENDERER!"=="DIRECTX11" set "RENDERER=dx11"
++if /I "!RENDERER!"=="DX11" set "RENDERER=dx11"
++if /I "!RENDERER!"=="SW" set "RENDERER=software"
++if /I "!RENDERER!"=="CPU" set "RENDERER=software"
++if /I "!RENDERER!"=="SOFTWARE" set "RENDERER=software"
++if /I "!RENDERER!"=="D3D12" set "RENDERER=dx12"
++if /I "!RENDERER!"=="DIRECT3D12" set "RENDERER=dx12"
++if /I "!RENDERER!"=="DIRECTX12" set "RENDERER=dx12"
++if /I "!RENDERER!"=="D3D10" set "RENDERER=dx10"
++if /I "!RENDERER!"=="DIRECT3D10" set "RENDERER=dx10"
++if /I "!RENDERER!"=="DIRECTX10" set "RENDERER=dx10"
++if /I "!RENDERER!"=="D3D9" set "RENDERER=dx9"
++if /I "!RENDERER!"=="DIRECT3D9" set "RENDERER=dx9"
++if /I "!RENDERER!"=="DIRECTX9" set "RENDERER=dx9"
++if /I "!RENDERER!"=="VK" set "RENDERER=vulkan"
++
++if /I "!RENDERER!"=="vulkan" goto :renderer_not_implemented
++if /I "!RENDERER!"=="dx12" goto :renderer_not_implemented
++if /I "!RENDERER!"=="dx10" goto :renderer_not_implemented
++if /I "!RENDERER!"=="dx9" goto :renderer_not_implemented
++if /I not "!RENDERER!"=="auto" if /I not "!RENDERER!"=="dx11" if /I not "!RENDERER!"=="software" (
++  echo [ERROR] Renderer desconocido: !RENDERER!
++  echo [INFO] Disponibles hoy: auto, dx11, software.
++  echo [INFO] Reservados para futuros backends: vulkan, dx12, dx10, dx9.
++  exit /b 1
++)
++if not exist "%DISC%" (
++  echo [ERROR] No encuentro el juego: "%DISC%"
++  exit /b 1
++)
++
++where cmake >nul 2>nul
++if errorlevel 1 (
++  echo [ERROR] CMake no esta disponible en PATH.
++  echo [INFO] Instala Visual Studio 2022 o Build Tools con "Desktop development with C++" y CMake.
++  exit /b 2
++)
++
++set "OUT=generated\official_v0.1.1"
++set "CPP=%OUT%\cpp"
++set "CB=_cb_v0.1.1"
++set "PADARG="
++if exist "profiles\controller_profile.ini" (
++  set "PADARG=--controller-profile=profiles\controller_profile.ini"
++)
++
++if "%CLEAN%"=="1" (
++  echo [CLEAN] Eliminando cache de la release oficial...
++  if exist "%OUT%" rmdir /s /q "%OUT%"
++  if exist "%CB%" rmdir /s /q "%CB%"
++)
++if not exist "%OUT%" mkdir "%OUT%"
++
++set "DCR_TRACE_HISTORY=0"
++set "HEARTBEAT=1000"
++set "EXTRA_RUN="
++if "%PERF%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --perf-profile --perf-sample-stride=64"
++if "%DEBUG%"=="1" (
++  set "DCR_TRACE_HISTORY=1"
++  set "HEARTBEAT=500"
++  set "EXTRA_RUN=!EXTRA_RUN! --host-window"
++)
++if "%PVR_PROFILE%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --pvr-profile --host-window"
++
++set "GPU_ARGS="
++set "ACTIVE_RENDERER="
++set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768 --aica-play"
++set "AUDIO_ARGS_BASIC=--aica-arm7 --aica-play"
++if "%NO_AUDIO%"=="1" (
++  set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768"
++  set "AUDIO_ARGS_BASIC=--aica-arm7"
++)
++
++cls
++echo ============================================================
++echo  DreamcastRecomp %DCR_VERSION%
++echo  Universal CDI runner
++echo ============================================================
++echo  Juego : %DISC%
++echo  Perf  : %PERF%   Debug: %DEBUG%   PVR profile: %PVR_PROFILE%
++echo  Render pedido: !RENDERER!
++echo  Audio : %NO_AUDIO% ^(0=on, 1=muted^)
++echo ============================================================
++echo.
++
++rem Build only the tools needed by the universal path. CMake/MSBuild remain incremental.
++echo [1/6] Preparando herramientas %DCR_VERSION%...
++cmake -S . -B build -A x64
++if errorlevel 1 exit /b 2
++cmake --build build --config Release --target dc_disc_probe dc_boot_prepare dc_raw_recomp --parallel 1
++if errorlevel 1 exit /b 2
++
++for %%T in (dc_disc_probe dc_boot_prepare dc_raw_recomp) do (
++  if not exist "build\Release\%%T.exe" (
++    echo [ERROR] Falta build\Release\%%T.exe despues del build.
++    exit /b 2
++  )
++)
++
++echo.
++echo [2/6] Analizando CDI y creando mapa GD-ROM...
++build\Release\dc_disc_probe.exe "%DISC%" ^
++  --extract-ip="%OUT%\IP.BIN" ^
++  --extract-boot="%OUT%\BOOT.DISC.BIN" ^
++  --extract-disc-map="%OUT%\disc.map"
++if errorlevel 1 exit /b 3
++
++set "TITLE="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "title=" "%OUT%\disc.map"') do set "TITLE=%%B"
++set "VOLUME="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "volume=" "%OUT%\disc.map"') do set "VOLUME=%%B"
++
++set "MODE=GENERIC"
++if /I "!TITLE!"=="PIZZICATO POLKA" set "MODE=DAYTONA"
++if /I "!TITLE!"=="RECORD OF LODOSS WAR" set "MODE=LODOSS"
++if /I "!TITLE!"=="CHUCHU ROCKET" set "MODE=CHUCHU"
++if /I "!TITLE!"=="CRAZY TAXI 2" set "MODE=CT2"
++
++rem AUTO conserva el comportamiento previo por perfil.
++set "ACTIVE_RENDERER=!RENDERER!"
++if /I "!ACTIVE_RENDERER!"=="auto" (
++  if /I "!MODE!"=="DAYTONA" (
++    set "ACTIVE_RENDERER=software"
++  ) else if /I "!MODE!"=="LODOSS" (
++    set "ACTIVE_RENDERER=software"
++  ) else (
++    set "ACTIVE_RENDERER=dx11"
++  )
++)
++
++if /I "!ACTIVE_RENDERER!"=="dx11" (
++  rem Backend GPU disponible hoy: Direct3D 11.
++  set "GPU_ARGS=--pvr-gpu --pvr-render-done-scheduled --pvr-mt"
++) else (
++  rem Renderer CPU/software. Mantiene PVR multithread.
++  set "GPU_ARGS=--pvr-mt"
++)
++
++echo [INFO] Titulo : !TITLE!
++echo [INFO] Volumen: !VOLUME!
++echo [INFO] Perfil : !MODE!
++echo [INFO] Render : !ACTIVE_RENDERER!
++if defined PADARG (echo [INFO] Mando  : profiles\controller_profile.ini) else (echo [INFO] Mando  : default teclado/XInput/PS4-DirectInput)
++
++if /I "!MODE!"=="LODOSS" goto :prepare_lodoss
++
++echo.
++echo [3/6] Preparando bootstrap comercial...
++build\Release\dc_boot_prepare.exe "%OUT%\IP.BIN" "%OUT%\BOOT.DISC.BIN" ^
++  --mode=auto ^
++  --boot-out="%OUT%\BOOT.BIN" ^
++  --combined-out="%OUT%\BOOTSTRAP.BIN"
++if errorlevel 1 exit /b 4
++
++echo.
++echo [4/6] Recompilando closure SH-4...
++if /I "!MODE!"=="DAYTONA" (
++  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
++    --base=0x8C008000 --entry=0x8C008300 ^
++    --seed-file="profiles\daytona_usa_known_seeds.txt" ^
++    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
++    --map="%OUT%\function_map.csv" --output="%CPP%"
++) else if /I "!MODE!"=="CT2" (
++  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
++    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
++    --seed-file="profiles\crazy_taxi_2_known_seeds.txt" ^
++    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
++    --map="%OUT%\function_map.csv" --output="%CPP%"
++) else (
++  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
++    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
++    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
++    --map="%OUT%\function_map.csv" --output="%CPP%"
++)
++if errorlevel 1 exit /b 5
++goto :compile_runner
++
++:prepare_lodoss
++echo.
++echo [3/6] Extrayendo ejecutable secundario 1NOSDC.BIN de Lodoss...
++build\Release\dc_disc_probe.exe "%DISC%" --extract-file=1NOSDC.BIN="%OUT%\1NOSDC.BIN"
++if errorlevel 1 exit /b 4
++
++echo.
++echo [4/6] Recompilando closure SH-4 de Lodoss...
++build\Release\dc_raw_recomp.exe "%OUT%\1NOSDC.BIN" ^
++  --base=0x8C010000 --entry=0x8C010000 ^
++  --seed-file="profiles\record_of_lodoss_war_known_seeds.txt" ^
++  --max-functions=10000 --max-closure-entries=9000 --closure-passes=64 ^
++  --map="%OUT%\function_map.csv" --output="%CPP%"
++if errorlevel 1 exit /b 5
++
++:compile_runner
++echo.
++echo [5/6] Compilando runner nativo generado...
++cmake -S "%CPP%" -B "%CB%" -A x64
++if errorlevel 1 exit /b 6
++cmake --build "%CB%" --config Release --target dreamcast_program --parallel 1
++if errorlevel 1 exit /b 7
++
++echo.
++echo [6/6] Ejecutando !MODE!...
++echo [INFO] Controles: flechas=D-pad, WASD=analogico, Z/J/Space=A, X/K=B, C/U=X, V/I=Y, Enter=START.
++echo [INFO] Opciones activas: !EXTRA_RUN!
++echo.
++
++set "EXE=%CB%\Release\dreamcast_program.exe"
++if not exist "!EXE!" (
++  echo [ERROR] No se genero !EXE!
++  exit /b 7
++)
++
++if /I "!MODE!"=="DAYTONA" (
++  "!EXE!" ^
++    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
++    --pvr-window --pvr-frame-sync !GPU_ARGS! --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++) else if /I "!MODE!"=="CT2" (
++  "!EXE!" ^
++    --commercial-boot --ct2-compat --disc-map="%OUT%\disc.map" ^
++    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
++    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
++    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++) else if /I "!MODE!"=="LODOSS" (
++  "!EXE!" ^
++    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
++    --pvr-window --pvr-frame-sync !GPU_ARGS! --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++) else (
++  "!EXE!" ^
++    --commercial-boot --disc-map="%OUT%\disc.map" ^
++    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
++    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
++    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++)
++
++set "RC=!ERRORLEVEL!"
++echo.
++echo [INFO] DreamcastRecomp %DCR_VERSION% termino con RC=!RC!.
++if "!RC!"=="130" echo [INFO] RC=130 = cierre manual de la ventana.
++exit /b !RC!
++
++:renderer_not_implemented
++echo.
++echo [ERROR] El backend !RENDERER! esta reservado pero todavia no esta implementado.
++echo [INFO] Backend GPU disponible actualmente: dx11 ^(Direct3D 11^).
++echo [INFO] Software tambien esta disponible con --renderer=software.
++echo [INFO] La seleccion ya queda estructurada para Vulkan / DX12 / DX10 / DX9.
++exit /b 8
++
++:usage
++echo.
++echo DreamcastRecomp v0.1.1 Official
++echo.
++echo Uso:
++echo   %~nx0 "juego.cdi" [opciones]
++echo.
++echo Ejemplos:
++echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi"
++echo   %~nx0 "C:\Juegos\Crazy Taxi 2.cdi" --perf
++echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi" --renderer=dx11
++echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --renderer=dx11
++echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --debug
++echo   %~nx0 "C:\Juegos\Record of Lodoss War.cdi" --clean
++ echo.
++echo Opciones:
++echo   --perf       Perfil de rendimiento de bajo overhead.
++echo   --debug      Diagnostico adicional + heartbeat cada 500 ms.
++echo   --profile    Perfil detallado PVR ^(mas lento^).
++echo   --renderer=BACKEND  Selecciona renderer: auto, dx11 o software.
++echo   --renderer BACKEND  Igual que arriba, con valor separado.
++echo   --gpu                Alias de --renderer=dx11.
++echo   --gpu=BACKEND        Alias preparado para seleccionar backend GPU.
++echo   --software           Alias legacy de --renderer=software.
++echo                       Reservados: vulkan, dx12, dx10, dx9.
++echo   --no-audio   Ejecuta ARM7/AICA sin salida de audio al host.
++echo   --clean      Regenera el workspace oficial desde cero.
++echo   --no-pause   Reservado para wrappers/automatizacion.
++echo   --help, -h   Muestra esta ayuda.
++echo.
++echo Tambien puedes arrastrar un archivo .cdi sobre run_game.bat.
++exit /b 1
++
++:usage_ok
++call :usage
++exit /b 0

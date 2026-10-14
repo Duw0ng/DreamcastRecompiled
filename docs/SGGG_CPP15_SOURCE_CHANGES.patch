@@ -1,0 +1,266 @@
+diff -ruN '--exclude=build' '--exclude=generated' '--exclude=samples' '--exclude=*.cdi*' '--exclude=*.bin' '--exclude=*.o' '--exclude=*.a' '--exclude=*.exe' cpp11_base_for_diff/profiles/sggg_known_seeds.txt sggg_work/profiles/sggg_known_seeds.txt
+--- cpp11_base_for_diff/profiles/sggg_known_seeds.txt	2026-09-21 08:42:40.000000000 +0000
++++ sggg_work/profiles/sggg_known_seeds.txt	2026-09-21 20:00:25.549073589 +0000
+@@ -6,3 +6,4 @@
+ 0x8C1B6860
+ 0x8C212C0C
+ 0x8C21249E
++0x8C181BF8
+diff -ruN '--exclude=build' '--exclude=generated' '--exclude=samples' '--exclude=*.cdi*' '--exclude=*.bin' '--exclude=*.o' '--exclude=*.a' '--exclude=*.exe' cpp11_base_for_diff/src/codegen/cpp_emitter.cpp sggg_work/src/codegen/cpp_emitter.cpp
+--- cpp11_base_for_diff/src/codegen/cpp_emitter.cpp	2026-09-21 08:44:05.000000000 +0000
++++ sggg_work/src/codegen/cpp_emitter.cpp	2026-09-21 20:03:26.558679952 +0000
+@@ -2501,6 +2501,8 @@
+ void dc_load_bytes(DCRuntime& runtime, std::uint32_t address, const std::uint8_t* data, std::size_t size);
+ void dc_zero_bytes(DCRuntime& runtime, std::uint32_t address, std::size_t size);
+ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime);
++void dc_capture_static_code_signatures(DCRuntime& runtime);
++bool dc_registered_static_code_overwritten(DCRuntime& runtime, std::uint32_t target);
+ void dc_gdrom_load_disc_map(DCRuntime& runtime, const std::string& path);
+ void dc_gdrom_tick(DCRuntime& runtime, std::uint64_t sh4_cycles);
+ void dc_gdrom_sync_host(DCRuntime& runtime, std::uint64_t now_ns);
+@@ -2628,7 +2630,11 @@
+ 
+ DCR_DISPATCH_FORCE_INLINE void dc_call_dynamic_fast(
+     SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) {
+-    if (runtime.fast_dynamic_dispatch_ready) {
++    const std::uint32_t target_phys = target & 0x1FFFFFFFu;
++    const bool static_code_overwritten = runtime.commercial_boot_active &&
++        target_phys >= 0x0C000000u && target_phys < 0x0C010000u &&
++        dc_registered_static_code_overwritten(runtime, target);
++    if (runtime.fast_dynamic_dispatch_ready && !static_code_overwritten) {
+         const std::uint32_t requested_target = target;
+         auto& cached = runtime.dispatch_cache[
+             (requested_target >> 1u) & (DCRuntime::kDispatchCacheSize - 1u)];
+@@ -11707,6 +11713,43 @@
+     }
+ }
+ 
++constexpr std::size_t kStaticCodeSignatureBytes = 32u;
++using StaticCodeSignature = std::array<std::uint8_t, kStaticCodeSignatureBytes>;
++std::unordered_map<const DCRuntime*, std::unordered_map<std::uint32_t, StaticCodeSignature>>
++    g_static_code_signatures;
++
++bool registered_static_code_overwritten_impl(DCRuntime& runtime, std::uint32_t target) {
++    if (!runtime.commercial_boot_active) return false;
++    const std::uint32_t phys = target & 0x1FFFFFFFu;
++    // The retail bootstrap/VBR workspace occupies the first 64 KiB of main RAM.
++    // Restrict the check to that hot-swapped area so ordinary gameplay dispatch
++    // pays no signature-lookup cost.
++    if (phys < 0x0C000000u || phys >= 0x0C010000u) return false;
++    const auto rt = g_static_code_signatures.find(&runtime);
++    if (rt == g_static_code_signatures.end()) return false;
++    const auto it = rt->second.find(target);
++    if (it == rt->second.end()) return false;
++    std::size_t index = 0u;
++    if (!main_ram_range(target, kStaticCodeSignatureBytes, index)) return false;
++    return std::memcmp(runtime.main_ram.data() + index, it->second.data(),
++                       kStaticCodeSignatureBytes) != 0;
++}
++
++void capture_static_code_signatures_impl(DCRuntime& runtime) {
++    auto& signatures = g_static_code_signatures[&runtime];
++    signatures.clear();
++    for (const auto& [address, fn] : runtime.targets) {
++        if (fn == nullptr) continue;
++        const std::uint32_t phys = address & 0x1FFFFFFFu;
++        if (phys < 0x0C000000u || phys >= 0x0C010000u) continue;
++        std::size_t index = 0u;
++        if (!main_ram_range(address, kStaticCodeSignatureBytes, index)) continue;
++        StaticCodeSignature signature{};
++        std::memcpy(signature.data(), runtime.main_ram.data() + index, signature.size());
++        signatures.emplace(address, signature);
++    }
++}
++
+ bool find_relocated_code_template(DCRuntime& runtime, std::uint32_t target,
+                                   std::uint32_t& source_out) {
+     constexpr std::size_t kSignatureBytes = 32u;
+@@ -11837,6 +11880,14 @@
+ 
+ } // namespace
+ 
++bool dc_registered_static_code_overwritten(DCRuntime& runtime, std::uint32_t target) {
++    return registered_static_code_overwritten_impl(runtime, target);
++}
++
++void dc_capture_static_code_signatures(DCRuntime& runtime) {
++    capture_static_code_signatures_impl(runtime);
++}
++
+ bool dc_pvr_vertex_decoder_selftest() {
+     return pvr_vertex_decoder_selftest_internal();
+ }
+@@ -16601,6 +16652,16 @@
+     if (runtime.active_relocation_source != 0u && runtime.active_relocation_target != 0u)
+         return dc_read32(runtime, dc_relocate_pc_address(runtime, source_address, storage_address));
+ 
++    // Commercial IP.BIN is statically recompiled from its original 0x8C008000
++    // image. Retail boot code later reuses that low RAM while the SH-4 may still
++    // execute the already-fetched/recompiled bootstrap. In that case the literal
++    // belongs to the static instruction image, not to the bytes that subsequently
++    // replaced the RAM page. Relocated copies still take the path above.
++    if (runtime.commercial_boot_active) {
++        const std::uint32_t source_phys = source_address & 0x1FFFFFFFu;
++        if (source_phys >= 0x0C008000u && source_phys < 0x0C010000u) return baked_value;
++    }
++
+     // Preserve the zero-cost baked fast path until guest code has written to the
+     // SDRAM page that owns this literal. P1/P2 aliases collapse to the same
+     // physical offset, so uncached loader patches are observed by cached code.
+@@ -16624,6 +16685,12 @@
+         const auto raw = dc_read16(runtime, dc_relocate_pc_address(runtime, source_address, storage_address));
+         return static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(raw)));
+     }
++    if (runtime.commercial_boot_active) {
++        const std::uint32_t source_phys = source_address & 0x1FFFFFFFu;
++        if (source_phys >= 0x0C008000u && source_phys < 0x0C010000u) {
++            return static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(baked_value)));
++        }
++    }
+     const std::uint32_t physical = storage_address & 0x1FFFFFFFu;
+     if (physical >= DCRuntime::kMainRamPhysicalBase && physical < 0x10000000u) {
+         const std::uint32_t off = (physical - DCRuntime::kMainRamPhysicalBase) &
+@@ -16683,12 +16750,13 @@
+ }
+ 
+ void call_recompiled(SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) {
++    const bool static_code_overwritten = dc_registered_static_code_overwritten(runtime, target);
+     // Performance fast path for the overwhelmingly common retail case: the
+     // direct-mapped cache already knows the exact non-relocated generated
+     // function, no verbose trace is requested, and no KOS scene observer needs
+     // post-call argument capture. This avoids the generic relocation/lookup/
+     // try-restore machinery on millions of calls per second.
+-    if (runtime.fast_dynamic_dispatch_ready) {
++    if (runtime.fast_dynamic_dispatch_ready && !static_code_overwritten) {
+         const std::uint32_t requested_target = target;
+         auto& fast_cached = runtime.dispatch_cache[
+             (requested_target >> 1u) & (DCRuntime::kDispatchCacheSize - 1u)];
+@@ -16733,7 +16801,7 @@
+ 
+     auto& cached = runtime.dispatch_cache[
+         (requested_target >> 1u) & (DCRuntime::kDispatchCacheSize - 1u)];
+-    if (cached.requested == requested_target && cached.function != nullptr) {
++    if (!static_code_overwritten && cached.requested == requested_target && cached.function != nullptr) {
+         DCR_HOT_METRIC_INC(runtime.dispatch_cache_hits);
+         target = cached.target;
+         relocation_source = cached.relocation_source;
+@@ -16741,12 +16809,30 @@
+         function = cached.function;
+     } else {
+         ++runtime.dispatch_cache_misses;
+-        if (const auto alias = runtime.relocated_code_aliases.find(requested_target);
+-            alias != runtime.relocated_code_aliases.end()) {
+-            relocation_source = alias->second;
+-            relocation_target = requested_target;
++        bool rebound_overwritten = false;
++        if (static_code_overwritten) {
++            std::uint32_t source = 0u;
++            if (find_relocated_code_template(runtime, requested_target, source)) {
++                runtime.relocated_code_aliases[requested_target] = source;
++                ++runtime.relocated_code_matches;
++                std::cerr << "[DCR code-rebind] 0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
++                          << requested_target << " -> template 0x" << std::setw(8) << source << std::dec << "\n";
++                target = source;
++                relocation_source = source;
++                relocation_target = requested_target;
++                rebound_overwritten = true;
++            }
++        }
++        if (!rebound_overwritten) {
++            if (const auto alias = runtime.relocated_code_aliases.find(requested_target);
++                alias != runtime.relocated_code_aliases.end()) {
++                target = alias->second;
++                relocation_source = alias->second;
++                relocation_target = requested_target;
++            } else {
++                target = dc_canonical_code_target(runtime, target);
++            }
+         }
+-        target = dc_canonical_code_target(runtime, target);
+         auto it = runtime.targets.find(target);
+         if (it == runtime.targets.end() || it->second == nullptr) {
+             std::uint32_t source = 0u;
+@@ -20390,6 +20476,16 @@
+             break;
+         }
+     }
++    // Retail synthetic .raw_boot contains the 32 KiB IP.BIN at 0x8C008000
++    // followed by the main executable at 0x8C010000. Only the executable is
++    // stored scrambled on GD-ROM; staging IP.BIN as scrambled corrupts the
++    // bootstrap itself. Keep non-retail/raw images unchanged.
++    std::uint32_t commercial_boot_address = raw_boot_address;
++    std::uint32_t commercial_boot_size = raw_boot_size;
++    if (raw_boot_address == 0x8C008000u && raw_boot_size > 0x8000u) {
++        commercial_boot_address += 0x8000u;
++        commercial_boot_size -= 0x8000u;
++    }
+ 
+     std::ostringstream header;
+     header << "#pragma once\n\n"
+@@ -20798,8 +20894,8 @@
+                    << "    DCRSessionLogGuard dcr_session_log;\n"
+                    << "    if (dcr_session_log.enabled()) std::cout << \"[DCR LOG] session-log=\" << dcr_session_log.path() << \"\\n\";\n"
+                    << "    DCRuntime runtime;\n"
+-                   << "    runtime.commercial_boot_image_address = " << hex8(raw_boot_address) << ";\n"
+-                   << "    runtime.commercial_boot_image_size = " << raw_boot_size << "u;\n"
++                   << "    runtime.commercial_boot_image_address = " << hex8(commercial_boot_address) << ";\n"
++                   << "    runtime.commercial_boot_image_size = " << commercial_boot_size << "u;\n"
+                    << "#ifdef _WIN32\n"
+                    << "    g_dcr_crash_runtime = &runtime;\n"
+                    << "    SetUnhandledExceptionFilter(dcr_unhandled_exception_filter);\n"
+@@ -21236,6 +21332,16 @@
+             break;
+         }
+     }
++    // Retail synthetic .raw_boot contains the 32 KiB IP.BIN at 0x8C008000
++    // followed by the main executable at 0x8C010000. Only the executable is
++    // stored scrambled on GD-ROM; staging IP.BIN as scrambled corrupts the
++    // bootstrap itself. Keep non-retail/raw images unchanged.
++    std::uint32_t commercial_boot_address = raw_boot_address;
++    std::uint32_t commercial_boot_size = raw_boot_size;
++    if (raw_boot_address == 0x8C008000u && raw_boot_size > 0x8000u) {
++        commercial_boot_address += 0x8000u;
++        commercial_boot_size -= 0x8000u;
++    }
+ 
+     std::ostringstream header;
+     header << "#pragma once\n\n"
+@@ -21600,6 +21706,7 @@
+                      << "    dcrecomp_generated::DCRuntime runtime;\n"
+                      << "    dcrecomp_generated::load_embedded_elf_image(runtime);\n"
+                      << "    dcrecomp_generated::" << result.registration_function_name << "(runtime);\n"
++                     << "    dcrecomp_generated::dc_capture_static_code_signatures(runtime);\n"
+                      << "    dcrecomp_generated::register_native_overrides(runtime);\n"
+                      << "    // 0.0.40 regression: P4 Store Queue writes must stay in the SQ until PREF.\n"
+                      << "    const auto sq_before = dcrecomp_generated::dc_read32(runtime, 0x00800000u);\n"
+@@ -21783,8 +21890,8 @@
+                    << "    DCRSessionLogGuard dcr_session_log;\n"
+                    << "    if (dcr_session_log.enabled()) std::cout << \"[DCR LOG] session-log=\" << dcr_session_log.path() << \"\\n\";\n"
+                    << "    DCRuntime runtime;\n"
+-                   << "    runtime.commercial_boot_image_address = " << hex8(raw_boot_address) << ";\n"
+-                   << "    runtime.commercial_boot_image_size = " << raw_boot_size << "u;\n"
++                   << "    runtime.commercial_boot_image_address = " << hex8(commercial_boot_address) << ";\n"
++                   << "    runtime.commercial_boot_image_size = " << commercial_boot_size << "u;\n"
+                    << "#ifdef _WIN32\n"
+                    << "    g_dcr_crash_runtime = &runtime;\n"
+                    << "    SetUnhandledExceptionFilter(dcr_unhandled_exception_filter);\n"
+@@ -21842,6 +21949,7 @@
+                    << "        std::uint64_t aica_capture_ms = 0u;\n\n"
+                    << "        load_embedded_elf_image(runtime);\n"
+                    << "        " << result.registration_function_name << "(runtime);\n"
++                   << "        dc_capture_static_code_signatures(runtime);\n"
+                    << "        register_native_overrides(runtime);\n\n"
+                    << "        constexpr std::uint32_t kStackTop = 0x8CFFF000u;\n"
+                    << "        constexpr std::uint32_t kHostReturnSentinel = 0xFFFFFFFFu;\n"
+diff -ruN '--exclude=build' '--exclude=generated' '--exclude=samples' '--exclude=*.cdi*' '--exclude=*.bin' '--exclude=*.o' '--exclude=*.a' '--exclude=*.exe' cpp11_base_for_diff/src/disc/raw_recompiler.cpp sggg_work/src/disc/raw_recompiler.cpp
+--- cpp11_base_for_diff/src/disc/raw_recompiler.cpp	2026-09-20 22:34:39.000000000 +0000
++++ sggg_work/src/disc/raw_recompiler.cpp	2026-09-21 20:00:25.548904765 +0000
+@@ -543,7 +543,7 @@
+     // dataflow deliberately local: the loaded register must reach a 32-bit store
+     // unchanged within a handful of instructions.
+     const std::uint64_t end64 = std::min<std::uint64_t>(
+-        static_cast<std::uint64_t>(load_address) + 0x0Au,
++        static_cast<std::uint64_t>(load_address) + 0x20u,
+         static_cast<std::uint64_t>(base) + bytes.size());
+     const auto end = static_cast<std::uint32_t>(end64);
+     for (std::uint32_t pc = load_address + 2u; pc + 2u <= end; pc += 2u) {

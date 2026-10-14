@@ -1,0 +1,16 @@
+#include "dcr_game_api.hpp"
+#include "dc_image.hpp"
+#include "generated_program.hpp"
+
+namespace dcrecomp_generated {
+
+DCR_GAME_EXPORT std::uint32_t dcr_game_abi_version_v1() { return DCR_GUEST_ABI_V1; }
+
+DCR_GAME_EXPORT bool dcr_game_attach_v1(DCRuntime* runtime) {
+    if (!runtime) return false;
+    load_embedded_elf_image(*runtime);
+    __DCR_REGISTER__(*runtime);
+    return true;
+}
+
+} // namespace dcrecomp_generated

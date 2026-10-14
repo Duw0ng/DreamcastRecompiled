@@ -1,0 +1,30 @@
+from pathlib import Path
+import hashlib
+root=Path(__file__).resolve().parents[3]
+rt=(root/'runtime/dc_runtime.cpp').read_text(encoding='utf-8')
+run=(root/'run_game.bat').read_text(encoding='utf-8-sig')
+test=(root/'scripts/tests/TEST_CPP38D_HOTPC.bat').read_text(encoding='utf-8-sig')
+abi=(root/'runtime/guest_abi/v1/dc_runtime.hpp').read_bytes()
+checks=[]
+def ck(name, cond):
+    checks.append((name,bool(cond))); print(('PASS' if cond else 'FAIL'), name)
+ck('build id', 'v1.2-cpp38d-hot-dispatch-profiler' in rt)
+ck('private state', 'struct Cpp38dHotPcState' in rt and 'thread_local Cpp38dHotPcState' in rt)
+ck('ctx sample', '++state.ctx_pc[ctx.pc]' in rt)
+ck('func sample', '++state.current_pc[runtime.current_pc]' in rt)
+ck('pr sample', '++state.pr[ctx.pr]' in rt)
+ck('low overhead stride', '2048u' in rt and 'steady_ns' not in rt[rt.index('void cpp38d_hotpc_sample'):rt.index('static void cpp38d_print_hot_map')])
+ck('periodic report', '[DCR38D HOTPC]' in rt and 'cpp38d_hotpc_report(runtime);' in rt)
+ck('launcher label', 'DCR_BUILD_SHORT=cpp38d' in run)
+ck('hotpc env', 'DCR_CPP38D_HOTPC=!HOTPC!' in run)
+ck('reuse test', '--reuse --spg-ff-on --hotpc' in test)
+ck('no perf forced', '--perf' not in test)
+ck('runtime-only cache guard', 'guest ABI1 existente preservado byte por byte' in run)
+run_bytes=(root/'run_game.bat').read_bytes()
+test_bytes=(root/'scripts/tests/TEST_CPP38D_HOTPC.bat').read_bytes()
+ck('windows CRLF launcher', b'\r\n' in run_bytes and run_bytes.count(b'\n') == run_bytes.count(b'\r\n'))
+ck('windows CRLF test', b'\r\n' in test_bytes and test_bytes.count(b'\n') == test_bytes.count(b'\r\n'))
+ck('cached guest label present', b'\r\n:cached_guest_ready\r\n' in run_bytes and b'goto :cached_guest_ready' in run_bytes)
+print('ABI1 sha256', hashlib.sha256(abi).hexdigest())
+print(f'{sum(v for _,v in checks)}/{len(checks)} PASS')
+raise SystemExit(0 if all(v for _,v in checks) else 1)

@@ -9,3 +9,20 @@ compare/
 *.suo
 .vs/
 .idea/
+
+.dcr_builder/
+_internal/
+DreamcastRecompiled_Aqua.exe
+
+.build_offline/
+.offline_check.json
+launcher_offline_runtime.json
+__pycache__/
+.pytest_cache/
+dist/
+.release_staging/
+
+# Prepared Windows binaries are distributed as release assets.
+DreamcastRecompiled.exe
+games/*/bin/
+safe_guests/*/bin/

@@ -1,0 +1,28 @@
+diff -ruN /mnt/data/cpp16_base_for_diff2/src/disc/raw_recompiler.cpp /mnt/data/sggg_work/src/disc/raw_recompiler.cpp
+--- /mnt/data/cpp16_base_for_diff2/src/disc/raw_recompiler.cpp	2026-09-21 20:26:48.000000000 +0000
++++ /mnt/data/sggg_work/src/disc/raw_recompiler.cpp	2026-09-21 20:46:18.042114309 +0000
+@@ -1676,10 +1676,22 @@
+             // large SDK vtables without letting four accidental pointers anchor
+             // an arbitrarily long data region.
+             const auto confidence_words = std::min<std::size_t>(run.size(), 24u);
+-            if (anchors >= kMinAnchors && anchors * 2u >= confidence_words) {
++            // Long vtables keep the historical >=50% anchor requirement. A medium
++            // 8..16-entry Katana callback row can be slightly sparser because every
++            // missing member is still independently required to have a strong callable
++            // shape. This recovers state/ops rows where 4-7 entries are reached only
++            // through runtime indexing (SGGG exposed a 14-entry row with 6 proven
++            // members) without relaxing unanchored/global pointer scanning.
++            const bool medium_row = run.size() >= 8u && run.size() <= 16u;
++            const bool anchor_density_ok = medium_row
++                ? (anchors * 3u >= confidence_words)
++                : (anchors * 2u >= confidence_words);
++            if (anchors >= kMinAnchors && anchor_density_ok) {
+                 for (const auto target : run) {
+                     if (known_entries.contains(target) || looks_like_pointer_table(bytes, base, target)) continue;
+-                    const bool callable = looks_like_local_cfg_callable_entry(bytes, base, target) ||
++                    const bool callable = looks_like_strong_abi_prologue(bytes, base, target, true) ||
++                                          looks_like_stored_callback_leaf_gpr_entry(bytes, base, target) ||
++                                          looks_like_local_cfg_callable_entry(bytes, base, target) ||
+                                           looks_like_compact_callable_entry(bytes, base, target) ||
+                                           looks_like_argument_callback_entry(bytes, base, target) ||
+                                           looks_like_dense_dispatch_entry(bytes, base, target);

@@ -1,0 +1,39 @@
+DreamcastRecomp SGGG cpp11 checkpoint validation
+===============================================
+
+Checkpoint purpose
+------------------
+Persist the SGGG recovery work after cpp10 so the progress does not depend on a temporary generated runner.
+
+Source-level changes preserved
+------------------------------
+- Generic commercial .raw_boot restaging instead of CT2-only hard-coded staging.
+- Persistent commercial boot image address/size metadata in generated runtimes.
+- BIOS Flash HLE for INFO and READ with the Dreamcast 128 KiB flash partition map.
+- Deterministic minimal factory/system flash defaults for BIOS HLE reads.
+- Optional late START diagnostic through the real low-level Maple GETCOND path, active only for --probe-controller-start-burst and PVR frames 1800..5000.
+- SGGG known runtime SH-4 seeds stored in profiles/sggg_known_seeds.txt.
+- Updated emitter regression tests for generic staging and BIOS Flash HLE.
+
+Validation completed
+--------------------
+- Full source Release/Ninja build: PASS.
+- CTest: 54/54 PASS, 0 failed.
+- SGGG CDI probe: PASS.
+- SGGG executable 1_SGGG.BIN: 3,106,103 bytes.
+- SGGG load address: 0x8C010000.
+- BOOTSTRAP.BIN entry: 0x8C008300.
+- Reconstructed SGGG.cdi SHA-256: 4177f8ebc71fc9ae42b59827c9f455a70c5442f53e68b353fad91f89a8034de0.
+
+Known cpp10 milestone being recovered
+-------------------------------------
+- 6,391 functions / 676,901 SH-4 instructions / RAW_SH4=0.
+- 2,566 consecutive PVR frames without missing target or SH-4 crash.
+- Reached Hitmaker -> CRI/Sofdec -> Thunderstone -> Mission Statement -> Management Philosophy -> 2025 HANEDA TOKYO -> anime cinematic.
+- Real menu was not yet confirmed.
+
+Current regeneration status at checkpoint time
+----------------------------------------------
+- Fresh closure regeneration was still in progress when frozen; its partial log reached pass 6/64 with 6,109 entries.
+- The incomplete generated_sggg_cpp11 directory is intentionally NOT included as a validated generated runtime.
+- samples/SGGG.cdi is intentionally NOT included in this source checkpoint because it is user game data and ~711 MB.

@@ -1,0 +1,11 @@
+#if defined(DCR_FIXED_FPU_MODE)
+#define DCR_FPU_SUPERBLOCK_ENABLED(runtime) (DCR_FIXED_FPU_MODE == 2)
+#if defined(DCR_FIXED_FPU_REGION_METRICS)
+#define DCR_FPU_REGION_METRICS_ENABLED(runtime) ((DCR_FIXED_FPU_MODE != 3) || (DCR_FIXED_FPU_REGION_METRICS != 0))
+#else
+#define DCR_FPU_REGION_METRICS_ENABLED(runtime) ((DCR_FIXED_FPU_MODE != 3) || (runtime).fpu_region_metrics)
+#endif
+#else
+#define DCR_FPU_SUPERBLOCK_ENABLED(runtime) ((runtime).fpu_aot_mode == 2u)
+#define DCR_FPU_REGION_METRICS_ENABLED(runtime) ((runtime).fpu_aot_mode != 3u || (runtime).fpu_region_metrics)
+#endif

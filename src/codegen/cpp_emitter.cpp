@@ -5,6 +5,8 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <deque>
+#include <random>
 #include <iomanip>
 #include <iterator>
 #include <optional>
@@ -853,6 +855,7 @@ std::string runtime_hpp() {
 #include <cstdint>
 #include <cmath>
 #include <fstream>
+#include <deque>
 #include <string>
 #include <ostream>
 #include <unordered_map>
@@ -869,14 +872,25 @@ namespace dcrecomp_generated {
 // 0.0.196: optional compile-time specialization for validated commercial builds.
 #if defined(DCR_FIXED_FPU_MODE)
 #define DCR_FPU_SUPERBLOCK_ENABLED(runtime) (DCR_FIXED_FPU_MODE == 2)
-#if defined(DCR_FIXED_FPU_REGION_METRICS)
-#define DCR_FPU_REGION_METRICS_ENABLED(runtime) ((DCR_FIXED_FPU_MODE != 3) || (DCR_FIXED_FPU_REGION_METRICS != 0))
-#else
-#define DCR_FPU_REGION_METRICS_ENABLED(runtime) ((DCR_FIXED_FPU_MODE != 3) || (runtime).fpu_region_metrics)
-#endif
 #else
 #define DCR_FPU_SUPERBLOCK_ENABLED(runtime) ((runtime).fpu_aot_mode == 2u)
-#define DCR_FPU_REGION_METRICS_ENABLED(runtime) ((runtime).fpu_aot_mode != 3u || (runtime).fpu_region_metrics)
+#endif
+
+// cpp38b2: FPU telemetry is an independent diagnostic switch. Previous builds
+// implicitly enabled it for every mode except RegionPlus, which meant Superblock
+// always paid millions of hot-path counter updates even with DCR_FPU_METRICS=0.
+#if defined(DCR_FIXED_FPU_REGION_METRICS)
+#define DCR_FPU_REGION_METRICS_ENABLED(runtime) (DCR_FIXED_FPU_REGION_METRICS != 0)
+#else
+#define DCR_FPU_REGION_METRICS_ENABLED(runtime) ((runtime).fpu_region_metrics)
+#endif
+
+#if defined(DCR_FIXED_FPU_REGION_METRICS) && (DCR_FIXED_FPU_REGION_METRICS == 0)
+#define DCR_FPU_METRIC_INC(value) ((void)0)
+#define DCR_FPU_METRIC_ADD(value, amount) ((void)0)
+#else
+#define DCR_FPU_METRIC_INC(value) do { if (DCR_FPU_REGION_METRICS_ENABLED(runtime)) ++(value); } while (0)
+#define DCR_FPU_METRIC_ADD(value, amount) do { if (DCR_FPU_REGION_METRICS_ENABLED(runtime)) (value) += (amount); } while (0)
 #endif
 
 #if defined(DCR_LIGHTWEIGHT_HOT_METRICS)
@@ -1051,6 +1065,12 @@ struct PVRDeferredState {
     // operations and full PVRSoftState copies while preserving exact fallback
     // semantics.
     std::shared_ptr<const std::vector<std::uint32_t>> texture_pixels;
+    // Native-GPU path keeps the Dreamcast texture payload immutable but raw.
+    // DX11 decodes this snapshot on the GPU, avoiding the CPU texel loop while
+    // preserving TA-time texture ownership if VRAM changes before submission.
+    std::shared_ptr<const std::vector<std::uint8_t>> texture_raw;
+    std::shared_ptr<const std::vector<std::uint32_t>> palette_raw;
+    std::uint8_t palette_format_snapshot{};
     bool background{};
 };
 
@@ -1716,6 +1736,15 @@ struct DCRuntime {
     std::uint64_t pvr_gpu_srv_binds{};
     std::uint64_t pvr_gpu_texture_uploads{};
     std::uint64_t pvr_gpu_texture_reuses{};
+    std::uint64_t pvr_gpu_texture_compute_decodes{};
+    std::uint64_t pvr_gpu_texture_compute_texels{};
+    std::uint64_t pvr_gpu_texture_cpu_decodes_avoided{};
+    std::uint64_t pvr_gpu_pipeline_cache_hits{};
+    std::uint64_t pvr_gpu_pipeline_cache_misses{};
+    std::uint64_t pvr_gpu_rtt_gpu_commits{};
+    std::uint64_t pvr_gpu_rtt_lazy_readbacks{};
+    std::uint64_t pvr_gpu_fallback_materializations{};
+    bool pvr_gpu_rtt_committed{};
     std::uint64_t pvr_gpu_unsupported_triangles{};
     std::uint64_t pvr_gpu_render_ns{};
     // 0.0.126 profile-only frame-stage timing. Four clock reads per rendered
@@ -2381,6 +2410,55 @@ struct DCRuntime {
     std::uint64_t trace_call_count{};
     bool commercial_boot_active{};
     bool ct2_compat{};
+    // Commercial raw-boot staging metadata emitted from the synthetic .raw_boot section.
+    // Keeping this in the runtime makes the Katana/IP.BIN scramble-restage path title-agnostic.
+    std::uint32_t commercial_boot_image_address{};
+    std::uint32_t commercial_boot_image_size{};
+    // Commercial boot staging policy: 0=auto from disc geometry, 1=plain/pass-through,
+    // 2=restage to Dreamcast 32-byte scrambled layout. Auto intentionally uses the
+    // physical boot-track representation rather than title-specific allowlists.
+    std::uint8_t commercial_boot_stage_mode{};
+
+    // 128 KiB Dreamcast system flash image used by BIOS FlashROM HLE. cpp33c
+    // persists this image so DreamKey/PlanetWeb ISP blocks survive restarts.
+    std::array<std::uint8_t, 128u * 1024u> bios_flash{};
+    bool bios_flash_initialized{};
+    bool bios_flash_dirty{};
+    std::string bios_flash_path{"dreamcast_flash.bin"};
+    std::uint64_t bios_flash_info_calls{};
+    std::uint64_t bios_flash_read_calls{};
+    std::uint64_t bios_flash_program_calls{};
+    std::uint64_t bios_flash_erase_calls{};
+    std::uint64_t bios_flash_save_calls{};
+
+    // cpp33c PLANETWEB_DUAL_ISP: Katana modem surface + virtual ISP.
+    bool network_enabled{true};
+    std::array<std::uint8_t, 0x21u> modem_regs{};
+    std::array<std::uint8_t, 0x1000u> modem_dspram{};
+    std::deque<std::uint8_t> modem_rx_fifo;
+    std::vector<std::uint8_t> modem_ppp_frame;
+    bool modem_ppp_in_frame{};
+    bool modem_ppp_escape{};
+    std::uint32_t modem_state{};
+    std::uint32_t modem_connect_state{};
+    std::uint64_t modem_connect_due_cycle{};
+    std::uint64_t modem_reads{};
+    std::uint64_t modem_writes{};
+    std::uint64_t modem_dial_bytes{};
+    std::uint64_t modem_tx_bytes{};
+    std::uint64_t modem_rx_bytes{};
+    std::uint64_t modem_ppp_tx_frames{};
+    std::uint64_t modem_ppp_rx_frames{};
+    std::uint64_t modem_ppp_lcp_frames{};
+    std::uint64_t modem_ppp_pap_frames{};
+    std::uint64_t modem_ppp_ipcp_frames{};
+    std::uint64_t modem_ipv4_frames{};
+    std::uint64_t modem_udp_frames{};
+    std::uint64_t modem_tcp_frames{};
+    std::uint64_t modem_dns_frames{};
+    std::uint8_t modem_ppp_next_id{1u};
+    bool modem_lcp_request_sent{};
+    bool modem_ipcp_request_sent{};
     // Set when a device event redirects SH-4 execution to VBR+0x600. Generated
     // nested C++ calls propagate this back to the top-level dispatcher so a
     // host call/return cannot overwrite the asynchronous guest PC.
@@ -2490,6 +2568,8 @@ void dc_write64_fmov_hot(DCRuntime& runtime, std::uint32_t address, std::uint64_
 void dc_load_bytes(DCRuntime& runtime, std::uint32_t address, const std::uint8_t* data, std::size_t size);
 void dc_zero_bytes(DCRuntime& runtime, std::uint32_t address, std::size_t size);
 void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime);
+void dc_capture_static_code_signatures(DCRuntime& runtime);
+bool dc_registered_static_code_overwritten(DCRuntime& runtime, std::uint32_t target);
 void dc_gdrom_load_disc_map(DCRuntime& runtime, const std::string& path);
 void dc_gdrom_tick(DCRuntime& runtime, std::uint64_t sh4_cycles);
 void dc_gdrom_sync_host(DCRuntime& runtime, std::uint64_t now_ns);
@@ -2617,7 +2697,11 @@ DCR_DISPATCH_FORCE_INLINE void dc_refresh_dispatch_ready(DCRuntime& runtime) noe
 
 DCR_DISPATCH_FORCE_INLINE void dc_call_dynamic_fast(
     SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) {
-    if (runtime.fast_dynamic_dispatch_ready) {
+    const std::uint32_t target_phys = target & 0x1FFFFFFFu;
+    const bool static_code_overwritten = runtime.commercial_boot_active &&
+        target_phys >= 0x0C000000u && target_phys < 0x0C010000u &&
+        dc_registered_static_code_overwritten(runtime, target);
+    if (runtime.fast_dynamic_dispatch_ready && !static_code_overwritten) {
         const std::uint32_t requested_target = target;
         auto& cached = runtime.dispatch_cache[
             (requested_target >> 1u) & (DCRuntime::kDispatchCacheSize - 1u)];
@@ -2663,6 +2747,8 @@ std::string runtime_cpp() {
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <deque>
+#include <random>
 #include <iomanip>
 #include <iterator>
 #include <iostream>
@@ -2694,6 +2780,8 @@ std::string runtime_cpp() {
 
 #ifdef _WIN32
 #define NOMINMAX
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <mmsystem.h>
 #include <Xinput.h>
@@ -2711,6 +2799,9 @@ void pvr_service_host_ui(DCRuntime& runtime, bool force = false);
 void pvr_gpu_page_flip(DCRuntime& runtime);
 bool pvr_gpu_present_window(DCRuntime& runtime);
 bool pvr_gpu_readback_latest(DCRuntime& runtime, std::vector<std::uint32_t>& pixels);
+void pvr_gpu_invalidate_rtt_range(DCRuntime& runtime, std::size_t offset, std::size_t size);
+void pvr_gpu_sync_rtt_for_vram_read(DCRuntime& runtime, std::size_t offset, std::size_t size);
+bool pvr_gpu_rtt_direct_available(DCRuntime& runtime, const PVRSoftState& state);
 
 constexpr std::uint32_t kVram64PhysicalBase = 0x04000000u;
 constexpr std::uint32_t kVram32PhysicalBase = 0x05000000u;
@@ -2807,6 +2898,35 @@ SH4MmuShadow g_sh4_mmu{};
 std::uint64_t g_sh4_mmu_translations{};
 std::uint64_t g_sh4_mmu_misses{};
 thread_local SH4Context* g_last_sh4_context = nullptr;
+
+struct SpgWaitFastForwardState {
+    DCRuntime* owner{};
+    bool enabled{true};
+    std::uint32_t last_pc{};
+    std::uint32_t last_status{};
+    std::uint64_t last_cycle{};
+    std::uint32_t repeat_reads{};
+    std::uint64_t hits{};
+    std::uint64_t cycles{};
+    std::uint64_t max_chunk{};
+    std::uint32_t last_hit_pc{};
+};
+
+thread_local SpgWaitFastForwardState g_spg_wait_ff{};
+
+void spg_wait_ff_reset(DCRuntime& runtime) {
+    g_spg_wait_ff = {};
+    g_spg_wait_ff.owner = &runtime;
+    g_spg_wait_ff.enabled = true;
+    if (const char* value = std::getenv("DCR_SPG_WAIT_FF"))
+        g_spg_wait_ff.enabled = !(value[0] == '0' || value[0] == 'n' || value[0] == 'N' ||
+                                  value[0] == 'f' || value[0] == 'F');
+}
+
+SpgWaitFastForwardState& spg_wait_ff_state(DCRuntime& runtime) {
+    if (g_spg_wait_ff.owner != &runtime) spg_wait_ff_reset(runtime);
+    return g_spg_wait_ff;
+}
 
 DCR_FORCEINLINE void sh4_mmu_bind(DCRuntime& runtime) {
     if (g_sh4_mmu.owner == &runtime) return;
@@ -3257,14 +3377,365 @@ bool is_holly_mmio(std::uint32_t address) {
     return physical >= DCRuntime::kHollyPhysicalBase && physical < DCRuntime::kHollyPhysicalEnd;
 }
 
-// Area-0 external apertures. Dreamcast modem registers occupy
-// 0x00600000-0x006007FF. G2 external devices occupy
-// 0x01000000-0x01FFFFFF. When no external device is attached, Flycast's
-// baseline returns zero for reads and ignores writes; model that open-bus
-// behaviour instead of treating these legal hardware apertures as unmapped.
+// Area-0 external apertures. cpp33c gives the Dreamcast modem its own
+// register device instead of treating 0x00600000-0x006007FF as open bus.
 bool is_modem_aperture(std::uint32_t address) {
     const auto physical = physical29(address);
     return physical >= 0x00600000u && physical < 0x00600800u;
+}
+
+constexpr std::uint32_t kModemPhysicalBase = 0x00600000u;
+constexpr std::uint32_t kModemHollyBank = 1u;
+constexpr std::uint32_t kModemHollyBit = 1u << 2u; // EXP_8BIT
+
+std::uint16_t ppp_fcs16(const std::uint8_t* data, std::size_t size) {
+    std::uint16_t fcs = 0xFFFFu;
+    for (std::size_t i = 0; i < size; ++i) {
+        fcs ^= data[i];
+        for (unsigned b = 0; b < 8u; ++b)
+            fcs = static_cast<std::uint16_t>((fcs & 1u) ? ((fcs >> 1u) ^ 0x8408u) : (fcs >> 1u));
+    }
+    return static_cast<std::uint16_t>(~fcs);
+}
+
+std::uint16_t ipv4_checksum(const std::uint8_t* data, std::size_t size) {
+    std::uint32_t sum = 0u;
+    for (std::size_t i = 0; i + 1u < size; i += 2u)
+        sum += (static_cast<std::uint32_t>(data[i]) << 8u) | data[i + 1u];
+    if (size & 1u) sum += static_cast<std::uint32_t>(data[size - 1u]) << 8u;
+    while (sum >> 16u) sum = (sum & 0xFFFFu) + (sum >> 16u);
+    return static_cast<std::uint16_t>(~sum);
+}
+
+void modem_update_irq(DCRuntime& runtime) {
+    const bool active = (runtime.modem_regs[0x1Eu] & 0xC0u) != 0u ||
+                        (runtime.modem_regs[0x1Fu] & 0xC0u) != 0u;
+    if (active) runtime.holly_pending[kModemHollyBank] |= kModemHollyBit;
+    else runtime.holly_pending[kModemHollyBank] &= ~kModemHollyBit;
+}
+
+void modem_refresh_status(DCRuntime& runtime) {
+    auto& r = runtime.modem_regs;
+    r[0x0Du] |= 0x02u; // TXFNF
+    if (runtime.modem_connect_state < 2u) r[0x0Bu] |= 0xE0u; // dial tone A/B/C
+    else r[0x0Bu] &= static_cast<std::uint8_t>(~0xE0u);
+    if (runtime.modem_connect_state == 2u) {
+        r[0x0Fu] |= 0xD0u; // RLSD + FED + DSR
+        if (r[0x08u] & 0x01u) r[0x0Fu] |= 0x20u; // CTS if RTS
+    } else {
+        r[0x0Fu] &= 0x0Fu;
+    }
+    if (!runtime.modem_rx_fifo.empty()) {
+        r[0x00u] = runtime.modem_rx_fifo.front();
+        r[0x0Cu] |= 0x02u;
+        r[0x1Eu] |= 0x01u;
+    } else {
+        r[0x0Cu] &= static_cast<std::uint8_t>(~0x02u);
+        r[0x1Eu] &= static_cast<std::uint8_t>(~0x01u);
+    }
+    r[0x1Eu] |= 0x08u; // TDBE
+    if ((r[0x1Eu] & 0x04u) && (r[0x1Eu] & 0x01u)) r[0x1Eu] |= 0x40u; else r[0x1Eu] &= static_cast<std::uint8_t>(~0x40u);
+    if ((r[0x1Eu] & 0x20u) && (r[0x1Eu] & 0x08u)) r[0x1Eu] |= 0x80u; else r[0x1Eu] &= static_cast<std::uint8_t>(~0x80u);
+    if ((r[0x1Fu] & 0x10u) && (r[0x1Fu] & 0x08u)) r[0x1Fu] |= 0x80u; else r[0x1Fu] &= static_cast<std::uint8_t>(~0x80u);
+    if ((r[0x1Fu] & 0x04u) && (r[0x1Fu] & 0x01u)) r[0x1Fu] |= 0x40u; else r[0x1Fu] &= static_cast<std::uint8_t>(~0x40u);
+    modem_update_irq(runtime);
+}
+
+void modem_reset_normal(DCRuntime& runtime) {
+    runtime.modem_regs.fill(0u);
+    runtime.modem_dspram.fill(0u);
+    runtime.modem_rx_fifo.clear();
+    runtime.modem_ppp_frame.clear();
+    runtime.modem_ppp_in_frame = false;
+    runtime.modem_ppp_escape = false;
+    runtime.modem_state = 1u;
+    runtime.modem_connect_state = 0u;
+    runtime.modem_connect_due_cycle = 0u;
+    runtime.modem_regs[0x05u] = 0x08u; // CEQ
+    runtime.modem_regs[0x12u] = 0x76u; // V.32bis 14.4K default
+    runtime.modem_regs[0x09u] = 0x24u; // DATA + DTMF
+    runtime.modem_regs[0x15u] = 0x30u; // RDWK + HWRWK
+    runtime.modem_regs[0x07u] = 0x80u; // RDLE
+    runtime.modem_regs[0x03u] = 0x10u; // RLSDE
+    runtime.modem_regs[0x02u] = 0x40u; // TDE
+    runtime.modem_regs[0x13u] = 0x09u;
+    runtime.modem_regs[0x1Eu] = 0x08u; // TDBE
+    modem_refresh_status(runtime);
+    std::cout << "[MODEM] cpp33c native modem ready | Rockwell 33.6K | virtual ISP=on\n";
+}
+
+void modem_queue_serial(DCRuntime& runtime, const std::vector<std::uint8_t>& bytes) {
+    for (auto v : bytes) runtime.modem_rx_fifo.push_back(v);
+    runtime.modem_rx_bytes += bytes.size();
+    modem_refresh_status(runtime);
+}
+
+void modem_ppp_send_payload(DCRuntime& runtime, std::uint16_t protocol, const std::vector<std::uint8_t>& payload) {
+    std::vector<std::uint8_t> raw;
+    raw.reserve(payload.size() + 8u);
+    raw.push_back(0xFFu); raw.push_back(0x03u);
+    raw.push_back(static_cast<std::uint8_t>((protocol >> 8u) & 0xFFu));
+    raw.push_back(static_cast<std::uint8_t>(protocol & 0xFFu));
+    raw.insert(raw.end(), payload.begin(), payload.end());
+    const auto fcs = ppp_fcs16(raw.data(), raw.size());
+    raw.push_back(static_cast<std::uint8_t>(fcs & 0xFFu));
+    raw.push_back(static_cast<std::uint8_t>((fcs >> 8u) & 0xFFu));
+    std::vector<std::uint8_t> framed;
+    framed.reserve(raw.size() * 2u + 2u);
+    framed.push_back(0x7Eu);
+    for (auto v : raw) {
+        if (v == 0x7Eu || v == 0x7Du || v < 0x20u) { framed.push_back(0x7Du); framed.push_back(v ^ 0x20u); }
+        else framed.push_back(v);
+    }
+    framed.push_back(0x7Eu);
+    ++runtime.modem_ppp_rx_frames;
+    modem_queue_serial(runtime, framed);
+}
+
+void modem_ppp_send_control(DCRuntime& runtime, std::uint16_t proto, std::uint8_t code,
+                            std::uint8_t id, const std::vector<std::uint8_t>& data) {
+    std::vector<std::uint8_t> p;
+    const std::uint16_t len = static_cast<std::uint16_t>(4u + data.size());
+    p.push_back(code); p.push_back(id); p.push_back(static_cast<std::uint8_t>(len >> 8u));
+    p.push_back(static_cast<std::uint8_t>(len)); p.insert(p.end(), data.begin(), data.end());
+    modem_ppp_send_payload(runtime, proto, p);
+}
+
+#ifdef _WIN32
+bool modem_udp_bridge(DCRuntime& runtime, const std::vector<std::uint8_t>& ip) {
+    if (ip.size() < 28u || (ip[0] >> 4u) != 4u || ip[9] != 17u) return false;
+    const std::size_t ihl = static_cast<std::size_t>(ip[0] & 0x0Fu) * 4u;
+    if (ihl < 20u || ip.size() < ihl + 8u) return false;
+    const std::uint16_t src_port = static_cast<std::uint16_t>((ip[ihl] << 8u) | ip[ihl + 1u]);
+    const std::uint16_t dst_port = static_cast<std::uint16_t>((ip[ihl + 2u] << 8u) | ip[ihl + 3u]);
+    const std::uint16_t udp_len = static_cast<std::uint16_t>((ip[ihl + 4u] << 8u) | ip[ihl + 5u]);
+    if (udp_len < 8u || ihl + udp_len > ip.size()) return false;
+    static bool wsa_ready = false;
+    if (!wsa_ready) { WSADATA w{}; wsa_ready = WSAStartup(MAKEWORD(2, 2), &w) == 0; }
+    if (!wsa_ready) return false;
+    SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock == INVALID_SOCKET) return false;
+    sockaddr_in peer{}; peer.sin_family = AF_INET; peer.sin_port = htons(dst_port);
+    std::memcpy(&peer.sin_addr.s_addr, ip.data() + 16u, 4u);
+    const char* data = reinterpret_cast<const char*>(ip.data() + ihl + 8u);
+    const int data_len = static_cast<int>(udp_len - 8u);
+    if (sendto(sock, data, data_len, 0, reinterpret_cast<sockaddr*>(&peer), sizeof(peer)) == SOCKET_ERROR) {
+        closesocket(sock); return false;
+    }
+    fd_set set; FD_ZERO(&set); FD_SET(sock, &set); timeval tv{}; tv.tv_usec = 150000;
+    if (select(0, &set, nullptr, nullptr, &tv) <= 0) { closesocket(sock); return true; }
+    std::array<std::uint8_t, 2048> reply{}; sockaddr_in from{}; int fromlen = sizeof(from);
+    const int n = recvfrom(sock, reinterpret_cast<char*>(reply.data()), static_cast<int>(reply.size()), 0,
+                           reinterpret_cast<sockaddr*>(&from), &fromlen);
+    closesocket(sock);
+    if (n <= 0) return true;
+    std::vector<std::uint8_t> out(28u + static_cast<std::size_t>(n), 0u);
+    out[0] = 0x45u;
+    const std::uint16_t total = static_cast<std::uint16_t>(out.size());
+    out[2] = static_cast<std::uint8_t>(total >> 8u); out[3] = static_cast<std::uint8_t>(total);
+    out[8] = 64u; out[9] = 17u;
+    std::memcpy(out.data() + 12u, ip.data() + 16u, 4u);
+    std::memcpy(out.data() + 16u, ip.data() + 12u, 4u);
+    const auto hcs = ipv4_checksum(out.data(), 20u);
+    out[10] = static_cast<std::uint8_t>(hcs >> 8u); out[11] = static_cast<std::uint8_t>(hcs);
+    out[20] = static_cast<std::uint8_t>(dst_port >> 8u); out[21] = static_cast<std::uint8_t>(dst_port);
+    out[22] = static_cast<std::uint8_t>(src_port >> 8u); out[23] = static_cast<std::uint8_t>(src_port);
+    const std::uint16_t out_udp_len = static_cast<std::uint16_t>(8u + n);
+    out[24] = static_cast<std::uint8_t>(out_udp_len >> 8u); out[25] = static_cast<std::uint8_t>(out_udp_len);
+    std::memcpy(out.data() + 28u, reply.data(), static_cast<std::size_t>(n));
+    modem_ppp_send_payload(runtime, 0x0021u, out);
+    return true;
+}
+#else
+bool modem_udp_bridge(DCRuntime&, const std::vector<std::uint8_t>&) { return false; }
+#endif
+
+void modem_ppp_handle_frame(DCRuntime& runtime, std::vector<std::uint8_t> frame) {
+    if (frame.size() < 4u) return;
+    const auto got_fcs = static_cast<std::uint16_t>(frame[frame.size() - 2u] | (frame[frame.size() - 1u] << 8u));
+    frame.resize(frame.size() - 2u);
+    const auto want_fcs = ppp_fcs16(frame.data(), frame.size());
+    if (got_fcs != want_fcs) {
+        static std::uint32_t warned{};
+        if (warned++ < 4u) std::cout << "[PPP] FCS mismatch got=0x" << std::hex << got_fcs << " want=0x" << want_fcs << std::dec << "\n";
+        return;
+    }
+    std::size_t pos = 0u;
+    if (frame.size() >= 2u && frame[0] == 0xFFu && frame[1] == 0x03u) pos = 2u;
+    if (pos >= frame.size()) return;
+    std::uint16_t proto{};
+    if (frame[pos] & 1u) proto = frame[pos++];
+    else { if (pos + 1u >= frame.size()) return; proto = static_cast<std::uint16_t>((frame[pos] << 8u) | frame[pos + 1u]); pos += 2u; }
+    std::vector<std::uint8_t> payload(frame.begin() + static_cast<std::ptrdiff_t>(pos), frame.end());
+    ++runtime.modem_ppp_tx_frames;
+    if (proto == 0xC021u) {
+        ++runtime.modem_ppp_lcp_frames;
+        if (payload.size() >= 4u) {
+            const auto code = payload[0], id = payload[1];
+            const std::uint16_t len = static_cast<std::uint16_t>((payload[2] << 8u) | payload[3]);
+            const std::size_t n = std::min<std::size_t>(payload.size(), len);
+            std::vector<std::uint8_t> options(payload.begin() + 4, payload.begin() + static_cast<std::ptrdiff_t>(n));
+            if (code == 1u) modem_ppp_send_control(runtime, proto, 2u, id, options);
+            else if (code == 9u) modem_ppp_send_control(runtime, proto, 10u, id, options);
+            else if (code == 5u) modem_ppp_send_control(runtime, proto, 6u, id, options);
+            if (!runtime.modem_lcp_request_sent) {
+                runtime.modem_lcp_request_sent = true;
+                modem_ppp_send_control(runtime, proto, 1u, runtime.modem_ppp_next_id++, {});
+            }
+        }
+        if (runtime.modem_ppp_lcp_frames <= 8u) std::cout << "[PPP] LCP frame #" << runtime.modem_ppp_lcp_frames << "\n";
+        return;
+    }
+    if (proto == 0xC023u) {
+        ++runtime.modem_ppp_pap_frames;
+        if (payload.size() >= 4u && payload[0] == 1u) {
+            std::vector<std::uint8_t> msg{2u, 'O', 'K'};
+            modem_ppp_send_control(runtime, proto, 2u, payload[1], msg);
+            std::cout << "[PPP] PAP accepted by virtual ISP\n";
+        }
+        return;
+    }
+    if (proto == 0x8021u) {
+        ++runtime.modem_ppp_ipcp_frames;
+        if (payload.size() >= 4u && payload[0] == 1u) {
+            const auto id = payload[1];
+            const std::uint16_t len = static_cast<std::uint16_t>((payload[2] << 8u) | payload[3]);
+            std::vector<std::uint8_t> opts; bool need_nak = false;
+            for (std::size_t i = 4u; i + 2u <= payload.size() && i < len;) {
+                const auto t = payload[i], l = payload[i + 1u]; if (l < 2u || i + l > payload.size()) break;
+                if (l == 6u && (t == 3u || t == 129u || t == 131u)) {
+                    bool zero = true; for (unsigned j = 0; j < 4u; ++j) zero &= payload[i + 2u + j] == 0u;
+                    if (zero) {
+                        need_nak = true; opts.push_back(t); opts.push_back(6u);
+                        const std::array<std::uint8_t,4> v = t == 3u ? std::array<std::uint8_t,4>{10,0,2,15} :
+                            (t == 129u ? std::array<std::uint8_t,4>{46,101,91,123} : std::array<std::uint8_t,4>{1,1,1,1});
+                        opts.insert(opts.end(), v.begin(), v.end());
+                    }
+                }
+                i += l;
+            }
+            if (need_nak) modem_ppp_send_control(runtime, proto, 3u, id, opts);
+            else {
+                const auto n = std::min<std::size_t>(payload.size(), len);
+                std::vector<std::uint8_t> exact(payload.begin() + 4, payload.begin() + static_cast<std::ptrdiff_t>(n));
+                modem_ppp_send_control(runtime, proto, 2u, id, exact);
+            }
+            if (!runtime.modem_ipcp_request_sent) {
+                runtime.modem_ipcp_request_sent = true;
+                std::vector<std::uint8_t> own{3u,6u,10u,0u,2u,2u};
+                modem_ppp_send_control(runtime, proto, 1u, runtime.modem_ppp_next_id++, own);
+            }
+        }
+        if (runtime.modem_ppp_ipcp_frames <= 8u) std::cout << "[PPP] IPCP frame #" << runtime.modem_ppp_ipcp_frames << " | guest-ip=10.0.2.15\n";
+        return;
+    }
+    if (proto == 0x0021u) {
+        ++runtime.modem_ipv4_frames;
+        if (payload.size() >= 20u) {
+            if (payload[9] == 17u) {
+                ++runtime.modem_udp_frames;
+                const std::size_t ihl = (payload[0] & 0x0Fu) * 4u;
+                if (payload.size() >= ihl + 4u) {
+                    const std::uint16_t dp = static_cast<std::uint16_t>((payload[ihl + 2u] << 8u) | payload[ihl + 3u]);
+                    if (dp == 53u) ++runtime.modem_dns_frames;
+                }
+                modem_udp_bridge(runtime, payload);
+            } else if (payload[9] == 6u) {
+                ++runtime.modem_tcp_frames;
+                if (runtime.modem_tcp_frames <= 4u) std::cout << "[NET] TCP outbound observed; TCP/NAT is cpp33c follow-up\n";
+            }
+        }
+        return;
+    }
+    if (runtime.modem_ppp_tx_frames <= 12u) std::cout << "[PPP] protocol 0x" << std::hex << proto << std::dec << " observed\n";
+}
+
+void modem_serial_write(DCRuntime& runtime, std::uint8_t v) {
+    ++runtime.modem_tx_bytes;
+    if (v == 0x7Eu) {
+        if (runtime.modem_ppp_in_frame && !runtime.modem_ppp_frame.empty()) modem_ppp_handle_frame(runtime, runtime.modem_ppp_frame);
+        runtime.modem_ppp_frame.clear(); runtime.modem_ppp_in_frame = true; runtime.modem_ppp_escape = false; return;
+    }
+    if (!runtime.modem_ppp_in_frame) return;
+    if (v == 0x7Du) { runtime.modem_ppp_escape = true; return; }
+    if (runtime.modem_ppp_escape) { v ^= 0x20u; runtime.modem_ppp_escape = false; }
+    if (runtime.modem_ppp_frame.size() < 4096u) runtime.modem_ppp_frame.push_back(v);
+}
+
+void modem_begin_dial(DCRuntime& runtime, std::uint8_t first) {
+    if (runtime.modem_state != 1u) modem_reset_normal(runtime);
+    if (runtime.modem_connect_state == 0u) {
+        runtime.modem_connect_state = 1u;
+        runtime.modem_connect_due_cycle = runtime.pvr_spg_sh4_cycles + 20000000ull;
+        std::cout << "[MODEM] dialing virtual ISP | first=0x" << std::hex << static_cast<unsigned>(first) << std::dec << "\n";
+    }
+    ++runtime.modem_dial_bytes;
+}
+
+void dc_modem_tick(DCRuntime& runtime) {
+    if (!runtime.network_enabled) return;
+    if (runtime.modem_state == 0u && runtime.modem_reads + runtime.modem_writes != 0u) modem_reset_normal(runtime);
+    if (runtime.modem_connect_state == 1u && runtime.pvr_spg_sh4_cycles >= runtime.modem_connect_due_cycle) {
+        runtime.modem_connect_state = 2u;
+        runtime.modem_regs[0x0Eu] = (runtime.modem_regs[0x0Eu] & 0xE0u) | 0x07u;
+        runtime.modem_regs[0x1Fu] |= 0x08u; // NEWS
+        modem_refresh_status(runtime);
+        std::cout << "[MODEM] carrier connected | virtual ISP | PPP ready\n";
+    }
+}
+
+std::uint8_t dc_modem_read8(DCRuntime& runtime, std::uint32_t address) {
+    ++runtime.modem_reads;
+    if (!runtime.network_enabled) return 0u;
+    if (runtime.modem_state == 0u) modem_reset_normal(runtime);
+    const std::uint32_t raw = (physical29(address) - kModemPhysicalBase) >> 2u;
+    if (raw < 0x100u) return (raw & 1u) ? 0x10u : 0x02u;
+    const std::uint32_t reg = raw - 0x100u;
+    if (reg >= runtime.modem_regs.size()) return 0u;
+    modem_refresh_status(runtime);
+    const auto value = runtime.modem_regs[reg];
+    if (reg == 0u && !runtime.modem_rx_fifo.empty()) { runtime.modem_rx_fifo.pop_front(); modem_refresh_status(runtime); }
+    return value;
+}
+
+void dc_modem_write8(DCRuntime& runtime, std::uint32_t address, std::uint8_t value) {
+    ++runtime.modem_writes;
+    if (!runtime.network_enabled) return;
+    const std::uint32_t raw = (physical29(address) - kModemPhysicalBase) >> 2u;
+    if (raw < 0x100u) return;
+    const std::uint32_t reg = raw - 0x100u;
+    if (reg > 0x20u) return;
+    if (reg == 0x20u) {
+        if (value == 0u) { runtime.modem_state = 0u; runtime.modem_connect_state = 0u; }
+        else modem_reset_normal(runtime);
+        return;
+    }
+    if (runtime.modem_state == 0u) modem_reset_normal(runtime);
+    auto& r = runtime.modem_regs;
+    static constexpr std::array<std::uint8_t,0x20u> mask = {
+        0xFF,0xE0,0xEF,0xF3,0x95,0x3A,0x7F,0xEB,0xFF,0xFF,0x08,0x03,0x01,0x00,0x20,0x03,
+        0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xF7,0x00,0xFF,0xBF,0x24,0x1D
+    };
+    const auto old = r[reg];
+    r[reg] = static_cast<std::uint8_t>((old & ~mask[reg]) | (value & mask[reg]));
+    if (reg == 0x10u) {
+        if (runtime.modem_connect_state < 2u) modem_begin_dial(runtime, value);
+        else modem_serial_write(runtime, value);
+    } else if (reg == 0x09u || reg == 0x15u) {
+        const bool ready = (r[0x09u] & 0x01u) != 0u && (((r[0x09u] & 0x04u) != 0u) || ((r[0x15u] & 0x08u) != 0u));
+        if (ready && runtime.modem_connect_state == 1u) runtime.modem_connect_due_cycle = runtime.pvr_spg_sh4_cycles + 2000000ull;
+    } else if (reg == 0x1Du && (r[0x1Du] & 0x80u)) {
+        const std::uint32_t da = static_cast<std::uint32_t>(r[0x1Cu]) | ((static_cast<std::uint32_t>(r[0x1Du]) & 0x0Fu) << 8u);
+        if (da < runtime.modem_dspram.size()) {
+            if (r[0x1Du] & 0x20u) runtime.modem_dspram[da] = r[0x18u];
+            else { r[0x18u] = runtime.modem_dspram[da]; if (da + 1u < runtime.modem_dspram.size()) r[0x19u] = runtime.modem_dspram[da + 1u]; }
+        }
+        r[0x1Du] &= static_cast<std::uint8_t>(~0x80u); r[0x1Fu] |= 0x08u;
+    } else if (reg == 0x1Fu) {
+        if (value & 0x01u) r[0x1Fu] &= static_cast<std::uint8_t>(~0x01u);
+        if ((old & 0x08u) == 0u) r[0x1Fu] &= static_cast<std::uint8_t>(~0x08u);
+    }
+    modem_refresh_status(runtime);
 }
 
 bool is_g2_external_aperture(std::uint32_t address) {
@@ -4910,6 +5381,9 @@ std::uint32_t pvr_sample_texture_point(const DCRuntime& runtime, float u, float 
 
 void pvr_mark_vram_write(DCRuntime& runtime, std::size_t offset, std::size_t size) {
     if (size == 0u) return;
+    // A guest write owns the addressed VRAM again. Any GPU-resident RTT shadow
+    // overlapping it is stale and must no longer bypass normal VRAM sampling.
+    pvr_gpu_invalidate_rtt_range(runtime, offset, size);
     const std::uint64_t epoch = ++runtime.pvr_vram_write_epoch;
     // 0.0.141: Flycast-style dirty regions without host page faults. Each VRAM
     // page knows which of the 128 decoded-texture slots cover it. A write ORs
@@ -5897,6 +6371,62 @@ std::uint64_t pvr_spg_frame_cycles(const DCRuntime& runtime) {
     return pvr_spg_sample(runtime, runtime.pvr_spg_epoch_cycles).frame_cycles;
 }
 
+// cpp38c: collapse host-side SPG_STATUS busy loops without making the raster
+// read-driven. The visible status is still sampled from guest SH-4 time. After
+// repeated same-PC/same-value reads separated by only a few guest cycles, add
+// only the remaining cycles of the current scanline to the pending SH-4 tick.
+// The next generated block enters the normal scheduler, so PVR/AICA/TMU/GD-ROM
+// and IRQ ordering stay centralized in dc_runtime_tick_full().
+void pvr_spg_maybe_fast_forward_wait(DCRuntime& runtime, const PVRSpgTimingSample& spg,
+                                     std::uint64_t now_cycles) {
+    auto& ff = spg_wait_ff_state(runtime);
+    const std::uint32_t pc = runtime.current_pc;
+    const std::uint64_t delta = now_cycles >= ff.last_cycle ? now_cycles - ff.last_cycle
+                                                            : std::numeric_limits<std::uint64_t>::max();
+    const bool same_wait = pc != 0u && pc == ff.last_pc && spg.status == ff.last_status && delta <= 256u;
+    ff.repeat_reads = same_wait ? ff.repeat_reads + 1u : 0u;
+    ff.last_pc = pc;
+    ff.last_status = spg.status;
+    ff.last_cycle = now_cycles;
+
+    if (!ff.enabled || ff.repeat_reads < 4u || !runtime.device_clock_enabled) return;
+    if ((runtime.holly_pending[0] | runtime.holly_pending[1] | runtime.holly_pending[2]) != 0u) return;
+    // Never stack another synthetic skip before the previous one has reached
+    // the scheduler. This also keeps the optimization bounded to one scanline.
+    if (runtime.sh4_tick_pending_cycles >= 256u) return;
+
+    const std::uint64_t line_cycles = std::max<std::uint64_t>(1u, spg.line_cycles);
+    const std::uint64_t elapsed = now_cycles >= runtime.pvr_spg_epoch_cycles
+        ? now_cycles - runtime.pvr_spg_epoch_cycles : 0u;
+    const std::uint64_t in_line = elapsed % line_cycles;
+    std::uint64_t skip = line_cycles - in_line;
+    skip = std::min<std::uint64_t>(skip, 0x40000u);
+
+    // Preserve the proven 0.0.193 event-boundary rule: never jump across a
+    // pending render completion or the next scheduled PVR frame/VBlank event.
+    if (runtime.pvr_render_done_pending) {
+        if (runtime.pvr_render_done_due_cycle <= now_cycles) skip = 0u;
+        else skip = std::min(skip, runtime.pvr_render_done_due_cycle - now_cycles);
+    }
+    const std::uint64_t dev_now = runtime.device_clock_sh4_cycles + runtime.sh4_tick_pending_cycles;
+    if (runtime.device_clock_pvr_started) {
+        if (runtime.device_clock_pvr_target_cycles <= dev_now) skip = 0u;
+        else skip = std::min(skip, runtime.device_clock_pvr_target_cycles - dev_now);
+    }
+    if (runtime.device_clock_host_sync && runtime.device_clock_host_next_sync_cycle != 0u) {
+        if (runtime.device_clock_host_next_sync_cycle <= dev_now) skip = 0u;
+        else skip = std::min(skip, runtime.device_clock_host_next_sync_cycle - dev_now);
+    }
+
+    if (skip < 32u) return;
+    runtime.sh4_tick_pending_cycles += skip;
+    ++ff.hits;
+    ff.cycles += skip;
+    ff.max_chunk = std::max(ff.max_chunk, skip);
+    ff.last_hit_pc = pc;
+    ff.repeat_reads = 0u;
+}
+
 void pvr_spg_resync(DCRuntime& runtime) {
     runtime.pvr_spg_epoch_cycles = runtime.pvr_spg_sh4_cycles + runtime.sh4_tick_pending_cycles;
     ++runtime.pvr_spg_resyncs;
@@ -5957,6 +6487,7 @@ void device_clock_run_pvr_cycles(DCRuntime& runtime) {
 
 void pvr_flush_deferred_translucent(DCRuntime& runtime);
 void pvr_render_mt_deferred(DCRuntime& runtime);
+void pvr_materialize_deferred_cpu_textures(DCRuntime& runtime);
 bool pvr_render_gpu_deferred(DCRuntime& runtime);
 bool pvr_type7_geometry_probe_enabled();
 bool pvr_board_geometry_probe_enabled();
@@ -5982,10 +6513,10 @@ void pvr_finalize_logical_frame(DCRuntime& runtime, bool heuristic_autostart) {
         if (!pvr_render_gpu_deferred(runtime)) {
             ++runtime.pvr_gpu_fallback_frames;
             runtime.pvr_gpu_frame_active = false;
-            // GPU frames are queued in the same immutable triangle lists used
-            // by the proven 0.0.86+ multithreaded renderer. If D3D11 cannot
-            // cover a frame, replay the complete scene on CPU instead of
-            // mixing partially rendered GPU and software state.
+            // GPU frames keep raw immutable texture snapshots. Materialize
+            // decoded CPU textures only if an actual backend failure requires
+            // the software replay path. Normal GPU frames never pay this cost.
+            pvr_materialize_deferred_cpu_textures(runtime);
             if (runtime.pvr_mt_frame_active) pvr_render_mt_deferred(runtime);
             else pvr_flush_deferred_translucent(runtime);
         }
@@ -6005,7 +6536,8 @@ void pvr_finalize_logical_frame(DCRuntime& runtime, bool heuristic_autostart) {
         ++runtime.pvr_frames;
         ++runtime.pvr_heuristic_render_starts;
         ++runtime.pvr_render_completes;
-        pvr_store_rtt_frame(runtime);
+        if (!runtime.pvr_gpu_rtt_committed) pvr_store_rtt_frame(runtime);
+        runtime.pvr_gpu_rtt_committed = false;
         pvr_clear_soft_frame(runtime);
         pvr_reset_frame_tracking(runtime);
         runtime.pvr_active_scene_rtt = false;
@@ -6463,6 +6995,195 @@ std::shared_ptr<const std::vector<std::uint32_t>> pvr_capture_texture_snapshot(D
     return e.pixels;
 }
 
+// cpp22: persistent immutable texture snapshots. The first native-GPU pass
+// keyed the D3D cache by the address of a freshly allocated vector. That made
+// the same unchanged Dreamcast texture look new for every deferred surface and
+// caused hundreds of CreateBuffer/CreateTexture2D/Dispatch sequences per frame.
+// Keep the snapshot pointer stable while the texture's own VRAM pages are
+// unchanged. The key uses the texture-local page epoch, so unrelated VRAM
+// traffic does not invalidate the cache.
+struct PVRGpuRawSnapshotKey {
+    std::uint32_t texture_offset{};
+    std::uint16_t width{};
+    std::uint16_t height{};
+    std::uint16_t stride_pixels{};
+    std::uint8_t pixel_mode{};
+    std::uint8_t flags{};
+    std::uint8_t palette_select{};
+    std::uint8_t reserved{};
+    std::uint64_t vram_epoch{};
+    bool operator==(const PVRGpuRawSnapshotKey& rhs) const noexcept {
+        return texture_offset == rhs.texture_offset && width == rhs.width && height == rhs.height &&
+               stride_pixels == rhs.stride_pixels && pixel_mode == rhs.pixel_mode && flags == rhs.flags &&
+               palette_select == rhs.palette_select && vram_epoch == rhs.vram_epoch;
+    }
+};
+struct PVRGpuRawSnapshotKeyHash {
+    std::size_t operator()(const PVRGpuRawSnapshotKey& k) const noexcept {
+        std::uint64_t h = static_cast<std::uint64_t>(k.texture_offset) * 0x9E3779B185EBCA87ull;
+        h ^= static_cast<std::uint64_t>(k.width) << 7u;
+        h ^= static_cast<std::uint64_t>(k.height) << 19u;
+        h ^= static_cast<std::uint64_t>(k.stride_pixels) << 31u;
+        h ^= static_cast<std::uint64_t>(k.pixel_mode) << 47u;
+        h ^= static_cast<std::uint64_t>(k.flags) << 51u;
+        h ^= static_cast<std::uint64_t>(k.palette_select) << 57u;
+        h ^= k.vram_epoch * 0xD6E8FEB86659FD93ull;
+        h ^= h >> 30u; h *= 0xBF58476D1CE4E5B9ull;
+        h ^= h >> 27u; h *= 0x94D049BB133111EBull;
+        h ^= h >> 31u;
+        return static_cast<std::size_t>(h);
+    }
+};
+struct PVRGpuPaletteSnapshotKey {
+    std::uint64_t epoch{};
+    std::uint8_t format{};
+    bool operator==(const PVRGpuPaletteSnapshotKey& rhs) const noexcept {
+        return epoch == rhs.epoch && format == rhs.format;
+    }
+};
+struct PVRGpuPaletteSnapshotKeyHash {
+    std::size_t operator()(const PVRGpuPaletteSnapshotKey& k) const noexcept {
+        std::uint64_t h = k.epoch ^ (static_cast<std::uint64_t>(k.format) << 61u);
+        h ^= h >> 33u; h *= 0xFF51AFD7ED558CCDull;
+        h ^= h >> 33u;
+        return static_cast<std::size_t>(h);
+    }
+};
+
+std::mutex g_pvr_gpu_snapshot_cache_mutex;
+std::unordered_map<PVRGpuRawSnapshotKey,
+    std::weak_ptr<const std::vector<std::uint8_t>>, PVRGpuRawSnapshotKeyHash> g_pvr_gpu_raw_snapshot_cache;
+std::unordered_map<PVRGpuPaletteSnapshotKey,
+    std::weak_ptr<const std::vector<std::uint32_t>>, PVRGpuPaletteSnapshotKeyHash> g_pvr_gpu_palette_snapshot_cache;
+std::atomic<std::uint64_t> g_pvr_gpu_raw_snapshot_hits{0u};
+std::atomic<std::uint64_t> g_pvr_gpu_raw_snapshot_misses{0u};
+std::atomic<std::uint64_t> g_pvr_gpu_palette_snapshot_hits{0u};
+std::atomic<std::uint64_t> g_pvr_gpu_palette_snapshot_misses{0u};
+std::atomic<std::uint64_t> g_pvr_gpu_texture_lru_evictions{0u};
+
+PVRGpuRawSnapshotKey pvr_gpu_raw_snapshot_key(const DCRuntime& runtime, const PVRSoftState& st) {
+    PVRGpuRawSnapshotKey key{};
+    key.texture_offset = st.texture_offset & static_cast<std::uint32_t>(DCRuntime::kVramSize - 1u);
+    key.width = st.texture_width;
+    key.height = st.texture_height;
+    key.stride_pixels = static_cast<std::uint16_t>(std::min<std::uint32_t>(0xFFFFu,
+        pvr_texture_stride_pixels(runtime, st)));
+    key.pixel_mode = st.pixel_mode;
+    key.flags = pvr_texture_cache_flags(st);
+    key.palette_select = st.palette_select;
+    key.vram_epoch = pvr_texture_vram_epoch(runtime, st);
+    return key;
+}
+
+// Native GPU texture capture now reuses immutable raw snapshots until a write
+// touches one of the texture's actual VRAM pages. This removes the allocation +
+// memcpy storm as well as making the existing pointer-keyed D3D cache stable.
+std::shared_ptr<const std::vector<std::uint8_t>> pvr_capture_texture_raw_snapshot(
+    DCRuntime& runtime, const PVRSoftState& st) {
+    if (!st.textured || st.texture_width == 0u || st.texture_height == 0u) return {};
+    const std::uint64_t bytes64 = pvr_texture_storage_bytes(runtime, st);
+    if (bytes64 == 0u) return {};
+    const std::size_t bytes = static_cast<std::size_t>(std::min<std::uint64_t>(bytes64, DCRuntime::kVramSize));
+    if (!pvr_gpu_rtt_direct_available(runtime, st))
+        pvr_gpu_sync_rtt_for_vram_read(runtime,
+            static_cast<std::size_t>(st.texture_offset) & (DCRuntime::kVramSize - 1u), bytes);
+
+    const PVRGpuRawSnapshotKey key = pvr_gpu_raw_snapshot_key(runtime, st);
+    {
+        std::lock_guard<std::mutex> lock(g_pvr_gpu_snapshot_cache_mutex);
+        auto it = g_pvr_gpu_raw_snapshot_cache.find(key);
+        if (it != g_pvr_gpu_raw_snapshot_cache.end()) {
+            if (auto existing = it->second.lock()) {
+                ++g_pvr_gpu_raw_snapshot_hits;
+                return existing;
+            }
+            g_pvr_gpu_raw_snapshot_cache.erase(it);
+        }
+    }
+
+    auto raw_mut = std::make_shared<std::vector<std::uint8_t>>(bytes);
+    std::size_t src = static_cast<std::size_t>(st.texture_offset) & (DCRuntime::kVramSize - 1u);
+    std::size_t dst = 0u;
+    std::size_t remaining = bytes;
+    while (remaining != 0u) {
+        const std::size_t chunk = std::min<std::size_t>(remaining, DCRuntime::kVramSize - src);
+        std::memcpy(raw_mut->data() + dst, runtime.vram.data() + src, chunk);
+        dst += chunk;
+        remaining -= chunk;
+        src = 0u;
+    }
+    std::shared_ptr<const std::vector<std::uint8_t>> raw = raw_mut;
+    {
+        std::lock_guard<std::mutex> lock(g_pvr_gpu_snapshot_cache_mutex);
+        if (g_pvr_gpu_raw_snapshot_cache.size() >= 4096u) {
+            for (auto it = g_pvr_gpu_raw_snapshot_cache.begin(); it != g_pvr_gpu_raw_snapshot_cache.end(); ) {
+                if (it->second.expired()) it = g_pvr_gpu_raw_snapshot_cache.erase(it);
+                else ++it;
+            }
+        }
+        g_pvr_gpu_raw_snapshot_cache[key] = raw;
+    }
+    ++g_pvr_gpu_raw_snapshot_misses;
+    return raw;
+}
+
+std::shared_ptr<const std::vector<std::uint32_t>> pvr_capture_palette_raw_snapshot(
+    DCRuntime& runtime, const PVRSoftState& st) {
+    if (st.pixel_mode != 5u && st.pixel_mode != 6u) return {};
+    const PVRGpuPaletteSnapshotKey key{runtime.pvr_palette_write_epoch,
+                                      static_cast<std::uint8_t>(runtime.pvr_palette_format & 3u)};
+    {
+        std::lock_guard<std::mutex> lock(g_pvr_gpu_snapshot_cache_mutex);
+        auto it = g_pvr_gpu_palette_snapshot_cache.find(key);
+        if (it != g_pvr_gpu_palette_snapshot_cache.end()) {
+            if (auto existing = it->second.lock()) {
+                ++g_pvr_gpu_palette_snapshot_hits;
+                return existing;
+            }
+            g_pvr_gpu_palette_snapshot_cache.erase(it);
+        }
+    }
+    auto palette_mut = std::make_shared<std::vector<std::uint32_t>>(runtime.pvr_palette_raw.begin(),
+                                                                   runtime.pvr_palette_raw.end());
+    std::shared_ptr<const std::vector<std::uint32_t>> palette = palette_mut;
+    {
+        std::lock_guard<std::mutex> lock(g_pvr_gpu_snapshot_cache_mutex);
+        if (g_pvr_gpu_palette_snapshot_cache.size() >= 128u) {
+            for (auto it = g_pvr_gpu_palette_snapshot_cache.begin(); it != g_pvr_gpu_palette_snapshot_cache.end(); ) {
+                if (it->second.expired()) it = g_pvr_gpu_palette_snapshot_cache.erase(it);
+                else ++it;
+            }
+        }
+        g_pvr_gpu_palette_snapshot_cache[key] = palette;
+    }
+    ++g_pvr_gpu_palette_snapshot_misses;
+    return palette;
+}
+
+bool pvr_gpu_texture_state_supported(const DCRuntime& runtime, const PVRSoftState& st) {
+    if (!st.textured) return true;
+    if (st.texture_width == 0u || st.texture_height == 0u || st.texture_width > 1024u || st.texture_height > 1024u)
+        return false;
+    if (st.pixel_mode > 6u) return false;
+    if (st.pixel_mode == 3u && !st.nontwiddled) return false;
+    if (st.pixel_mode == 5u || st.pixel_mode == 6u) {
+        const std::uint32_t min_dim = std::min<std::uint32_t>(st.texture_width, st.texture_height);
+        if (min_dim == 0u || (min_dim & (min_dim - 1u)) != 0u) return false;
+    }
+    return pvr_texture_storage_bytes(runtime, st) != 0u;
+}
+
+void pvr_materialize_deferred_cpu_textures(DCRuntime& runtime) {
+    const PVRSoftState saved = runtime.pvr_state;
+    for (auto& deferred : runtime.pvr_deferred_states) {
+        if (!deferred.state.textured || deferred.texture_pixels) continue;
+        runtime.pvr_state = deferred.state;
+        deferred.texture_pixels = pvr_capture_texture_snapshot(runtime);
+        ++runtime.pvr_gpu_fallback_materializations;
+    }
+    runtime.pvr_state = saved;
+}
+
 std::uint32_t pvr_deferred_state_index(DCRuntime& runtime, bool background, bool capture_texture) {
     // 0.0.118: VRAM/palette/stride writers invalidate the cached index at the
     // mutation point. The overwhelmingly common same-surface triangle now only
@@ -6492,12 +7213,23 @@ std::uint32_t pvr_deferred_state_index(DCRuntime& runtime, bool background, bool
     PVRDeferredState deferred{};
     deferred.state = runtime.pvr_state;
     deferred.background = background;
-    if (capture_texture) deferred.texture_pixels = pvr_capture_texture_snapshot(runtime);
-    if (capture_texture && deferred.state.textured) {
-        const std::size_t needed = static_cast<std::size_t>(deferred.state.texture_width) *
-                                   deferred.state.texture_height;
-        deferred.gpu_supported = deferred.texture_pixels && needed != 0u &&
-                                 deferred.texture_pixels->size() >= needed;
+    const bool native_gpu_texture = capture_texture && runtime.pvr_gpu_fastpath_ready && deferred.state.textured;
+    if (native_gpu_texture) {
+        const bool direct_rtt = pvr_gpu_rtt_direct_available(runtime, deferred.state);
+        if (!direct_rtt) deferred.texture_raw = pvr_capture_texture_raw_snapshot(runtime, deferred.state);
+        deferred.palette_raw = pvr_capture_palette_raw_snapshot(runtime, deferred.state);
+        deferred.palette_format_snapshot = runtime.pvr_palette_format & 3u;
+        deferred.gpu_supported = direct_rtt ||
+            (pvr_gpu_texture_state_supported(runtime, deferred.state) && static_cast<bool>(deferred.texture_raw));
+        if (deferred.gpu_supported) ++runtime.pvr_gpu_texture_cpu_decodes_avoided;
+    } else if (capture_texture) {
+        deferred.texture_pixels = pvr_capture_texture_snapshot(runtime);
+        if (deferred.state.textured) {
+            const std::size_t needed = static_cast<std::size_t>(deferred.state.texture_width) *
+                                       deferred.state.texture_height;
+            deferred.gpu_supported = deferred.texture_pixels && needed != 0u &&
+                                     deferred.texture_pixels->size() >= needed;
+        }
     }
     const std::uint32_t index = static_cast<std::uint32_t>(runtime.pvr_deferred_states.size());
     runtime.pvr_deferred_states.push_back(std::move(deferred));
@@ -6544,20 +7276,11 @@ void pvr_sort_translucent(std::vector<PVRDeferredTriangle>& tris) {
 #ifdef _WIN32
 using Microsoft::WRL::ComPtr;
 
-struct PVRGpuVertex {
-    float x{};
-    float y{};
-    float z{};
-    float u{};
-    float v{};
-    // 0.0.132: keep Dreamcast ARGB bytes packed across the CPU->GPU boundary.
-    // D3D11 expands R8G8B8A8_UNORM in the input assembler; the VS swaps the
-    // little-endian B/G/R/A byte order back to logical R/G/B/A. This reduces
-    // each vertex from 52 to 28 bytes without discarding any source precision.
-    std::uint32_t argb{};
-    std::uint32_t offset_argb{};
-};
-static_assert(sizeof(PVRGpuVertex) == 28u);
+// The TA arena is now the GPU vertex arena too. D3D11 consumes the first 28
+// bytes of PVRSoftVertex directly and simply ignores the trailing provenance
+// byte/padding. This removes the full-frame PVRSoftVertex -> PVRGpuVertex copy.
+using PVRGpuVertex = PVRSoftVertex;
+static_assert(offsetof(PVRGpuVertex, offset_argb) == 24u);
 
 struct PVRGpuPSConstants {
     std::uint32_t flags0[4]{}; // textured, shading, vertex-alpha, offset-color
@@ -6580,9 +7303,49 @@ struct PVRGpuRun {
 };
 
 struct PVRGpuTextureEntry {
-    std::shared_ptr<const std::vector<std::uint32_t>> owner;
+    std::uint64_t last_use{};
+    std::shared_ptr<const std::vector<std::uint8_t>> raw_owner;
+    std::shared_ptr<const std::vector<std::uint32_t>> palette_owner;
+    std::shared_ptr<const std::vector<std::uint32_t>> cpu_owner;
     std::uint16_t width{};
     std::uint16_t height{};
+    ComPtr<ID3D11Buffer> raw_buffer;
+    ComPtr<ID3D11ShaderResourceView> raw_srv;
+    ComPtr<ID3D11Texture2D> texture;
+    ComPtr<ID3D11UnorderedAccessView> uav;
+    ComPtr<ID3D11ShaderResourceView> srv;
+};
+
+struct PVRGpuDecodeConstants {
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::uint32_t pixel_mode{};
+    std::uint32_t flags{}; // bit0 scan-order, bit1 VQ
+    std::uint32_t stride_pixels{};
+    std::uint32_t palette_select{};
+    std::uint32_t palette_format{};
+    std::uint32_t mip_base{};
+    std::uint32_t raw_size{};
+    std::uint32_t palette_byte_offset{};
+    std::uint32_t reserved0{};
+    std::uint32_t reserved1{};
+};
+static_assert((sizeof(PVRGpuDecodeConstants) & 15u) == 0u);
+
+struct PVRGpuPipelineState {
+    ID3D11RasterizerState* rasterizer{};
+    ID3D11BlendState* blend{};
+    ID3D11DepthStencilState* depth{};
+    ID3D11SamplerState* sampler{};
+};
+
+struct PVRGpuRttEntry {
+    std::uint32_t address{};
+    std::uint32_t width{};
+    std::uint32_t height{};
+    std::uint32_t stride{};
+    bool valid{};
+    bool cpu_synced{};
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<ID3D11ShaderResourceView> srv;
 };
@@ -6606,12 +7369,16 @@ struct PVRGpuBackend {
     ComPtr<ID3D11DepthStencilView> dsv;
     ComPtr<ID3D11VertexShader> vs;
     ComPtr<ID3D11PixelShader> ps;
+    ComPtr<ID3D11ComputeShader> texture_decode_cs;
     ComPtr<ID3D11InputLayout> layout;
-    ComPtr<ID3D11Buffer> vertex_buffer;
-    std::uint32_t vertex_capacity{};
-    ComPtr<ID3D11Buffer> index_buffer;
-    std::uint32_t index_capacity{};
+    static constexpr std::size_t kStreamBufferCount = 3u;
+    std::array<ComPtr<ID3D11Buffer>, kStreamBufferCount> vertex_buffers{};
+    std::array<std::uint32_t, kStreamBufferCount> vertex_capacities{};
+    std::array<ComPtr<ID3D11Buffer>, kStreamBufferCount> index_buffers{};
+    std::array<std::uint32_t, kStreamBufferCount> index_capacities{};
+    std::uint32_t stream_buffer_index{};
     ComPtr<ID3D11Buffer> ps_constants;
+    ComPtr<ID3D11Buffer> texture_decode_constants;
     // 0/1 = no cull, 2 = front, 3 = back (Flycast D3D11 mapping).
     std::array<ComPtr<ID3D11RasterizerState>, 4> rasterizer_states{};
     std::array<ComPtr<ID3D11BlendState>, 64> blend_states{};
@@ -6619,10 +7386,11 @@ struct PVRGpuBackend {
     // bit5 is reserved for mip/trilinear filter selection in 0.0.147.
     std::array<ComPtr<ID3D11SamplerState>, 64> sampler_states{};
     std::unordered_map<const void*, PVRGpuTextureEntry> textures;
-    // 0.0.116: frame scratch stays allocated across presents. 0.0.115 rebuilt
-    // and freed these large vectors every frame, which was visible in CPU-heavy
-    // scenes even though the GPU raster itself was already fast.
-    std::vector<PVRGpuVertex> vertex_scratch;
+    std::uint64_t texture_use_clock{};
+    std::unordered_map<std::uint64_t, PVRGpuPipelineState> pipeline_cache;
+    std::unordered_map<std::uint32_t, PVRGpuRttEntry> rtt_cache;
+    // Index/run scratch remains persistent because translucent sorting still
+    // builds a compact R32 stream on the CPU. Vertices no longer need scratch.
     std::vector<std::uint32_t> index_scratch;
     std::vector<PVRGpuRun> run_scratch;
 };
@@ -6830,6 +7598,124 @@ PSOut main(PSIn i) {
 }
 )HLSL";
 
+    static const char* kTextureDecodeCS = R"HLSL(
+ByteAddressBuffer RawTexture : register(t0);
+RWTexture2D<float4> DecodedTexture : register(u0);
+cbuffer DecodeState : register(b0) {
+    uint texWidth;
+    uint texHeight;
+    uint pixelMode;
+    uint decodeFlags;
+    uint stridePixels;
+    uint paletteSelect;
+    uint paletteFormat;
+    uint mipBase;
+    uint rawSize;
+    uint paletteByteOffset;
+    uint decodeReserved0;
+    uint decodeReserved1;
+};
+uint load8(uint a) {
+    if (a >= rawSize) return 0;
+    uint w = RawTexture.Load(a & ~3u);
+    return (w >> ((a & 3u) * 8u)) & 255u;
+}
+uint load16(uint a) { return load8(a) | (load8(a + 1u) << 8u); }
+uint part1by1(uint v) {
+    v &= 0x3FFu;
+    v = (v | (v << 8u)) & 0x00FF00FFu;
+    v = (v | (v << 4u)) & 0x0F0F0F0Fu;
+    v = (v | (v << 2u)) & 0x33333333u;
+    v = (v | (v << 1u)) & 0x55555555u;
+    return v;
+}
+uint morton2cs(uint x, uint y) { return (part1by1(x) << 1u) | part1by1(y); }
+float expand4f(uint v) { return ((v & 15u) * 17u) / 255.0; }
+float expand5f(uint v) { return (((v & 31u) * 255u + 15u) / 31u) / 255.0; }
+float expand6f(uint v) { return (((v & 63u) * 255u + 31u) / 63u) / 255.0; }
+float4 unpack16(uint t, uint mode) {
+    if (mode == 0u) return float4(expand5f(t >> 10u), expand5f(t >> 5u), expand5f(t), (t & 0x8000u) ? 1.0 : 0.0);
+    if (mode == 1u) return float4(expand5f(t >> 11u), expand6f(t >> 5u), expand5f(t), 1.0);
+    if (mode == 2u) return float4(expand4f(t >> 8u), expand4f(t >> 4u), expand4f(t), expand4f(t >> 12u));
+    if (mode == 4u) return float4(1,1,1,1);
+    return float4(1,0,1,1);
+}
+float4 paletteColor(uint idx) {
+    idx &= 1023u;
+    uint raw = RawTexture.Load(paletteByteOffset + idx * 4u);
+    if ((paletteFormat & 3u) == 3u)
+        return float4(((raw >> 16u) & 255u) / 255.0, ((raw >> 8u) & 255u) / 255.0,
+                      (raw & 255u) / 255.0, ((raw >> 24u) & 255u) / 255.0);
+    return unpack16(raw & 0xFFFFu, paletteFormat & 3u);
+}
+float4 yuvColor(uint y, uint u, uint v) {
+    int c = max(0, (int)y - 16);
+    int d = (int)u - 128;
+    int e = (int)v - 128;
+    int r = clamp((298 * c + 409 * e + 128) >> 8, 0, 255);
+    int g = clamp((298 * c - 100 * d - 208 * e + 128) >> 8, 0, 255);
+    int b = clamp((298 * c + 516 * d + 128) >> 8, 0, 255);
+    return float4(r / 255.0, g / 255.0, b / 255.0, 1.0);
+}
+[numthreads(8,8,1)]
+void main(uint3 tid : SV_DispatchThreadID) {
+    uint x = tid.x, y = tid.y;
+    if (x >= texWidth || y >= texHeight) return;
+    const bool nontwiddled = (decodeFlags & 1u) != 0u;
+    const bool vq = (decodeFlags & 2u) != 0u;
+    float4 color = float4(1,0,1,1);
+    if (pixelMode == 5u || pixelMode == 6u) {
+        uint minDim = min(texWidth, texHeight);
+        uint mask = minDim - 1u;
+        uint paletteIndex = 0u;
+        if (pixelMode == 5u) {
+            uint wordIndex = morton2cs((x & mask) >> 1u, (y & mask) >> 1u) +
+                             (x / minDim + y / minDim) * minDim * minDim / 4u;
+            uint word = load16(mipBase + wordIndex * 2u);
+            uint shift = ((x & 1u) ? 8u : 0u) + ((y & 1u) ? 4u : 0u);
+            paletteIndex = paletteSelect * 16u + ((word >> shift) & 15u);
+        } else {
+            uint wordIndex = morton2cs((y & mask) >> 1u, x & mask) +
+                             (x / minDim + y / minDim) * minDim * minDim / 2u;
+            uint word = load16(mipBase + wordIndex * 2u);
+            uint idx = (word >> ((y & 1u) * 8u)) & 255u;
+            paletteIndex = ((paletteSelect >> 4u) & 3u) * 256u + idx;
+        }
+        color = paletteColor(paletteIndex);
+    } else if (pixelMode == 3u) {
+        uint pairX = x & ~1u;
+        uint pairOff = mipBase + (y * stridePixels + pairX) * 2u;
+        uint u = load8(pairOff + 0u), y0 = load8(pairOff + 1u);
+        uint v = load8(pairOff + 2u), y1 = load8(pairOff + 3u);
+        color = yuvColor((x & 1u) ? y1 : y0, u, v);
+    } else {
+        uint byteOff = 0u;
+        if (vq) {
+            uint bx = x >> 1u, by = y >> 1u;
+            uint bw = max(1u, texWidth >> 1u);
+            uint blockIndex = nontwiddled ? by * bw + bx :
+                (((texWidth >> 1u) == (texHeight >> 1u)) ? morton2cs(bx, by) : by * bw + bx);
+            uint code = load8(mipBase + blockIndex);
+            uint sub = morton2cs(x & 1u, y & 1u) & 3u;
+            byteOff = code * 8u + sub * 2u;
+        } else {
+            uint texelIndex = 0u;
+            if (nontwiddled) texelIndex = y * stridePixels + x;
+            else if (texWidth == texHeight) texelIndex = morton2cs(x, y);
+            else {
+                uint minDim = min(texWidth, texHeight);
+                uint mask = minDim - 1u;
+                texelIndex = morton2cs(x & mask, y & mask) +
+                    (x / minDim + y / minDim) * minDim * minDim;
+            }
+            byteOff = mipBase + texelIndex * 2u;
+        }
+        color = unpack16(load16(byteOff), pixelMode);
+    }
+    DecodedTexture[uint2(x,y)] = color;
+}
+)HLSL";
+
     ComPtr<ID3DBlob> vs_blob, ps_blob;
     std::string shader_error;
     if (!pvr_gpu_compile(kVertexShader, "main", "vs_4_0", vs_blob, shader_error))
@@ -6843,6 +7729,18 @@ PSOut main(PSIn i) {
     hr = gpu->device->CreatePixelShader(ps_blob->GetBufferPointer(), ps_blob->GetBufferSize(), nullptr,
                                         gpu->ps.ReleaseAndGetAddressOf());
     if (FAILED(hr)) return pvr_gpu_set_error(runtime, pvr_gpu_hresult("CreatePixelShader", hr), true);
+
+    // Compute texture decode is an optional FL11 acceleration. Lower feature
+    // levels keep the CPU decoder as a correctness fallback.
+    if (gpu->feature_level >= D3D_FEATURE_LEVEL_11_0) {
+        ComPtr<ID3DBlob> cs_blob;
+        std::string cs_error;
+        if (pvr_gpu_compile(kTextureDecodeCS, "main", "cs_5_0", cs_blob, cs_error)) {
+            hr = gpu->device->CreateComputeShader(cs_blob->GetBufferPointer(), cs_blob->GetBufferSize(), nullptr,
+                                                  gpu->texture_decode_cs.ReleaseAndGetAddressOf());
+            if (FAILED(hr)) gpu->texture_decode_cs.Reset();
+        }
+    }
 
     const D3D11_INPUT_ELEMENT_DESC input_desc[] = {
         {"POSITION", 0u, DXGI_FORMAT_R32G32_FLOAT, 0u, static_cast<UINT>(offsetof(PVRGpuVertex, x)), D3D11_INPUT_PER_VERTEX_DATA, 0u},
@@ -6863,6 +7761,14 @@ PSOut main(PSIn i) {
     cb_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     hr = gpu->device->CreateBuffer(&cb_desc, nullptr, gpu->ps_constants.ReleaseAndGetAddressOf());
     if (FAILED(hr)) return pvr_gpu_set_error(runtime, pvr_gpu_hresult("CreateBuffer(constants)", hr), true);
+
+    D3D11_BUFFER_DESC decode_cb_desc{};
+    decode_cb_desc.ByteWidth = sizeof(PVRGpuDecodeConstants);
+    decode_cb_desc.Usage = D3D11_USAGE_DYNAMIC;
+    decode_cb_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    decode_cb_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    hr = gpu->device->CreateBuffer(&decode_cb_desc, nullptr, gpu->texture_decode_constants.ReleaseAndGetAddressOf());
+    if (FAILED(hr)) return pvr_gpu_set_error(runtime, pvr_gpu_hresult("CreateBuffer(texture-decode-constants)", hr), true);
 
     D3D11_RASTERIZER_DESC rs_desc{};
     rs_desc.FillMode = D3D11_FILL_SOLID;
@@ -6916,7 +7822,7 @@ bool pvr_gpu_readback_texture(DCRuntime& runtime, ID3D11Texture2D* source,
     return true;
 }
 
-bool pvr_gpu_readback_latest(DCRuntime& runtime, std::vector<std::uint32_t>& pixels) {
+bool pvr_gpu_readback_latest_d3d11(DCRuntime& runtime, std::vector<std::uint32_t>& pixels) {
     if (!runtime.pvr_gpu_enabled || !runtime.pvr_gpu_ready || !g_pvr_gpu) return false;
     ID3D11Texture2D* source = nullptr;
     if (runtime.pvr_gpu_scanout_valid) source = g_pvr_gpu->display_scanout.Get();
@@ -6943,7 +7849,7 @@ bool pvr_gpu_upload_cpu_scanout(DCRuntime& runtime) {
     return true;
 }
 
-void pvr_gpu_page_flip(DCRuntime& runtime) {
+void pvr_gpu_page_flip_d3d11(DCRuntime& runtime) {
     if (!runtime.pvr_gpu_enabled || !runtime.pvr_gpu_ready || !g_pvr_gpu) return;
     if (runtime.pvr_gpu_present_pending) {
         std::swap(g_pvr_gpu->display_pending, g_pvr_gpu->display_scanout);
@@ -7005,7 +7911,7 @@ bool pvr_gpu_ensure_swapchain(DCRuntime& runtime) {
     return true;
 }
 
-bool pvr_gpu_present_window(DCRuntime& runtime) {
+bool pvr_gpu_present_window_d3d11(DCRuntime& runtime) {
     if (!runtime.pvr_gpu_enabled || runtime.pvr_gpu_force_readback ||
         !runtime.pvr_gpu_scanout_valid || !runtime.pvr_gpu_ready || !g_pvr_gpu) return false;
     if (!pvr_gpu_ensure_swapchain(runtime)) {
@@ -7127,26 +8033,295 @@ ID3D11SamplerState* pvr_gpu_sampler_state(PVRGpuBackend& gpu, const PVRSoftState
     return state.Get();
 }
 
+std::uint64_t pvr_gpu_pipeline_key(const PVRSoftState& st) {
+    std::uint64_t key = 0u;
+    key |= static_cast<std::uint64_t>(st.cull_mode & 3u) << 0u;
+    key |= static_cast<std::uint64_t>(st.blend_src & 7u) << 2u;
+    key |= static_cast<std::uint64_t>(st.blend_dst & 7u) << 5u;
+    key |= static_cast<std::uint64_t>(st.depth_mode & 7u) << 8u;
+    key |= static_cast<std::uint64_t>(st.depth_write ? 1u : 0u) << 11u;
+    key |= static_cast<std::uint64_t>(st.texture_filter & 3u) << 12u;
+    key |= static_cast<std::uint64_t>(st.uv_clamp & 3u) << 14u;
+    key |= static_cast<std::uint64_t>(st.uv_flip & 3u) << 16u;
+    key |= static_cast<std::uint64_t>(st.mipmapped ? 1u : 0u) << 18u;
+    key |= static_cast<std::uint64_t>(st.textured ? 1u : 0u) << 19u;
+    return key;
+}
+
+PVRGpuPipelineState* pvr_gpu_pipeline_state(DCRuntime& runtime, PVRGpuBackend& gpu,
+                                             const PVRSoftState& st) {
+    const std::uint64_t key = pvr_gpu_pipeline_key(st);
+    auto it = gpu.pipeline_cache.find(key);
+    if (it != gpu.pipeline_cache.end()) {
+        ++runtime.pvr_gpu_pipeline_cache_hits;
+        return &it->second;
+    }
+    PVRGpuPipelineState p{};
+    p.rasterizer = gpu.rasterizer_states[st.cull_mode & 3u].Get();
+    p.blend = pvr_gpu_blend_state(gpu, st.blend_src, st.blend_dst);
+    p.depth = pvr_gpu_depth_state(gpu, st);
+    p.sampler = st.textured ? pvr_gpu_sampler_state(gpu, st) : nullptr;
+    if (!p.rasterizer || !p.blend || !p.depth || (st.textured && !p.sampler)) return nullptr;
+    ++runtime.pvr_gpu_pipeline_cache_misses;
+    auto [inserted, _] = gpu.pipeline_cache.emplace(key, p);
+    return &inserted->second;
+}
+
+void pvr_gpu_invalidate_rtt_range(DCRuntime&, std::size_t offset, std::size_t size) {
+    if (!g_pvr_gpu || size == 0u) return;
+    const std::size_t end = std::min<std::size_t>(DCRuntime::kVramSize, offset + size);
+    for (auto it = g_pvr_gpu->rtt_cache.begin(); it != g_pvr_gpu->rtt_cache.end(); ) {
+        const auto& e = it->second;
+        const std::size_t start = e.address;
+        const std::size_t bytes = static_cast<std::size_t>(e.stride) * e.height * 2u;
+        const std::size_t rtt_end = std::min<std::size_t>(DCRuntime::kVramSize, start + bytes);
+        if (offset < rtt_end && start < end) it = g_pvr_gpu->rtt_cache.erase(it);
+        else ++it;
+    }
+}
+
+bool pvr_gpu_commit_rtt(DCRuntime& runtime, PVRGpuBackend& gpu) {
+    std::size_t base = 0u;
+    if (!vram_range(runtime.pvr_active_rtt_address, 2u, base)) return false;
+    const std::uint32_t width = std::min<std::uint32_t>(
+        runtime.pvr_active_rtt_width ? runtime.pvr_active_rtt_width : kSoftWidth, kSoftWidth);
+    const std::uint32_t height = std::min<std::uint32_t>(
+        runtime.pvr_active_rtt_height ? runtime.pvr_active_rtt_height : kSoftHeight, kSoftHeight);
+    const std::uint32_t stride = std::max<std::uint32_t>(
+        width, runtime.pvr_active_rtt_stride ? runtime.pvr_active_rtt_stride : width);
+    if (width == 0u || height == 0u) return false;
+
+    PVRGpuRttEntry entry{};
+    entry.address = static_cast<std::uint32_t>(base);
+    entry.width = width;
+    entry.height = height;
+    entry.stride = stride;
+    entry.valid = true;
+    entry.cpu_synced = false;
+    D3D11_TEXTURE2D_DESC desc{};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1u;
+    desc.ArraySize = 1u;
+    desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.SampleDesc.Count = 1u;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    HRESULT hr = gpu.device->CreateTexture2D(&desc, nullptr, entry.texture.ReleaseAndGetAddressOf());
+    if (FAILED(hr)) return pvr_gpu_set_error(runtime, pvr_gpu_hresult("CreateTexture2D(RTT)", hr), false);
+    hr = gpu.device->CreateShaderResourceView(entry.texture.Get(), nullptr, entry.srv.ReleaseAndGetAddressOf());
+    if (FAILED(hr)) return pvr_gpu_set_error(runtime, pvr_gpu_hresult("CreateShaderResourceView(RTT)", hr), false);
+    D3D11_BOX box{0u, 0u, 0u, width, height, 1u};
+    gpu.context->CopySubresourceRegion(entry.texture.Get(), 0u, 0u, 0u, 0u, gpu.color.Get(), 0u, &box);
+
+    // Mark the guest VRAM range as logically written before publishing the new
+    // GPU shadow. This invalidates stale texture-cache identities while the
+    // actual pixels remain GPU-resident until a CPU read explicitly requests them.
+    const std::uint64_t bytes64 = static_cast<std::uint64_t>(stride) * height * 2ull;
+    pvr_mark_vram_write(runtime, base, static_cast<std::size_t>(std::min<std::uint64_t>(
+        bytes64, runtime.vram.size() - base)));
+    gpu.rtt_cache.insert_or_assign(entry.address, std::move(entry));
+    runtime.pvr_gpu_rtt_committed = true;
+    ++runtime.pvr_gpu_rtt_gpu_commits;
+    ++runtime.pvr_rtt_renders;
+    return true;
+}
+
+void pvr_gpu_sync_rtt_for_vram_read(DCRuntime& runtime, std::size_t offset, std::size_t size) {
+    if (!g_pvr_gpu || !g_pvr_gpu->device || !g_pvr_gpu->context || size == 0u) return;
+    const std::size_t end = std::min<std::size_t>(DCRuntime::kVramSize, offset + size);
+    for (auto& [_, entry] : g_pvr_gpu->rtt_cache) {
+        if (!entry.valid || entry.cpu_synced || !entry.texture) continue;
+        const std::size_t start = entry.address;
+        const std::size_t bytes = static_cast<std::size_t>(entry.stride) * entry.height * 2u;
+        const std::size_t rtt_end = std::min<std::size_t>(DCRuntime::kVramSize, start + bytes);
+        if (!(offset < rtt_end && start < end)) continue;
+
+        D3D11_TEXTURE2D_DESC desc{};
+        entry.texture->GetDesc(&desc);
+        D3D11_TEXTURE2D_DESC staging_desc = desc;
+        staging_desc.Usage = D3D11_USAGE_STAGING;
+        staging_desc.BindFlags = 0u;
+        staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Texture2D> staging;
+        if (FAILED(g_pvr_gpu->device->CreateTexture2D(&staging_desc, nullptr, staging.ReleaseAndGetAddressOf()))) return;
+        g_pvr_gpu->context->CopyResource(staging.Get(), entry.texture.Get());
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        if (FAILED(g_pvr_gpu->context->Map(staging.Get(), 0u, D3D11_MAP_READ, 0u, &mapped))) return;
+        for (std::uint32_t y = 0u; y < entry.height; ++y) {
+            const auto* src = reinterpret_cast<const std::uint32_t*>(
+                static_cast<const std::uint8_t*>(mapped.pData) + static_cast<std::size_t>(y) * mapped.RowPitch);
+            const std::size_t row = start + static_cast<std::size_t>(y) * entry.stride * 2u;
+            if (row >= runtime.vram.size()) break;
+            const std::uint32_t row_width = static_cast<std::uint32_t>(std::min<std::size_t>(
+                entry.width, (runtime.vram.size() - row) / 2u));
+            for (std::uint32_t x = 0u; x < row_width; ++x) {
+                const std::uint16_t px = pvr_argb_to_rgb565(src[x]);
+                runtime.vram[row + static_cast<std::size_t>(x) * 2u + 0u] = static_cast<std::uint8_t>(px);
+                runtime.vram[row + static_cast<std::size_t>(x) * 2u + 1u] = static_cast<std::uint8_t>(px >> 8u);
+            }
+        }
+        g_pvr_gpu->context->Unmap(staging.Get(), 0u);
+        entry.cpu_synced = true;
+        ++runtime.pvr_gpu_rtt_lazy_readbacks;
+    }
+}
+
+bool pvr_gpu_rtt_direct_available(DCRuntime&, const PVRSoftState& state) {
+    if (!g_pvr_gpu || !state.textured || state.pixel_mode != 1u || !state.nontwiddled) return false;
+    const std::uint32_t key = state.texture_offset & static_cast<std::uint32_t>(DCRuntime::kVramSize - 1u);
+    const auto it = g_pvr_gpu->rtt_cache.find(key);
+    return it != g_pvr_gpu->rtt_cache.end() && it->second.valid && it->second.srv &&
+           it->second.width == state.texture_width && it->second.height == state.texture_height;
+}
+
+ID3D11ShaderResourceView* pvr_gpu_rtt_texture_srv(PVRGpuBackend& gpu, const PVRSoftState& state) {
+    if (!state.textured || state.pixel_mode != 1u || !state.nontwiddled) return nullptr;
+    const std::uint32_t key = state.texture_offset & static_cast<std::uint32_t>(DCRuntime::kVramSize - 1u);
+    auto it = gpu.rtt_cache.find(key);
+    if (it == gpu.rtt_cache.end() || !it->second.valid || !it->second.srv) return nullptr;
+    if (it->second.width != state.texture_width || it->second.height != state.texture_height) return nullptr;
+    return it->second.srv.Get();
+}
+
 ID3D11ShaderResourceView* pvr_gpu_texture_srv(
-        DCRuntime& runtime, PVRGpuBackend& gpu, const PVRSoftState& state,
-        const std::shared_ptr<const std::vector<std::uint32_t>>& texture) {
+        DCRuntime& runtime, PVRGpuBackend& gpu, const PVRDeferredState& deferred) {
+    const auto& state = deferred.state;
     if (!state.textured) return nullptr;
-    if (!texture || state.texture_width == 0u || state.texture_height == 0u) return nullptr;
-    const std::size_t needed = static_cast<std::size_t>(state.texture_width) * state.texture_height;
-    if (texture->size() < needed) return nullptr;
-    const void* key = static_cast<const void*>(texture.get());
+    if (auto* rtt_srv = pvr_gpu_rtt_texture_srv(gpu, state)) {
+        ++runtime.pvr_gpu_texture_reuses;
+        return rtt_srv;
+    }
+    if (state.texture_width == 0u || state.texture_height == 0u) return nullptr;
+
+    const void* key = deferred.texture_raw
+        ? static_cast<const void*>(deferred.texture_raw.get())
+        : static_cast<const void*>(deferred.texture_pixels.get());
+    if (!key) return nullptr;
     auto it = gpu.textures.find(key);
-    if (it != gpu.textures.end() && it->second.owner == texture &&
+    if (it != gpu.textures.end() &&
+        it->second.raw_owner == deferred.texture_raw &&
+        it->second.cpu_owner == deferred.texture_pixels &&
+        it->second.palette_owner == deferred.palette_raw &&
         it->second.width == state.texture_width && it->second.height == state.texture_height) {
+        it->second.last_use = ++gpu.texture_use_clock;
         ++runtime.pvr_gpu_texture_reuses;
         return it->second.srv.Get();
     }
 
-    if (gpu.textures.size() >= 512u) gpu.textures.clear();
+    // cpp22: never flush the entire GPU texture cache. A clear-all policy made
+    // busy scenes repeatedly recreate hundreds of resources. Evict only the
+    // least-recently-used entry and keep the hot working set resident.
+    if (gpu.textures.size() >= 512u) {
+        auto victim = gpu.textures.end();
+        for (auto scan = gpu.textures.begin(); scan != gpu.textures.end(); ++scan) {
+            if (victim == gpu.textures.end() || scan->second.last_use < victim->second.last_use)
+                victim = scan;
+        }
+        if (victim != gpu.textures.end()) {
+            gpu.textures.erase(victim);
+            ++g_pvr_gpu_texture_lru_evictions;
+        }
+    }
     PVRGpuTextureEntry entry{};
-    entry.owner = texture;
+    entry.last_use = ++gpu.texture_use_clock;
+    entry.raw_owner = deferred.texture_raw;
+    entry.palette_owner = deferred.palette_raw;
+    entry.cpu_owner = deferred.texture_pixels;
     entry.width = state.texture_width;
     entry.height = state.texture_height;
+
+    // Preferred path: upload immutable Dreamcast storage and let a compute
+    // shader perform twiddle/VQ/palette/YUV/direct-color decode on the GPU.
+    if (gpu.texture_decode_cs && deferred.texture_raw) {
+        const std::size_t raw_bytes = deferred.texture_raw->size();
+        const std::size_t palette_offset = (raw_bytes + 3u) & ~std::size_t{3u};
+        const std::size_t palette_bytes = deferred.palette_raw ? deferred.palette_raw->size() * sizeof(std::uint32_t) : 0u;
+        const std::size_t upload_bytes = std::max<std::size_t>(4u, (palette_offset + palette_bytes + 3u) & ~std::size_t{3u});
+        if (upload_bytes > static_cast<std::size_t>(std::numeric_limits<UINT>::max())) return nullptr;
+        std::vector<std::uint8_t> upload(upload_bytes, 0u);
+        std::memcpy(upload.data(), deferred.texture_raw->data(), raw_bytes);
+        if (palette_bytes != 0u)
+            std::memcpy(upload.data() + palette_offset, deferred.palette_raw->data(), palette_bytes);
+
+        D3D11_BUFFER_DESC raw_desc{};
+        raw_desc.ByteWidth = static_cast<UINT>(upload_bytes);
+        raw_desc.Usage = D3D11_USAGE_IMMUTABLE;
+        raw_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        raw_desc.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+        D3D11_SUBRESOURCE_DATA raw_init{};
+        raw_init.pSysMem = upload.data();
+        HRESULT hr = gpu.device->CreateBuffer(&raw_desc, &raw_init, entry.raw_buffer.ReleaseAndGetAddressOf());
+        if (FAILED(hr)) return nullptr;
+        D3D11_SHADER_RESOURCE_VIEW_DESC raw_srv_desc{};
+        raw_srv_desc.Format = DXGI_FORMAT_R32_TYPELESS;
+        raw_srv_desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+        raw_srv_desc.BufferEx.FirstElement = 0u;
+        raw_srv_desc.BufferEx.NumElements = raw_desc.ByteWidth / 4u;
+        raw_srv_desc.BufferEx.Flags = D3D11_BUFFEREX_SRV_FLAG_RAW;
+        hr = gpu.device->CreateShaderResourceView(entry.raw_buffer.Get(), &raw_srv_desc, entry.raw_srv.ReleaseAndGetAddressOf());
+        if (FAILED(hr)) return nullptr;
+
+        D3D11_TEXTURE2D_DESC desc{};
+        desc.Width = entry.width;
+        desc.Height = entry.height;
+        desc.MipLevels = 1u;
+        desc.ArraySize = 1u;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.SampleDesc.Count = 1u;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
+        hr = gpu.device->CreateTexture2D(&desc, nullptr, entry.texture.ReleaseAndGetAddressOf());
+        if (FAILED(hr)) return nullptr;
+        hr = gpu.device->CreateShaderResourceView(entry.texture.Get(), nullptr, entry.srv.ReleaseAndGetAddressOf());
+        if (FAILED(hr)) return nullptr;
+        hr = gpu.device->CreateUnorderedAccessView(entry.texture.Get(), nullptr, entry.uav.ReleaseAndGetAddressOf());
+        if (FAILED(hr)) return nullptr;
+
+        PVRGpuDecodeConstants constants{};
+        constants.width = state.texture_width;
+        constants.height = state.texture_height;
+        constants.pixel_mode = state.pixel_mode;
+        constants.flags = (state.nontwiddled ? 1u : 0u) | (state.vq ? 2u : 0u);
+        constants.stride_pixels = pvr_texture_stride_pixels(runtime, state);
+        constants.palette_select = state.palette_select;
+        constants.palette_format = deferred.palette_format_snapshot & 3u;
+        constants.mip_base = static_cast<std::uint32_t>(pvr_mip_base_offset_bytes(state));
+        constants.raw_size = static_cast<std::uint32_t>(std::min<std::size_t>(raw_bytes, 0xFFFFFFFFu));
+        constants.palette_byte_offset = static_cast<std::uint32_t>(palette_offset);
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        hr = gpu.context->Map(gpu.texture_decode_constants.Get(), 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped);
+        if (FAILED(hr)) return nullptr;
+        std::memcpy(mapped.pData, &constants, sizeof(constants));
+        gpu.context->Unmap(gpu.texture_decode_constants.Get(), 0u);
+
+        ID3D11ShaderResourceView* raw_srv = entry.raw_srv.Get();
+        ID3D11UnorderedAccessView* uav = entry.uav.Get();
+        ID3D11Buffer* cb = gpu.texture_decode_constants.Get();
+        gpu.context->CSSetShader(gpu.texture_decode_cs.Get(), nullptr, 0u);
+        gpu.context->CSSetShaderResources(0u, 1u, &raw_srv);
+        gpu.context->CSSetUnorderedAccessViews(0u, 1u, &uav, nullptr);
+        gpu.context->CSSetConstantBuffers(0u, 1u, &cb);
+        gpu.context->Dispatch((entry.width + 7u) / 8u, (entry.height + 7u) / 8u, 1u);
+        ID3D11ShaderResourceView* null_srv = nullptr;
+        ID3D11UnorderedAccessView* null_uav = nullptr;
+        gpu.context->CSSetShaderResources(0u, 1u, &null_srv);
+        gpu.context->CSSetUnorderedAccessViews(0u, 1u, &null_uav, nullptr);
+        gpu.context->CSSetShader(nullptr, nullptr, 0u);
+        ++runtime.pvr_gpu_texture_compute_decodes;
+        runtime.pvr_gpu_texture_compute_texels += static_cast<std::uint64_t>(entry.width) * entry.height;
+        ++runtime.pvr_gpu_texture_uploads;
+        auto [inserted, _] = gpu.textures.insert_or_assign(key, std::move(entry));
+        return inserted->second.srv.Get();
+    }
+
+    // Compatibility path for feature levels without compute support or an
+    // explicit software-fallback replay. It is intentionally not used by the
+    // normal FL11 GPU path.
+    const auto& texture = deferred.texture_pixels;
+    if (!texture) return nullptr;
+    const std::size_t needed = static_cast<std::size_t>(state.texture_width) * state.texture_height;
+    if (texture->size() < needed) return nullptr;
     D3D11_TEXTURE2D_DESC desc{};
     desc.Width = entry.width;
     desc.Height = entry.height;
@@ -7168,8 +8343,9 @@ ID3D11ShaderResourceView* pvr_gpu_texture_srv(
     return inserted->second.srv.Get();
 }
 
-bool pvr_gpu_ensure_vertex_buffer(PVRGpuBackend& gpu, std::uint32_t vertices) {
-    if (gpu.vertex_buffer && gpu.vertex_capacity >= vertices) return true;
+bool pvr_gpu_ensure_vertex_buffer(PVRGpuBackend& gpu, std::size_t slot, std::uint32_t vertices) {
+    if (slot >= PVRGpuBackend::kStreamBufferCount) return false;
+    if (gpu.vertex_buffers[slot] && gpu.vertex_capacities[slot] >= vertices) return true;
     std::uint32_t capacity = 1024u;
     while (capacity < vertices && capacity < (1u << 24u)) capacity <<= 1u;
     if (capacity < vertices) capacity = vertices;
@@ -7180,13 +8356,14 @@ bool pvr_gpu_ensure_vertex_buffer(PVRGpuBackend& gpu, std::uint32_t vertices) {
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     ComPtr<ID3D11Buffer> buffer;
     if (FAILED(gpu.device->CreateBuffer(&desc, nullptr, buffer.ReleaseAndGetAddressOf()))) return false;
-    gpu.vertex_buffer = std::move(buffer);
-    gpu.vertex_capacity = capacity;
+    gpu.vertex_buffers[slot] = std::move(buffer);
+    gpu.vertex_capacities[slot] = capacity;
     return true;
 }
 
-bool pvr_gpu_ensure_index_buffer(PVRGpuBackend& gpu, std::uint32_t indices) {
-    if (gpu.index_buffer && gpu.index_capacity >= indices) return true;
+bool pvr_gpu_ensure_index_buffer(PVRGpuBackend& gpu, std::size_t slot, std::uint32_t indices) {
+    if (slot >= PVRGpuBackend::kStreamBufferCount) return false;
+    if (gpu.index_buffers[slot] && gpu.index_capacities[slot] >= indices) return true;
     std::uint32_t capacity = 2048u;
     while (capacity < indices && capacity < (1u << 25u)) capacity <<= 1u;
     if (capacity < indices) capacity = indices;
@@ -7197,19 +8374,9 @@ bool pvr_gpu_ensure_index_buffer(PVRGpuBackend& gpu, std::uint32_t indices) {
     desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
     ComPtr<ID3D11Buffer> buffer;
     if (FAILED(gpu.device->CreateBuffer(&desc, nullptr, buffer.ReleaseAndGetAddressOf()))) return false;
-    gpu.index_buffer = std::move(buffer);
-    gpu.index_capacity = capacity;
+    gpu.index_buffers[slot] = std::move(buffer);
+    gpu.index_capacities[slot] = capacity;
     return true;
-}
-
-PVRGpuVertex pvr_gpu_vertex(const PVRSoftVertex& v) {
-    // 0.0.132: preserve the original 8-bit channel values and let the D3D11
-    // input assembler perform the standard UNORM8 -> float conversion.
-    PVRGpuVertex out{};
-    out.x = v.x; out.y = v.y; out.z = v.z; out.u = v.u; out.v = v.v;
-    out.argb = v.argb;
-    out.offset_argb = v.offset_argb;
-    return out;
 }
 
 bool pvr_gpu_triangle_supported(const DCRuntime& runtime, const PVRDeferredTriangle& tri) {
@@ -7221,7 +8388,6 @@ bool pvr_gpu_triangle_supported(const DCRuntime& runtime, const PVRDeferredTrian
     const auto& st = deferred.state;
     const auto finite_vertex = [&](const PVRSoftVertex& v) {
         if (!std::isfinite(v.x) || !std::isfinite(v.y) || !std::isfinite(v.z)) return false;
-        if (!deferred.background && v.z < 0.0f) return false;
         if (st.textured && (!std::isfinite(v.u) || !std::isfinite(v.v))) return false;
         return true;
     };
@@ -7229,8 +8395,10 @@ bool pvr_gpu_triangle_supported(const DCRuntime& runtime, const PVRDeferredTrian
         !finite_vertex(runtime.pvr_deferred_vertices[tri.i1]) ||
         !finite_vertex(runtime.pvr_deferred_vertices[tri.i2])) return false;
     if (st.textured) {
+        const bool raw_ok = deferred.texture_raw && !deferred.texture_raw->empty();
         const std::size_t needed = static_cast<std::size_t>(st.texture_width) * st.texture_height;
-        if (!deferred.texture_pixels || needed == 0u || deferred.texture_pixels->size() < needed) return false;
+        const bool cpu_ok = deferred.texture_pixels && needed != 0u && deferred.texture_pixels->size() >= needed;
+        if (!raw_ok && !cpu_ok) return false;
     }
     return true;
 }
@@ -7275,7 +8443,11 @@ bool pvr_gpu_state_run_equivalent(const DCRuntime& runtime,
     const auto& sa = runtime.pvr_deferred_states[a_state];
     const auto& sb = runtime.pvr_deferred_states[b_state];
     return pvr_gpu_state_equivalent(sa.state, sb.state) &&
-           sa.texture_pixels == sb.texture_pixels && sa.background == sb.background;
+           sa.texture_pixels == sb.texture_pixels &&
+           sa.texture_raw == sb.texture_raw &&
+           sa.palette_raw == sb.palette_raw &&
+           sa.palette_format_snapshot == sb.palette_format_snapshot &&
+           sa.background == sb.background;
 }
 
 bool pvr_gpu_same_run(const DCRuntime& runtime, const PVRDeferredTriangle& a, const PVRDeferredTriangle& b) {
@@ -7371,7 +8543,7 @@ void pvr_gpu_append_run(const DCRuntime& runtime, std::vector<std::uint32_t>& in
     }
 }
 
-bool pvr_render_gpu_deferred(DCRuntime& runtime) {
+bool pvr_render_gpu_deferred_d3d11(DCRuntime& runtime) {
     if (!runtime.pvr_gpu_frame_active) return false;
     if (!pvr_gpu_init(runtime)) return false;
 
@@ -7388,10 +8560,8 @@ bool pvr_render_gpu_deferred(DCRuntime& runtime) {
     if (stage_profile) runtime.pvr_gpu_sort_ns += steady_ns() - sort0;
 
     auto& gpu = *g_pvr_gpu;
-    auto& vertices = gpu.vertex_scratch;
     auto& indices = gpu.index_scratch;
     auto& runs = gpu.run_scratch;
-    vertices.clear();
     indices.clear();
     runs.clear();
     const std::size_t opaque_index_count = runtime.pvr_deferred_opaque_indices.size();
@@ -7401,36 +8571,38 @@ bool pvr_render_gpu_deferred(DCRuntime& runtime) {
     const std::size_t total_index_count = opaque_index_count + late_strip_index_count +
         runtime.pvr_deferred_translucent.size() * 3u;
     const std::size_t unique_count = runtime.pvr_deferred_vertices.size();
-    if (vertices.capacity() < unique_count) vertices.reserve(unique_count);
     if (indices.capacity() < total_index_count) indices.reserve(total_index_count);
     if (runs.capacity() < 512u) runs.reserve(512u);
     const std::uint64_t build0 = stage_profile ? steady_ns() : 0u;
-    vertices.resize(unique_count);
-    for (std::size_t i = 0u; i < unique_count; ++i)
-        vertices[i] = pvr_gpu_vertex(runtime.pvr_deferred_vertices[i]);
+    // No vertex conversion/build pass: the TA arena layout is the D3D11 input
+    // layout. Only the compact index/run stream is assembled here.
     // 0.0.170: opaque runs are replayed in submission order. Late native-strip
     // descriptors materialize directly into GPU scratch, while legacy/fallback
     // blocks are copied from the runtime index arena exactly once.
     pvr_gpu_build_opaque_stream(runtime, indices, runs);
     pvr_gpu_append_run(runtime, indices, runs, runtime.pvr_deferred_translucent);
     if (stage_profile) runtime.pvr_gpu_build_ns += steady_ns() - build0;
-    if (vertices.empty() || indices.empty()) return false;
+    if (runtime.pvr_deferred_vertices.empty() || indices.empty()) return false;
 
     const std::uint64_t upload0 = stage_profile ? steady_ns() : 0u;
-    if (!pvr_gpu_ensure_vertex_buffer(gpu, static_cast<std::uint32_t>(vertices.size())))
-        return pvr_gpu_set_error(runtime, "unable to allocate dynamic PVR GPU vertex buffer", false);
-    if (!pvr_gpu_ensure_index_buffer(gpu, static_cast<std::uint32_t>(indices.size())))
-        return pvr_gpu_set_error(runtime, "unable to allocate dynamic PVR GPU index buffer", false);
+    const std::size_t stream_slot = gpu.stream_buffer_index++ % PVRGpuBackend::kStreamBufferCount;
+    if (!pvr_gpu_ensure_vertex_buffer(gpu, stream_slot, static_cast<std::uint32_t>(runtime.pvr_deferred_vertices.size())))
+        return pvr_gpu_set_error(runtime, "unable to allocate persistent PVR GPU vertex buffer", false);
+    if (!pvr_gpu_ensure_index_buffer(gpu, stream_slot, static_cast<std::uint32_t>(indices.size())))
+        return pvr_gpu_set_error(runtime, "unable to allocate persistent PVR GPU index buffer", false);
 
     D3D11_MAPPED_SUBRESOURCE mapped{};
-    HRESULT hr = gpu.context->Map(gpu.vertex_buffer.Get(), 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped);
+    ID3D11Buffer* stream_vb = gpu.vertex_buffers[stream_slot].Get();
+    ID3D11Buffer* stream_ib = gpu.index_buffers[stream_slot].Get();
+    HRESULT hr = gpu.context->Map(stream_vb, 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped);
     if (FAILED(hr)) return pvr_gpu_set_error(runtime, pvr_gpu_hresult("Map(vertex-buffer)", hr), false);
-    std::memcpy(mapped.pData, vertices.data(), vertices.size() * sizeof(PVRGpuVertex));
-    gpu.context->Unmap(gpu.vertex_buffer.Get(), 0u);
-    hr = gpu.context->Map(gpu.index_buffer.Get(), 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped);
+    std::memcpy(mapped.pData, runtime.pvr_deferred_vertices.data(),
+                runtime.pvr_deferred_vertices.size() * sizeof(PVRGpuVertex));
+    gpu.context->Unmap(stream_vb, 0u);
+    hr = gpu.context->Map(stream_ib, 0u, D3D11_MAP_WRITE_DISCARD, 0u, &mapped);
     if (FAILED(hr)) return pvr_gpu_set_error(runtime, pvr_gpu_hresult("Map(index-buffer)", hr), false);
     std::memcpy(mapped.pData, indices.data(), indices.size() * sizeof(std::uint32_t));
-    gpu.context->Unmap(gpu.index_buffer.Get(), 0u);
+    gpu.context->Unmap(stream_ib, 0u);
     if (stage_profile) runtime.pvr_gpu_upload_ns += steady_ns() - upload0;
 
     const std::uint64_t draw0 = stage_profile ? steady_ns() : 0u;
@@ -7447,9 +8619,9 @@ bool pvr_render_gpu_deferred(DCRuntime& runtime) {
     viewport.MaxDepth = 1.0f;
     gpu.context->RSSetViewports(1u, &viewport);
     const UINT stride = sizeof(PVRGpuVertex), offset = 0u;
-    ID3D11Buffer* vb = gpu.vertex_buffer.Get();
+    ID3D11Buffer* vb = stream_vb;
     gpu.context->IASetVertexBuffers(0u, 1u, &vb, &stride, &offset);
-    gpu.context->IASetIndexBuffer(gpu.index_buffer.Get(), DXGI_FORMAT_R32_UINT, 0u);
+    gpu.context->IASetIndexBuffer(stream_ib, DXGI_FORMAT_R32_UINT, 0u);
     gpu.context->IASetInputLayout(gpu.layout.Get());
     D3D11_PRIMITIVE_TOPOLOGY last_topology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
     gpu.context->VSSetShader(gpu.vs.Get(), nullptr, 0u);
@@ -7479,14 +8651,16 @@ bool pvr_render_gpu_deferred(DCRuntime& runtime) {
             last_topology = topology;
             ++runtime.pvr_gpu_topology_switches;
         }
-        ID3D11RasterizerState* rasterizer = gpu.rasterizer_states[state.cull_mode & 3u].Get();
-        ID3D11BlendState* blend = pvr_gpu_blend_state(gpu, state.blend_src, state.blend_dst);
-        ID3D11DepthStencilState* depth = pvr_gpu_depth_state(gpu, state);
-        ID3D11SamplerState* sampler = state.textured ? pvr_gpu_sampler_state(gpu, state) : nullptr;
+        PVRGpuPipelineState* pipeline = pvr_gpu_pipeline_state(runtime, gpu, state);
+        if (!pipeline) return pvr_gpu_set_error(runtime, "unable to create/cache a PVR GPU pipeline state", false);
+        ID3D11RasterizerState* rasterizer = pipeline->rasterizer;
+        ID3D11BlendState* blend = pipeline->blend;
+        ID3D11DepthStencilState* depth = pipeline->depth;
+        ID3D11SamplerState* sampler = pipeline->sampler;
         ID3D11ShaderResourceView* srv = state.textured
-            ? pvr_gpu_texture_srv(runtime, gpu, state, deferred.texture_pixels) : nullptr;
-        if (!blend || !depth || (state.textured && (!sampler || !srv)))
-            return pvr_gpu_set_error(runtime, "unable to create/bind a PVR GPU draw state", false);
+            ? pvr_gpu_texture_srv(runtime, gpu, deferred) : nullptr;
+        if (state.textured && !srv)
+            return pvr_gpu_set_error(runtime, "unable to create/bind a PVR GPU texture", false);
 
         PVRGpuPSConstants constants{};
         constants.flags0[0] = state.textured ? 1u : 0u;
@@ -7575,7 +8749,9 @@ bool pvr_render_gpu_deferred(DCRuntime& runtime) {
     // performs the synchronous staging Map that used to stall every frame.
     ID3D11ShaderResourceView* null_srv = nullptr;
     gpu.context->PSSetShaderResources(0u, 1u, &null_srv);
-    if (runtime.pvr_active_scene_rtt || runtime.pvr_gpu_force_readback) {
+    if (runtime.pvr_active_scene_rtt) {
+        if (!pvr_gpu_commit_rtt(runtime, gpu)) return false;
+    } else if (runtime.pvr_gpu_force_readback) {
         if (!pvr_gpu_readback_texture(runtime, gpu.color.Get(), runtime.pvr_framebuffer)) return false;
     }
     if (!runtime.pvr_active_scene_rtt) {
@@ -7601,10 +8777,59 @@ bool pvr_render_gpu_deferred(DCRuntime& runtime) {
     runtime.pvr_gpu_render_ns += steady_ns() - t0;
     return true;
 }
+// Renderer API boundary. PVR/TA translation above this point is backend-neutral;
+// DX11 is the first implementation, while Vulkan can plug in here without
+// duplicating Dreamcast list/state/texture semantics.
+class PVRRendererBackend {
+public:
+    virtual ~PVRRendererBackend() = default;
+    virtual const char* name() const noexcept = 0;
+    virtual bool render(DCRuntime& runtime) = 0;
+    virtual void page_flip(DCRuntime& runtime) = 0;
+    virtual bool present_window(DCRuntime& runtime) = 0;
+    virtual bool readback_latest(DCRuntime& runtime, std::vector<std::uint32_t>& pixels) = 0;
+};
+
+class PVRD3D11RendererBackend final : public PVRRendererBackend {
+public:
+    const char* name() const noexcept override { return "d3d11"; }
+    bool render(DCRuntime& runtime) override { return pvr_render_gpu_deferred_d3d11(runtime); }
+    void page_flip(DCRuntime& runtime) override { pvr_gpu_page_flip_d3d11(runtime); }
+    bool present_window(DCRuntime& runtime) override { return pvr_gpu_present_window_d3d11(runtime); }
+    bool readback_latest(DCRuntime& runtime, std::vector<std::uint32_t>& pixels) override {
+        return pvr_gpu_readback_latest_d3d11(runtime, pixels);
+    }
+};
+
+PVRRendererBackend* pvr_renderer_backend(DCRuntime& runtime) {
+    if (!runtime.pvr_gpu_enabled) return nullptr;
+    static PVRD3D11RendererBackend d3d11;
+    return &d3d11;
+}
+
+bool pvr_render_gpu_deferred(DCRuntime& runtime) {
+    auto* backend = pvr_renderer_backend(runtime);
+    return backend ? backend->render(runtime) : false;
+}
+void pvr_gpu_page_flip(DCRuntime& runtime) {
+    if (auto* backend = pvr_renderer_backend(runtime)) backend->page_flip(runtime);
+}
+bool pvr_gpu_present_window(DCRuntime& runtime) {
+    auto* backend = pvr_renderer_backend(runtime);
+    return backend ? backend->present_window(runtime) : false;
+}
+bool pvr_gpu_readback_latest(DCRuntime& runtime, std::vector<std::uint32_t>& pixels) {
+    auto* backend = pvr_renderer_backend(runtime);
+    return backend ? backend->readback_latest(runtime, pixels) : false;
+}
+
 #else
 void pvr_gpu_page_flip(DCRuntime&) {}
 bool pvr_gpu_present_window(DCRuntime&) { return false; }
 bool pvr_gpu_readback_latest(DCRuntime&, std::vector<std::uint32_t>&) { return false; }
+void pvr_gpu_invalidate_rtt_range(DCRuntime&, std::size_t, std::size_t) {}
+void pvr_gpu_sync_rtt_for_vram_read(DCRuntime&, std::size_t, std::size_t) {}
+bool pvr_gpu_rtt_direct_available(DCRuntime&, const PVRSoftState&) { return false; }
 bool pvr_render_gpu_deferred(DCRuntime&) { return false; }
 #endif
 
@@ -7826,8 +9051,7 @@ bool pvr_defer_triangle_indexed(DCRuntime& runtime,
         const bool background = runtime.pvr_rendering_background;
         const std::uint32_t state_index = pvr_deferred_state_index(runtime, background, true);
         if (state_index >= runtime.pvr_deferred_states.size() ||
-            !runtime.pvr_deferred_states[state_index].gpu_supported ||
-            (!background && (a.z < 0.0f || b.z < 0.0f || c.z < 0.0f))) {
+            !runtime.pvr_deferred_states[state_index].gpu_supported) {
             runtime.pvr_gpu_frame_supported = false;
         }
         pvr_deferred_push_triangle(runtime, i0, i1, i2, state_index, a, b, c);
@@ -7868,8 +9092,7 @@ DCR_FORCEINLINE bool pvr_resolve_staged_strip_deferred_mode(DCRuntime& runtime) 
             pvr_deferred_state_index(runtime, runtime.pvr_rendering_background, true);
         const std::uint32_t first_state = runtime.pvr_strip_deferred_state_index;
         if (first_state >= runtime.pvr_deferred_states.size() ||
-            !runtime.pvr_deferred_states[first_state].gpu_supported ||
-            (!runtime.pvr_rendering_background && !runtime.pvr_strip_gpu_unit_z_ok))
+            !runtime.pvr_deferred_states[first_state].gpu_supported)
             runtime.pvr_gpu_frame_supported = false;
         return true;
     }
@@ -8684,8 +9907,9 @@ DCR_FORCEINLINE void pvr_append_strip_vertex(
 
         if (!runtime.pvr_rendering_background && (v.z < 0.0f))
             runtime.pvr_strip_gpu_unit_z_ok = false;
-        if (runtime.pvr_strip_deferred_mode == 1u && !runtime.pvr_strip_gpu_unit_z_ok)
-            runtime.pvr_gpu_frame_supported = false;
+        // Negative inverse-W is legal input to the PVR clip/depth pipeline.
+        // The DX11 pixel shader clamps it to the near end of our monotonic
+        // depth mapping, so it no longer forces a full-frame CPU fallback.
 
         if (mark_frame_metric) runtime.pvr_frame_has_geometry = true;
         if (count_vertex_metric) ++runtime.pvr_vertices;
@@ -10087,9 +11311,35 @@ void maple_write_getcond_response(DCRuntime& runtime, std::uint32_t recv,
     if (runtime.maple_host_input) dc_maple_poll_host(runtime);
     auto c = runtime.maple_controller;
 
+    // When both legacy controller probes are enabled we treat that combination
+    // as the dedicated SGGG New Game autopilot. This keeps the runtime ABI
+    // unchanged while giving SGGG an explicit opt-in route that uses the real
+    // low-level Maple GETCOND path.
+    const bool sggg_newgame_probe = runtime.probe_controller_a_then_start_lowlevel
+                                 && runtime.probe_controller_start_burst_lowlevel;
+
+    if (sggg_newgame_probe) {
+        const std::uint32_t poll = runtime.probe_controller_poll++;
+        const std::uint64_t frame = runtime.pvr_frames;
+        const bool start = frame >= 1800u && frame <= 5000u && ((poll % 90u) < 4u);
+        const bool press_a = frame >= 2750u && frame <= 20000u && ((poll % 48u) < 10u);
+        if (start) {
+            c.buttons = static_cast<std::uint16_t>(c.buttons | (1u << 3));
+            if ((poll % 90u) == 0u)
+                std::cout << "[DreamcastRecomp SGGG autopilot] START at GETCOND=" << poll
+                          << " pvr-frame=" << frame << "\n";
+        }
+        if (press_a) {
+            c.buttons = static_cast<std::uint16_t>(c.buttons | (1u << 2));
+            if ((poll % 48u) == 0u)
+                std::cout << "[DreamcastRecomp SGGG autopilot] A at GETCOND=" << poll
+                          << " pvr-frame=" << frame << "\n";
+        }
+    }
+
     // v0.1.1 CT2 regression harness: inject discrete buttons through the real
     // low-level Maple GETCOND path. It is opt-in via --probe-controller-a-then-start.
-    if (runtime.probe_controller_a_then_start_lowlevel) {
+    if (runtime.probe_controller_a_then_start_lowlevel && !sggg_newgame_probe) {
         const std::uint32_t poll = runtime.probe_controller_poll++;
         std::uint32_t buttons = 0u;
         // Keep the stages non-overlapping so an A pulse cannot cancel a START
@@ -10117,22 +11367,22 @@ void maple_write_getcond_response(DCRuntime& runtime, std::uint32_t recv,
     // KOS maple_dev_status override and consume raw Maple GETCOND packets.
     // Keep the probe opt-in, but inject its finite START burst here so both
     // SDK and custom/low-level Maple paths observe the same button pulses.
-    if (runtime.probe_controller_start_burst_lowlevel) {
+    if (runtime.probe_controller_start_burst_lowlevel && !sggg_newgame_probe) {
+        // SGGG/long-intro diagnostic mode: do not perturb logos or early boot.
+        // Once real presentation has reached the late intro/title window, pulse
+        // START through the actual low-level GETCOND response. This remains
+        // strictly opt-in and never affects normal/manual input.
+        const std::uint64_t frame = runtime.pvr_frames;
         const std::uint64_t poll = runtime.maple_getcond_responses;
-        const auto in_pulse = [](std::uint64_t n, std::uint64_t base) {
-            return n >= base && n < base + 3u;
-        };
-        const bool start = in_pulse(poll, 8u) || in_pulse(poll, 20u) ||
-                           in_pulse(poll, 40u) || in_pulse(poll, 80u) ||
-                           in_pulse(poll, 140u) || in_pulse(poll, 220u);
+        const bool in_window = frame >= 1800u && frame <= 5000u;
+        const bool start = in_window && ((poll % 90u) < 4u);
         if (start) {
             c.buttons = static_cast<std::uint16_t>(c.buttons | (1u << 3));
-            if (poll == 8u || poll == 20u || poll == 40u || poll == 80u ||
-                poll == 140u || poll == 220u) {
+            if ((poll % 90u) == 0u) {
                 ++runtime.probe_start_burst_presses;
-                std::cout << "[DreamcastRecomp smoke] low-level Maple START pulse "
-                          << runtime.probe_start_burst_presses << "/6 at GETCOND #"
-                          << poll << " pvr-frame=" << runtime.pvr_frames << "\n";
+                std::cout << "[DreamcastRecomp smoke] late low-level Maple START pulse "
+                          << runtime.probe_start_burst_presses << " at GETCOND #"
+                          << poll << " pvr-frame=" << frame << "\n";
             }
         }
     }
@@ -10277,10 +11527,24 @@ void maple_write_vmu_minfo_response(DCRuntime& runtime, std::uint32_t recv,
     ++runtime.maple_vmu_minfo;
 }
 
+std::filesystem::path maple_lcd_frame_path(const DCRuntime& runtime);
+bool maple_lcd_write_frame(DCRuntime& runtime, std::uint32_t payload_addr, std::size_t count);
+bool maple_lcd_read_frame(const DCRuntime& runtime, std::array<std::uint8_t,192>& bitmap);
+
 void maple_write_vmu_bread_response(DCRuntime& runtime, std::uint32_t recv,
                                     std::uint8_t request_src, std::uint8_t device_addr,
                                     std::uint32_t function, std::uint32_t block_id) {
     maple_vmu_ensure_initialized(runtime);
+    if (function == kMapleFuncLcd) {
+        std::array<std::uint8_t, 192> bitmap{};
+        // No screen frame yet: the VMU powers up with a blank LCD.
+        (void)maple_lcd_read_frame(runtime, bitmap);
+        maple_write_response_header(runtime, recv, 8, request_src, device_addr, 50u);
+        dc_write32(runtime, recv + 4u, kMapleFuncLcd);
+        dc_write32(runtime, recv + 8u, block_id);
+        dc_load_bytes(runtime, recv + 12u, bitmap.data(), bitmap.size());
+        return;
+    }
     if (function != kMapleFuncMemcard) {
         maple_write_response_header(runtime, recv, -2, request_src, device_addr, 0u);
         return;
@@ -10300,11 +11564,69 @@ void maple_write_vmu_bread_response(DCRuntime& runtime, std::uint32_t recv,
     ++runtime.maple_vmu_reads;
 }
 
+// DCR VMU LCD side channel: runtime sends real Maple LCD frames, never save data.
+// Versioned 208-byte frame: "DCRLCD01", little-endian Unix milliseconds, 192 bitmap bytes.
+// Updating a separate file permits the Python Aqua launcher to watch the live display
+// without sharing mutable pointers across plugin/host process boundaries.
+std::filesystem::path maple_lcd_frame_path(const DCRuntime& runtime) {
+    auto path = std::filesystem::path(runtime.maple_vmu_path);
+    path.replace_extension(".lcd");
+    return path;
+}
+
+bool maple_lcd_write_frame(DCRuntime& runtime, std::uint32_t payload_addr, std::size_t count) {
+    if (count != 192u) return false;
+    const auto path = maple_lcd_frame_path(runtime);
+    const auto temp = path.string() + ".tmp";
+    std::error_code ec;
+    std::filesystem::create_directories(path.parent_path(), ec);
+    std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+    out.write("DCRLCD01", 8);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    const std::uint64_t stamp = static_cast<std::uint64_t>(ms);
+    for (unsigned i = 0; i < 8; ++i) out.put(static_cast<char>((stamp >> (8u*i)) & 0xFFu));
+    for (std::size_t i = 0; i < 192u; ++i)
+        out.put(static_cast<char>(dc_read8(runtime, payload_addr + static_cast<std::uint32_t>(i))));
+    out.close();
+    if (!out) { std::filesystem::remove(temp, ec); return false; }
+#ifdef _WIN32
+    // Windows std::filesystem::rename cannot replace an existing destination.
+    if (!MoveFileExW(std::filesystem::path(temp).c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::filesystem::remove(temp, ec); return false;
+    }
+#else
+    std::filesystem::rename(temp, path, ec);
+    if (ec) { std::filesystem::remove(temp, ec); return false; }
+#endif
+    return true;
+}
+
+bool maple_lcd_read_frame(const DCRuntime& runtime, std::array<std::uint8_t,192>& bitmap) {
+    std::ifstream in(maple_lcd_frame_path(runtime), std::ios::binary);
+    if (!in) return false;
+    char header[16];
+    in.read(header, 16);
+    if (!in || std::memcmp(header, "DCRLCD01", 8) != 0) return false;
+    in.read(reinterpret_cast<char*>(bitmap.data()), static_cast<std::streamsize>(bitmap.size()));
+    return static_cast<bool>(in);
+}
+
 void maple_write_vmu_bwrite_response(DCRuntime& runtime, std::uint32_t recv,
                                      std::uint8_t request_src, std::uint8_t device_addr,
                                      std::uint32_t function, std::uint32_t block_id,
                                      std::uint32_t payload_addr, std::size_t payload_bytes) {
     maple_vmu_ensure_initialized(runtime);
+    if (function == kMapleFuncLcd) {
+        const bool captured = maple_lcd_write_frame(runtime, payload_addr, payload_bytes);
+        // A host-side capture failure must never cause the guest LCD transfer to fail.
+        // The game sees Maple ACK for a valid 192-byte image, independent of host disk.
+        (void)captured;
+        maple_write_response_header(runtime, recv, payload_bytes == 192u ? 7 : -4,
+                                    request_src, device_addr, 0u);
+        return;
+    }
     if (function != kMapleFuncMemcard) {
         maple_write_response_header(runtime, recv, -2, request_src, device_addr, 0u);
         return;
@@ -11347,6 +12669,7 @@ std::uint32_t mmio_read32(DCRuntime& runtime, std::uint32_t address) {
         runtime.pvr_spg_last_field = spg.field;
         runtime.pvr_spg_last_line_cycles = spg.line_cycles;
         runtime.pvr_spg_last_frame_cycles = spg.frame_cycles;
+        pvr_spg_maybe_fast_forward_wait(runtime, spg, now_cycles);
         return spg.status;
     }
     if (physical == DCRuntime::kPvrRegsPhysicalBase + 0x0138u) {
@@ -11696,11 +13019,95 @@ void ta_write32(DCRuntime& runtime, std::uint32_t address, std::uint32_t value) 
     }
 }
 
+constexpr std::size_t kStaticCodeSignatureBytes = 32u;
+using StaticCodeSignature = std::array<std::uint8_t, kStaticCodeSignatureBytes>;
+std::unordered_map<const DCRuntime*, std::unordered_map<std::uint32_t, StaticCodeSignature>>
+    g_static_code_signatures;
+
+// Runtime-only memoization: never part of the frozen SH-4 guest ABI.  A
+// copied IRQ/bootstrap helper may be called millions of times.  Remember the
+// validated 32-byte COPY signature, not just its address: when the guest
+// rewrites that code region a changed signature must force rediscovery.
+struct RelocatedSignatureCacheEntry {
+    std::uint32_t source{};
+    StaticCodeSignature target_signature{};
+};
+std::unordered_map<const DCRuntime*,
+                   std::unordered_map<std::uint32_t, RelocatedSignatureCacheEntry>>
+    g_relocated_signature_cache;
+
+bool dc_code_relocation_trace_enabled() {
+    static const bool enabled = [] {
+        const char* value = std::getenv("DCR_CODE_RELOC_TRACE");
+        return value != nullptr && (value[0] == '1' || value[0] == 'y' ||
+                                    value[0] == 'Y' || value[0] == 't' || value[0] == 'T');
+    }();
+    return enabled;
+}
+
+
+bool registered_static_code_overwritten_impl(DCRuntime& runtime, std::uint32_t target) {
+    if (!runtime.commercial_boot_active) return false;
+    const std::uint32_t phys = target & 0x1FFFFFFFu;
+    // The retail bootstrap/VBR workspace occupies the first 64 KiB of main RAM.
+    // Restrict the check to that hot-swapped area so ordinary gameplay dispatch
+    // pays no signature-lookup cost.
+    if (phys < 0x0C000000u || phys >= 0x0C010000u) return false;
+    const auto rt = g_static_code_signatures.find(&runtime);
+    if (rt == g_static_code_signatures.end()) return false;
+    const auto it = rt->second.find(target);
+    if (it == rt->second.end()) return false;
+    std::size_t index = 0u;
+    if (!main_ram_range(target, kStaticCodeSignatureBytes, index)) return false;
+    return std::memcmp(runtime.main_ram.data() + index, it->second.data(),
+                       kStaticCodeSignatureBytes) != 0;
+}
+
+void capture_static_code_signatures_impl(DCRuntime& runtime) {
+    auto& signatures = g_static_code_signatures[&runtime];
+    signatures.clear();
+    g_relocated_signature_cache[&runtime].clear();
+    for (const auto& [address, fn] : runtime.targets) {
+        if (fn == nullptr) continue;
+        const std::uint32_t phys = address & 0x1FFFFFFFu;
+        if (phys < 0x0C000000u || phys >= 0x0C010000u) continue;
+        std::size_t index = 0u;
+        if (!main_ram_range(address, kStaticCodeSignatureBytes, index)) continue;
+        StaticCodeSignature signature{};
+        std::memcpy(signature.data(), runtime.main_ram.data() + index, signature.size());
+        signatures.emplace(address, signature);
+    }
+}
+
 bool find_relocated_code_template(DCRuntime& runtime, std::uint32_t target,
                                   std::uint32_t& source_out) {
     constexpr std::size_t kSignatureBytes = 32u;
     std::size_t target_index = 0u;
     if (!main_ram_range(target, kSignatureBytes, target_index)) return false;
+
+    auto& memo = g_relocated_signature_cache[&runtime];
+    const auto saved = memo.find(target);
+    if (saved != memo.end()) {
+        const auto source = runtime.targets.find(saved->second.source);
+        if (source != runtime.targets.end() && source->second != nullptr &&
+            std::memcmp(runtime.main_ram.data() + target_index,
+                        saved->second.target_signature.data(), kSignatureBytes) == 0) {
+            source_out = saved->second.source;
+            return true;
+        }
+        // Guest memory or registered native entry changed. Do not reuse an
+        // old source blindly, even when its target address is unchanged.
+        memo.erase(saved);
+    }
+    const auto remember_match = [&](std::uint32_t source) {
+        RelocatedSignatureCacheEntry entry{};
+        entry.source = source;
+        std::memcpy(entry.target_signature.data(),
+                    runtime.main_ram.data() + target_index, kSignatureBytes);
+        memo[target] = entry;
+        source_out = source;
+        return true;
+    };
 
     // Once one entry in a relocated code block has been matched, prefer the
     // already-proven relocation delta for later internal entrypoints.  A pure
@@ -11737,8 +13144,7 @@ bool find_relocated_code_template(DCRuntime& runtime, std::uint32_t target,
         // entry prove the relocation delta even if the original source bytes
         // have since been overwritten by the bootstrap itself.
         if (delta_match_votes >= 2u) {
-            source_out = delta_match;
-            return true;
+            return remember_match(delta_match);
         }
         // With only one prior alias, retain the original byte-signature safety
         // check before extending the relocation mapping.
@@ -11747,8 +13153,7 @@ bool find_relocated_code_template(DCRuntime& runtime, std::uint32_t target,
             std::memcmp(runtime.main_ram.data() + target_index,
                         runtime.main_ram.data() + source_index,
                         kSignatureBytes) == 0) {
-            source_out = delta_match;
-            return true;
+            return remember_match(delta_match);
         }
     }
 
@@ -11765,8 +13170,7 @@ bool find_relocated_code_template(DCRuntime& runtime, std::uint32_t target,
         if (++matches > 1u) return false; // ambiguous prologue/signature
     }
     if (matches != 1u) return false;
-    source_out = match;
-    return true;
+    return remember_match(match);
 }
 
 std::string target_error(const DCRuntime& runtime, std::uint32_t target,
@@ -11825,6 +13229,14 @@ std::string target_error(const DCRuntime& runtime, std::uint32_t target,
 }
 
 } // namespace
+
+bool dc_registered_static_code_overwritten(DCRuntime& runtime, std::uint32_t target) {
+    return registered_static_code_overwritten_impl(runtime, target);
+}
+
+void dc_capture_static_code_signatures(DCRuntime& runtime) {
+    capture_static_code_signatures_impl(runtime);
+}
 
 bool dc_pvr_vertex_decoder_selftest() {
     return pvr_vertex_decoder_selftest_internal();
@@ -12292,12 +13704,18 @@ DCRuntime::DCRuntime()
 #if defined(DCR_FIXED_FPU_MODE)
     fpu_aot_mode = static_cast<std::uint32_t>(DCR_FIXED_FPU_MODE);
 #else
+    // cpp38b2: restore the proven 0.0.155/0.0.165 static FPU superblock
+    // path as the default. Environment overrides remain available for A/B.
+    fpu_aot_mode = 2u;
     if (const char* mode = std::getenv("DCR_FPU_MODE")) {
         if (mode[0] == 'r' || mode[0] == 'R' || mode[0] == '1') fpu_aot_mode = 1u;
         else if (mode[0] == 's' || mode[0] == 'S' || mode[0] == '2') fpu_aot_mode = 2u;
         else if (mode[0] == 'p' || mode[0] == 'P' || mode[0] == '3' || mode[0] == 'b' || mode[0] == 'B') fpu_aot_mode = 3u;
     }
 #endif
+    // cpp38b2: hot-path telemetry is off by default. It can still be explicitly
+    // enabled with DCR_FPU_METRICS=1 for diagnostics.
+    fpu_region_metrics = false;
     if (const char* metrics = std::getenv("DCR_FPU_METRICS"))
         fpu_region_metrics = metrics[0] == '1' || metrics[0] == 'y' || metrics[0] == 'Y' || metrics[0] == 't' || metrics[0] == 'T';
     if (const char* hot = std::getenv("DCR_HOT_TRACE"))
@@ -12307,6 +13725,16 @@ DCRuntime::DCRuntime()
     if (const char* threshold = std::getenv("DCR_HOT_TRACE_THRESHOLD")) {
         const unsigned long parsed = std::strtoul(threshold, nullptr, 10);
         if (parsed != 0ul) hot_trace_threshold = static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 65535ul));
+    }
+    // cpp38b1 timing recovery: restore the 262144-cycle host/AICA sync
+    // cadence used by the high-FPS 0.0.156-0.0.165 checkpoints. Keep an
+    // environment override for controlled A/B testing.
+    device_clock_host_sync_quantum_cycles = 262144u;
+    if (const char* sync_q = std::getenv("DCR_HOST_SYNC_QUANTUM")) {
+        char* end = nullptr;
+        const unsigned long long parsed = std::strtoull(sync_q, &end, 10);
+        if (end != sync_q && parsed >= 65536ull && parsed <= 8388608ull)
+            device_clock_host_sync_quantum_cycles = static_cast<std::uint64_t>(parsed);
     }
     // Minimal PowerVR bootstrap identity. KallistiOS performs ordinary register
     // accesses through the 0xA05F8000 window; unmodelled registers are backed by
@@ -12446,7 +13874,8 @@ void dc_maple_print_stats(const DCRuntime& runtime) {
 
 std::uint8_t dc_read8(DCRuntime& runtime, std::uint32_t address) {
     address = sh4_translate_guest_address(runtime, address);
-    if (is_modem_aperture(address) || is_g2_external_aperture(address)) return 0u;
+    if (is_modem_aperture(address)) return dc_modem_read8(runtime, address);
+    if (is_g2_external_aperture(address)) return 0u;
     std::size_t i = 0;
     if (onchip_ram_range(address, 1, i)) return runtime.onchip_ram[i];
     if (boot_rom_low_range(address, 1, i)) {
@@ -12458,7 +13887,10 @@ std::uint8_t dc_read8(DCRuntime& runtime, std::uint32_t address) {
         return runtime.bios_font_rom[i];
     }
     if (main_ram_range(address, 1, i)) return runtime.main_ram[i];
-    if (vram_range(address, 1, i)) return runtime.vram[i];
+    if (vram_range(address, 1, i)) {
+        pvr_gpu_sync_rtt_for_vram_read(runtime, i, 1u);
+        return runtime.vram[i];
+    }
     if (aica_ram_range(address, 1, i)) { aica_arm7_touch(runtime); return runtime.aica_ram[i]; }
     if (is_holly_mmio(address) || is_aica_mmio(address) || is_aica_rtc_mmio(address) || is_sh4_internal_mmio(address)) {
         const auto word = mmio_read32(runtime, address & ~3u);
@@ -12469,7 +13901,8 @@ std::uint8_t dc_read8(DCRuntime& runtime, std::uint32_t address) {
 
 std::uint16_t dc_read16(DCRuntime& runtime, std::uint32_t address) {
     address = sh4_translate_guest_address(runtime, address);
-    if (is_modem_aperture(address) || is_g2_external_aperture(address)) return 0u;
+    if (is_modem_aperture(address)) { const auto lo=dc_modem_read8(runtime,address); return static_cast<std::uint16_t>(lo); }
+    if (is_g2_external_aperture(address)) return 0u;
     std::size_t i = 0;
     if (onchip_ram_range(address, 2, i)) {
         return static_cast<std::uint16_t>(runtime.onchip_ram[i + 0]) |
@@ -12490,6 +13923,7 @@ std::uint16_t dc_read16(DCRuntime& runtime, std::uint32_t address) {
                static_cast<std::uint16_t>(static_cast<std::uint16_t>(runtime.main_ram[i + 1]) << 8);
     }
     if (vram_range(address, 2, i)) {
+        pvr_gpu_sync_rtt_for_vram_read(runtime, i, 2u);
         return static_cast<std::uint16_t>(runtime.vram[i + 0]) |
                static_cast<std::uint16_t>(static_cast<std::uint16_t>(runtime.vram[i + 1]) << 8);
     }
@@ -12507,7 +13941,8 @@ std::uint16_t dc_read16(DCRuntime& runtime, std::uint32_t address) {
 
 std::uint32_t dc_read32(DCRuntime& runtime, std::uint32_t address) {
     address = sh4_translate_guest_address(runtime, address);
-    if (is_modem_aperture(address) || is_g2_external_aperture(address)) return 0u;
+    if (is_modem_aperture(address)) return static_cast<std::uint32_t>(dc_modem_read8(runtime,address));
+    if (is_g2_external_aperture(address)) return 0u;
     std::size_t i = 0;
     if (onchip_ram_range(address, 4, i)) {
         return static_cast<std::uint32_t>(runtime.onchip_ram[i + 0]) |
@@ -12536,6 +13971,7 @@ std::uint32_t dc_read32(DCRuntime& runtime, std::uint32_t address) {
                (static_cast<std::uint32_t>(runtime.main_ram[i + 3]) << 24);
     }
     if (vram_range(address, 4, i)) {
+        pvr_gpu_sync_rtt_for_vram_read(runtime, i, 4u);
         return static_cast<std::uint32_t>(runtime.vram[i + 0]) |
                (static_cast<std::uint32_t>(runtime.vram[i + 1]) << 8) |
                (static_cast<std::uint32_t>(runtime.vram[i + 2]) << 16) |
@@ -12554,7 +13990,8 @@ std::uint32_t dc_read32(DCRuntime& runtime, std::uint32_t address) {
 
 void dc_write8(DCRuntime& runtime, std::uint32_t address, std::uint8_t value) {
     address = sh4_translate_guest_address(runtime, address);
-    if (is_modem_aperture(address) || is_g2_external_aperture(address)) return;
+    if (is_modem_aperture(address)) { dc_modem_write8(runtime,address,value); return; }
+    if (is_g2_external_aperture(address)) return;
     // P4 Store Queue addresses must be decoded before applying SH-4 P1/P2/P3
     // physical aliases. For example, 0xE0800000 is a Store Queue aperture that
     // may target AICA RAM after PREF; it is not a direct write to 0x00800000.
@@ -12585,7 +14022,8 @@ void dc_write8(DCRuntime& runtime, std::uint32_t address, std::uint8_t value) {
 
 void dc_write16(DCRuntime& runtime, std::uint32_t address, std::uint16_t value) {
     address = sh4_translate_guest_address(runtime, address);
-    if (is_modem_aperture(address) || is_g2_external_aperture(address)) return;
+    if (is_modem_aperture(address)) { dc_modem_write8(runtime,address,static_cast<std::uint8_t>(value)); return; }
+    if (is_g2_external_aperture(address)) return;
     if (is_store_queue(address)) {
         dc_write8(runtime, address + 0u, static_cast<std::uint8_t>(value & 0xFFu));
         dc_write8(runtime, address + 1u, static_cast<std::uint8_t>((value >> 8) & 0xFFu));
@@ -12631,7 +14069,8 @@ void dc_write16(DCRuntime& runtime, std::uint32_t address, std::uint16_t value) 
 
 void dc_write32(DCRuntime& runtime, std::uint32_t address, std::uint32_t value) {
     address = sh4_translate_guest_address(runtime, address);
-    if (is_modem_aperture(address) || is_g2_external_aperture(address)) return;
+    if (is_modem_aperture(address)) { dc_modem_write8(runtime,address,static_cast<std::uint8_t>(value)); return; }
+    if (is_g2_external_aperture(address)) return;
     if (is_store_queue(address)) {
         ++runtime.sq_writes;
         const std::size_t base = static_cast<std::size_t>((address >> 5) & 1u) * 32u + (address & 31u);
@@ -13695,6 +15134,7 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
     g_last_sh4_context = &ctx;
     runtime.current_pc = ctx.pc;
     runtime.pvr_spg_sh4_cycles += sh4_cycles;
+    dc_modem_tick(runtime);
     if (runtime.pvr_render_done_pending &&
         runtime.pvr_spg_sh4_cycles + runtime.sh4_tick_pending_cycles >= runtime.pvr_render_done_due_cycle)
         pvr_service_render_done(runtime);
@@ -13843,6 +15283,8 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
                       << " | bfont-fast=" << runtime.bfont_fast_calls
                       << " | bios-boot=" << (runtime.boot_rom_external ? "file" : "hle0")
                       << "/" << runtime.boot_rom_reads
+                      << " | flash=" << runtime.bios_flash_info_calls << "/" << runtime.bios_flash_read_calls
+                      << "/" << runtime.bios_flash_program_calls << "/" << runtime.bios_flash_erase_calls
                       << " | bfont-rom=" << runtime.bios_font_raw_reads
                       << "/" << runtime.bios_font_synth_narrow
                       << "/" << runtime.bios_font_synth_wide
@@ -13871,7 +15313,7 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
                       << ((runtime.perf_pvr_clock_sampled_ns * std::max<std::uint64_t>(1u, runtime.perf_sample_stride)) / 1000000u) << "/"
                       << ((runtime.perf_host_sync_sampled_ns * std::max<std::uint64_t>(1u, runtime.perf_sample_stride)) / 1000000u) << "/"
                       << ((runtime.perf_irq_sampled_ns * std::max<std::uint64_t>(1u, runtime.perf_sample_stride)) / 1000000u)
-                      << " | build=v0.1.1-official"
+                      << " | build=v1.2-cpp33c-network"
                       << " | baseline=0.0.124"
                       << " | pvr-fast=" << (runtime.pvr_gpu_fastpath_ready ? 1 : 0)
                       << "/" << (runtime.pvr_mt_fastpath_ready ? 1 : 0)
@@ -13910,7 +15352,7 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
                       << "/" << runtime.fpu_ssa_matrix_reads
                       << "/" << runtime.fpu_ssa_fmac_ops
                       << " | host-fma=" << kHostFmaMode
-                      << " | fpu-metrics=" << ((runtime.fpu_aot_mode != 3u || runtime.fpu_region_metrics) ? "on" : "off")
+                      << " | fpu-metrics=" << (DCR_FPU_REGION_METRICS_ENABLED(runtime) ? "on" : "off")
                       << " | gpr-cache=" << runtime.gpr_cache_entries
                       << "/" << runtime.gpr_cache_static_loads
                       << "/" << runtime.gpr_cache_writebacks
@@ -14234,6 +15676,19 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
                       << " | pvr-gtex=" << runtime.pvr_gpu_texture_uploads
                       << "/" << runtime.pvr_gpu_texture_reuses
                       << "/" << runtime.pvr_gpu_unsupported_triangles
+                      << " | pvr-gnative=" << runtime.pvr_gpu_texture_compute_decodes
+                      << "/" << runtime.pvr_gpu_texture_compute_texels
+                      << "/" << runtime.pvr_gpu_texture_cpu_decodes_avoided
+                      << "/" << runtime.pvr_gpu_pipeline_cache_hits
+                      << "/" << runtime.pvr_gpu_pipeline_cache_misses
+                      << "/" << runtime.pvr_gpu_rtt_gpu_commits
+                      << "/" << runtime.pvr_gpu_rtt_lazy_readbacks
+                      << "/" << runtime.pvr_gpu_fallback_materializations
+                      << " | pvr-gcache=" << g_pvr_gpu_raw_snapshot_hits.load(std::memory_order_relaxed)
+                      << "/" << g_pvr_gpu_raw_snapshot_misses.load(std::memory_order_relaxed)
+                      << "/" << g_pvr_gpu_palette_snapshot_hits.load(std::memory_order_relaxed)
+                      << "/" << g_pvr_gpu_palette_snapshot_misses.load(std::memory_order_relaxed)
+                      << "/" << g_pvr_gpu_texture_lru_evictions.load(std::memory_order_relaxed)
                       << " | pvr-clockticks=" << runtime.device_clock_pvr_ticks
                       << " | spg=" << runtime.pvr_spg_last_scanline
                       << "/" << runtime.pvr_spg_last_field
@@ -14242,6 +15697,11 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
                       << "/" << runtime.pvr_spg_last_frame_cycles
                       << "/" << runtime.pvr_spg_status_reads
                       << "/" << runtime.pvr_spg_resyncs
+                      << " | spg-ff=" << (spg_wait_ff_state(runtime).enabled ? "on" : "off")
+                      << "/" << spg_wait_ff_state(runtime).hits
+                      << "/" << spg_wait_ff_state(runtime).cycles
+                      << "/" << spg_wait_ff_state(runtime).max_chunk
+                      << "/0x" << std::hex << std::uppercase << spg_wait_ff_state(runtime).last_hit_pc << std::dec
                       << " | pvr-rdone=" << (runtime.pvr_render_done_scheduled_mode ? "sched" : "imm")
                       << "/" << runtime.pvr_render_done_scheduled_count
                       << "/" << runtime.pvr_render_done_fired_count
@@ -14252,6 +15712,14 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
                       << " | pvr-prof-ms=" << (runtime.pvr_profile_raster_ns / 1000000u)
                       << "/" << (runtime.pvr_profile_present_ns / 1000000u)
                       << "/" << (runtime.pvr_profile_clear_ns / 1000000u)
+                      << " | net=" << (runtime.network_enabled ? "on" : "off")
+                      << "/m" << runtime.modem_state << "/c" << runtime.modem_connect_state
+                      << "/rw" << runtime.modem_reads << "," << runtime.modem_writes
+                      << "/ppp" << runtime.modem_ppp_tx_frames << "," << runtime.modem_ppp_rx_frames
+                      << "/lpi" << runtime.modem_ppp_lcp_frames << "," << runtime.modem_ppp_pap_frames << "," << runtime.modem_ppp_ipcp_frames
+                      << "/ip" << runtime.modem_ipv4_frames << "/udp" << runtime.modem_udp_frames
+                      << "/dns" << runtime.modem_dns_frames << "/tcp" << runtime.modem_tcp_frames
+                      << "/rxq" << runtime.modem_rx_fifo.size()
                       << " | holly-pend=0x" << std::hex << std::uppercase << runtime.holly_pending[0] << std::dec
                       << " | holly-irq=" << runtime.holly_irq_taken
                       << " | holly-ackA=" << runtime.holly_ack_writes[0]
@@ -16236,19 +17704,28 @@ void gd_execute_command(DCRuntime& runtime) {
 }
 
 
+void bios_flash_ensure_initialized(DCRuntime& runtime);
+
 void native_bios_system(SH4Context& ctx, DCRuntime& runtime) {
-    // Minimal HLE for the Dreamcast system syscall vector. The real BIOS fills
-    // SYSINFO from flash; deterministic zero data is sufficient until a title
-    // proves it consumes a specific field.
+    // Katana SYSINFO_INIT copies 24 bytes to 0x8C000068. In particular the
+    // first 8 bytes are the persistent Dreamcast hardware ID and bytes 8..12
+    // are system properties from flash. Network titles can use both when
+    // deciding whether a configured console is ready to go online.
     switch (ctx.r[7]) {
-        case 0u: // SYSINFO_INIT
-            dc_zero_bytes(runtime, 0x8C000068u, 24u);
+        case 0u: { // SYSINFO_INIT
+            bios_flash_ensure_initialized(runtime);
+            std::array<std::uint8_t, 24u> data{};
+            std::copy_n(runtime.bios_flash.begin() + 0x1A056u, 8u, data.begin());
+            std::copy_n(runtime.bios_flash.begin() + 0x1A000u, 5u, data.begin() + 8u);
+            dc_load_bytes(runtime, 0x8C000068u, data.data(), data.size());
             ctx.r[0] = 0u;
+            std::cout << "[BIOS SYSINFO] init | persistent console-id + system properties loaded\n";
             break;
+        }
         case 2u: // SYSINFO_ICON
             ctx.r[0] = ctx.r[4] <= 9u ? 704u : 0xFFFFFFFFu;
             break;
-        case 3u: // SYSINFO_ID
+        case 3u: // SYSINFO_ID: BIOS returns a pointer to the 8-byte ID
             ctx.r[0] = 0x8C000068u;
             break;
         default:
@@ -16270,10 +17747,430 @@ void native_bios_font(SH4Context& ctx, DCRuntime&) {
     ctx.pc = ctx.pr;
 }
 
-void native_bios_flash(SH4Context& ctx, DCRuntime&) {
-    // Partition-backed flash is a later milestone. Fail calls explicitly rather
-    // than returning host garbage through an uninitialised BIOS vector.
-    ctx.r[0] = 0xFFFFFFFFu;
+std::uint16_t bios_flash_crc16(const std::uint8_t* data, std::size_t size) {
+    std::uint16_t crc = 0xFFFFu;
+    for (std::size_t i = 0; i < size; ++i) {
+        crc ^= static_cast<std::uint16_t>(data[i]) << 8u;
+        for (unsigned b = 0; b < 8u; ++b)
+            crc = static_cast<std::uint16_t>((crc & 0x8000u) ? ((crc << 1u) ^ 0x1021u) : (crc << 1u));
+    }
+    return static_cast<std::uint16_t>(crc ^ 0xFFFFu);
+}
+
+void bios_flash_save(DCRuntime& runtime) {
+    if (!runtime.bios_flash_initialized) return;
+    std::ofstream out(runtime.bios_flash_path, std::ios::binary | std::ios::trunc);
+    if (!out) { std::cerr << "[BIOS FLASH] warning: cannot save " << runtime.bios_flash_path << "\n"; return; }
+    out.write(reinterpret_cast<const char*>(runtime.bios_flash.data()), static_cast<std::streamsize>(runtime.bios_flash.size()));
+    if (out) { runtime.bios_flash_dirty = false; ++runtime.bios_flash_save_calls; }
+}
+
+void bios_flash_write_block(std::array<std::uint8_t,128u*1024u>& flash, std::size_t off,
+                            std::uint16_t id, const std::vector<std::uint8_t>& payload) {
+    std::array<std::uint8_t,64> block{}; block.fill(0u);
+    block[0] = static_cast<std::uint8_t>(id); block[1] = static_cast<std::uint8_t>(id >> 8u);
+    const auto n = std::min<std::size_t>(payload.size(), 60u);
+    std::copy_n(payload.begin(), n, block.begin() + 2);
+    const auto crc = bios_flash_crc16(block.data(), 62u);
+    block[62] = static_cast<std::uint8_t>(crc); block[63] = static_cast<std::uint8_t>(crc >> 8u);
+    std::copy(block.begin(), block.end(), flash.begin() + static_cast<std::ptrdiff_t>(off));
+}
+
+// Retail Dreamcast flashes keep a valid logical block 0 in the first user
+// physical block (partition 2 + 0x40). Some Sega/Katana retail helpers probe
+// this block before looking for browser/ISP records. cpp34b marked bitmap bit 0
+// as allocated but left the corresponding physical block erased (0xFF), which
+// made ChuChu Rocket loop forever in its flash block lookup before touching the
+// modem. The payload below is a neutral, CRC-valid retail-style block 0 shape;
+// no console-unique identity is stored here.
+bool bios_flash_base0_valid(const DCRuntime& runtime) {
+    constexpr std::size_t off = 0x1C040u;
+    const auto id = static_cast<std::uint16_t>(runtime.bios_flash[off]) |
+                    (static_cast<std::uint16_t>(runtime.bios_flash[off + 1u]) << 8u);
+    if (id != 0x0000u) return false;
+    const auto stored_crc = static_cast<std::uint16_t>(runtime.bios_flash[off + 62u]) |
+                            (static_cast<std::uint16_t>(runtime.bios_flash[off + 63u]) << 8u);
+    return stored_crc == bios_flash_crc16(runtime.bios_flash.data() + off, 62u);
+}
+
+void bios_flash_seed_base0(DCRuntime& runtime) {
+    static const std::vector<std::uint8_t> payload = {
+        0x19u, 0x99u, 0x07u, 0x23u, 0x30u, 0x30u, 0x30u, 0x30u,
+        0x30u, 0x30u, 0x30u, 0x30u, 0x30u, 0x30u, 0x30u, 0x30u,
+        0x45u, 0x97u, 0x05u, 0x49u, 0x76u, 0x9Fu, 0xFFu, 0xFFu,
+        0x00u, 0x42u, 0x00u, 0x00u, 0x21u, 0x06u, 0xFFu, 0xFFu,
+        0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu,
+        0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu,
+        0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu,
+        0xFFu, 0xFFu, 0xFFu, 0xFFu
+    };
+    bios_flash_write_block(runtime.bios_flash, 0x1C040u, 0x0000u, payload);
+    // Bitmap bit 0 describes user block 0 / physical block 1. Zero means used.
+    runtime.bios_flash[0x1FFC0u] &= 0x7Fu;
+}
+
+bool bios_flash_find_logical_block(DCRuntime& runtime, std::uint16_t id, std::size_t& off_out) {
+    constexpr std::size_t base = 0x1C000u, size = 0x4000u, bitmap_bytes = 64u;
+    if (std::memcmp(runtime.bios_flash.data() + base, "KATANA_FLASH____", 16u) != 0) return false;
+    if (runtime.bios_flash[base + 16u] != 2u || runtime.bios_flash[base + 17u] != 0u) return false;
+    const std::size_t bitmap = base + size - bitmap_bytes;
+    std::size_t first_free = bitmap_bytes * 8u;
+    for (std::size_t i = 0; i < bitmap_bytes * 8u; ++i) {
+        if (runtime.bios_flash[bitmap + i / 8u] & static_cast<std::uint8_t>(0x80u >> (i & 7u))) {
+            first_free = i;
+            break;
+        }
+    }
+    if (first_free == 0u) return false;
+    // Match Katana/KOS semantics: bitmap index zero is never considered a
+    // logical data block; physical flash block zero is the partition header.
+    for (std::size_t i = first_free - 1u; i > 0u; --i) {
+        const std::size_t off = base + (i + 1u) * 64u;
+        const auto block_id = static_cast<std::uint16_t>(runtime.bios_flash[off]) |
+                              (static_cast<std::uint16_t>(runtime.bios_flash[off + 1u]) << 8u);
+        if (block_id != id) continue;
+        const auto stored_crc = static_cast<std::uint16_t>(runtime.bios_flash[off + 62u]) |
+                                (static_cast<std::uint16_t>(runtime.bios_flash[off + 63u]) << 8u);
+        if (stored_crc != bios_flash_crc16(runtime.bios_flash.data() + off, 62u)) continue;
+        off_out = off;
+        return true;
+    }
+    return false;
+}
+
+void bios_flash_report_layout(DCRuntime& runtime) {
+    std::size_t sys = 0u, pw80 = 0u, pw81 = 0u, pw82 = 0u, pw83 = 0u, pw84 = 0u;
+    std::size_t c0 = 0u, c1 = 0u, c2 = 0u, c3 = 0u, c4 = 0u, c5 = 0u;
+    std::size_t c6 = 0u, c7 = 0u, c8 = 0u, e0 = 0u, e8 = 0u, e9 = 0u, eb = 0u;
+    const bool ok_sys  = bios_flash_find_logical_block(runtime, 0x0005u, sys);
+    const bool ok_pw80 = bios_flash_find_logical_block(runtime, 0x0080u, pw80);
+    const bool ok_pw81 = bios_flash_find_logical_block(runtime, 0x0081u, pw81);
+    const bool ok_pw82 = bios_flash_find_logical_block(runtime, 0x0082u, pw82);
+    const bool ok_pw83 = bios_flash_find_logical_block(runtime, 0x0083u, pw83);
+    const bool ok_pw84 = bios_flash_find_logical_block(runtime, 0x0084u, pw84);
+    const bool ok_c0   = bios_flash_find_logical_block(runtime, 0x00C0u, c0);
+    const bool ok_c1   = bios_flash_find_logical_block(runtime, 0x00C1u, c1);
+    const bool ok_c2   = bios_flash_find_logical_block(runtime, 0x00C2u, c2);
+    const bool ok_c3   = bios_flash_find_logical_block(runtime, 0x00C3u, c3);
+    const bool ok_c4   = bios_flash_find_logical_block(runtime, 0x00C4u, c4);
+    const bool ok_c5   = bios_flash_find_logical_block(runtime, 0x00C5u, c5);
+    const bool ok_c6   = bios_flash_find_logical_block(runtime, 0x00C6u, c6);
+    const bool ok_c7   = bios_flash_find_logical_block(runtime, 0x00C7u, c7);
+    const bool ok_c8   = bios_flash_find_logical_block(runtime, 0x00C8u, c8);
+    const bool ok_e0   = bios_flash_find_logical_block(runtime, 0x00E0u, e0);
+    const bool ok_e8   = bios_flash_find_logical_block(runtime, 0x00E8u, e8);
+    const bool ok_e9   = bios_flash_find_logical_block(runtime, 0x00E9u, e9);
+    const bool ok_eb   = bios_flash_find_logical_block(runtime, 0x00EBu, eb);
+    bool id_nonzero = false;
+    for (std::size_t i = 0; i < 8u; ++i)
+        id_nonzero |= runtime.bios_flash[0x1A056u + i] != 0u && runtime.bios_flash[0x1A056u + i] != 0xFFu;
+    const bool ok_base0 = bios_flash_base0_valid(runtime);
+    std::cout << "[BIOS FLASH] full ISP map | base0=" << (ok_base0 ? "ok" : "missing")
+              << " syscfg=" << (ok_sys ? "ok" : "missing")
+              << " PW=" << (ok_pw80 && ok_pw81 && ok_pw82 && ok_pw83 && ok_pw84 ? "80-84-ok" : "incomplete")
+              << " PWC=" << (ok_c0 && ok_c1 && ok_c2 && ok_c3 && ok_c4 && ok_c5 ? "C0-C5-ok" : "incomplete")
+              << " DK=" << (ok_c6 && ok_c7 && ok_c8 ? "C6-C8-ok" : "incomplete")
+              << " STD=" << (ok_e0 && ok_e8 && ok_e9 && ok_eb ? "E0/E8/E9/EB-ok" : "incomplete")
+              << " | bitmap=0x" << std::hex << std::uppercase
+              << static_cast<unsigned>(runtime.bios_flash[0x1FFC0u]) << ",0x"
+              << static_cast<unsigned>(runtime.bios_flash[0x1FFC1u]) << ",0x"
+              << static_cast<unsigned>(runtime.bios_flash[0x1FFC2u]) << ",0x"
+              << static_cast<unsigned>(runtime.bios_flash[0x1FFC3u]) << std::dec
+              << " | sysid=" << (id_nonzero ? "present" : "missing") << "\n";
+}
+
+void bios_flash_seed_dreamkey(DCRuntime& runtime) {
+    constexpr std::size_t base = 0x1C000u, size = 0x4000u;
+    std::fill(runtime.bios_flash.begin() + base, runtime.bios_flash.begin() + base + size, 0xFFu);
+    const char magic[] = "KATANA_FLASH____";
+    std::memcpy(runtime.bios_flash.data() + base, magic, 16u);
+    runtime.bios_flash[base + 16u] = 2u; runtime.bios_flash[base + 17u] = 0u;
+    bios_flash_seed_base0(runtime);
+
+    // cpp34c seeds a retail-compatible base block plus every documented dial-up family:
+    // PlanetWeb 0x80-0x84 + C0-C5, DreamKey C6-C8, and the generic ISP E* set.
+    // Index zero remains reserved/used; actual logical records start at i=1.
+    std::size_t i = 1u;
+    auto put = [&](std::uint16_t id, const std::vector<std::uint8_t>& payload) {
+        bios_flash_write_block(runtime.bios_flash, base + (i + 1u) * 64u, id, payload);
+        ++i;
+    };
+
+    std::vector<std::uint8_t> syscfg(60u, 0xFFu);
+    syscfg[4u] = 0u; syscfg[5u] = 1u; syscfg[6u] = 0u; syscfg[7u] = 0u;
+    put(0x0005u, syscfg);
+
+    std::vector<std::uint8_t> pw80(60u, 0u);
+    std::memcpy(pw80.data() + 0u, "PWBrowser", 9u);
+    pw80[9u] = 0x00u; pw80[10u] = 0x1Cu;
+    pw80[11u] = 0u;
+    put(0x0080u, pw80);
+
+    std::vector<std::uint8_t> pw81(60u, 0u);
+    std::memcpy(pw81.data() + 16u, "Dreamcast User", 14u);
+    put(0x0081u, pw81);
+
+    std::vector<std::uint8_t> pw82(60u, 0u);
+    std::memcpy(pw82.data() + 30u, "AT&F", 4u);
+    put(0x0082u, pw82);
+
+    std::vector<std::uint8_t> pw83(60u, 0u);
+    std::memcpy(pw83.data() + 2u, "000", 3u);
+    put(0x0083u, pw83);
+
+    std::vector<std::uint8_t> pw84(60u, 0u);
+    pw84[6u] = 0u;
+    put(0x0084u, pw84);
+
+    std::vector<std::uint8_t> c0(60u, 0u);
+    c0[0u] = 0u; c0[1u] = 0u;
+    std::memcpy(c0.data() + 4u, "SEGA", 4u);
+    std::memcpy(c0.data() + 8u, "dream", 5u);
+    std::memcpy(c0.data() + 36u, "dreamcast", 9u);
+    std::memcpy(c0.data() + 52u, "(000)", 5u);
+    std::memcpy(c0.data() + 57u, "111", 3u);
+    put(0x00C0u, c0);
+
+    std::vector<std::uint8_t> c1(60u, 0u);
+    std::memcpy(c1.data() + 0u, "-1111", 5u);
+    std::memcpy(c1.data() + 32u, "(000)", 5u);
+    std::memcpy(c1.data() + 37u, "111-1111", 8u);
+    put(0x00C1u, c1);
+
+    std::vector<std::uint8_t> c2(60u, 0u);
+    c2[52u] = 46u; c2[53u] = 101u; c2[54u] = 91u; c2[55u] = 123u;
+    c2[56u] = 1u;  c2[57u] = 1u;   c2[58u] = 1u;  c2[59u] = 1u;
+    put(0x00C2u, c2);
+
+    std::vector<std::uint8_t> c3(60u, 0u);
+    std::memcpy(c3.data() + 0u, "dreamcast@example.com", 21u);
+    std::memcpy(c3.data() + 48u, "smtp.example.", 12u);
+    put(0x00C3u, c3);
+
+    std::vector<std::uint8_t> c4(60u, 0u);
+    std::memcpy(c4.data() + 0u, "com", 3u);
+    std::memcpy(c4.data() + 20u, "pop.example.com", 15u);
+    std::memcpy(c4.data() + 52u, "dream", 5u);
+    put(0x00C4u, c4);
+
+    std::vector<std::uint8_t> c5(60u, 0u);
+    std::memcpy(c5.data() + 8u, "dreamcast", 9u);
+    c5[56u] = 0u; c5[57u] = 0u;
+    put(0x00C5u, c5);
+
+    std::vector<std::uint8_t> c6(60u, 0u);
+    std::memcpy(c6.data() + 0u, "SEGA", 4u);
+    std::memcpy(c6.data() + 4u, "dream", 5u);
+    std::memcpy(c6.data() + 32u, "dreamcast", 9u);
+    std::memcpy(c6.data() + 48u, "111-1111", 8u);
+    put(0x00C6u, c6);
+
+    std::vector<std::uint8_t> c7(60u, 0u);
+    put(0x00C7u, c7);
+
+    std::vector<std::uint8_t> c8(60u, 0u);
+    c8[48u] = 46u; c8[49u] = 101u; c8[50u] = 91u; c8[51u] = 123u;
+    c8[52u] = 1u;  c8[53u] = 1u;   c8[54u] = 1u;  c8[55u] = 1u;
+    put(0x00C8u, c8);
+
+    std::vector<std::uint8_t> e0(60u, 0u);
+    std::memcpy(e0.data() + 0u, "SEGA", 4u);
+    e0[4u] = 0u;
+    e0[20u] = 46u; e0[21u] = 101u; e0[22u] = 91u; e0[23u] = 123u;
+    e0[24u] = 1u;  e0[25u] = 1u;   e0[26u] = 1u;  e0[27u] = 1u;
+    std::memcpy(e0.data() + 36u, "dreamcast", 9u);
+    put(0x00E0u, e0);
+
+    std::vector<std::uint8_t> e2(60u, 0u);
+    std::memcpy(e2.data() + 12u, "dreamcast@example.com", 21u);
+    put(0x00E2u, e2);
+
+    std::vector<std::uint8_t> e4(60u, 0u);
+    std::memcpy(e4.data() + 32u, "smtp.example.com", 16u);
+    put(0x00E4u, e4);
+
+    std::vector<std::uint8_t> e5(60u, 0u);
+    std::memcpy(e5.data() + 36u, "pop.example.com", 15u);
+    put(0x00E5u, e5);
+
+    std::vector<std::uint8_t> e6(60u, 0u);
+    std::memcpy(e6.data() + 40u, "dream", 5u);
+    put(0x00E6u, e6);
+
+    std::vector<std::uint8_t> e7(60u, 0u);
+    std::memcpy(e7.data() + 12u, "dreamcast", 9u);
+    put(0x00E7u, e7);
+
+    std::vector<std::uint8_t> e8(60u, 0u);
+    e8[48u] = 0u; e8[49u] = 0u;
+    std::memcpy(e8.data() + 52u, "dream", 5u);
+    put(0x00E8u, e8);
+
+    std::vector<std::uint8_t> e9(60u, 0u);
+    std::memcpy(e9.data() + 40u, "dreamcast", 9u);
+    put(0x00E9u, e9);
+
+    std::vector<std::uint8_t> eb(60u, 0u);
+    std::memcpy(eb.data() + 12u, "AT&F", 4u);
+    put(0x00EBu, eb);
+
+    std::fill(runtime.bios_flash.begin() + base + size - 64u, runtime.bios_flash.begin() + base + size, 0xFFu);
+    for (std::size_t used = 0u; used < i; ++used)
+        runtime.bios_flash[base + size - 64u + used / 8u] &=
+            static_cast<std::uint8_t>(~(0x80u >> (used & 7u)));
+
+    std::cout << "[BIOS FLASH] seeded full ISP profile v3 | PlanetWeb 80-84+C0-C5"
+                 " | DreamKey C6-C8 | Katana E0/E2/E4-E9/EB"
+                 " | phone=111-1111 | DNS=46.101.91.123/1.1.1.1 | user=dream\n";
+}
+
+void bios_flash_ensure_initialized(DCRuntime& runtime) {
+    if (runtime.bios_flash_initialized) return;
+    bool loaded = false;
+    {
+        std::ifstream in(runtime.bios_flash_path, std::ios::binary);
+        if (in) {
+            in.read(reinterpret_cast<char*>(runtime.bios_flash.data()), static_cast<std::streamsize>(runtime.bios_flash.size()));
+            loaded = in.gcount() == static_cast<std::streamsize>(runtime.bios_flash.size());
+        }
+    }
+    if (!loaded) {
+        runtime.bios_flash.fill(0xFFu);
+        const char region[] = "00110"; // US region code in Katana flash format
+        std::memcpy(runtime.bios_flash.data() + 0x1A000u, region, 5u);
+        std::random_device rd; bool nonzero = false;
+        for (std::size_t i = 0; i < 8u; ++i) {
+            const auto v = static_cast<std::uint8_t>(rd()); runtime.bios_flash[0x1A056u + i] = v; nonzero |= v != 0u;
+        }
+        if (!nonzero) runtime.bios_flash[0x1A056u] = 0xD1u;
+        bios_flash_seed_dreamkey(runtime);
+        runtime.bios_flash_initialized = true; runtime.bios_flash_dirty = true;
+        bios_flash_save(runtime);
+        std::cout << "[BIOS FLASH] created persistent " << runtime.bios_flash_path << " with unique console ID\n";
+        bios_flash_report_layout(runtime);
+        return;
+    }
+
+    runtime.bios_flash_initialized = true;
+    std::cout << "[BIOS FLASH] loaded persistent " << runtime.bios_flash_path << " (128 KiB)\n";
+    std::size_t sys = 0u, pw80 = 0u, pw81 = 0u, c0 = 0u, c1 = 0u, c2 = 0u, c3 = 0u, c4 = 0u, c5 = 0u;
+    std::size_t c6 = 0u, c7 = 0u, c8 = 0u, e0 = 0u, e8 = 0u, e9 = 0u, eb = 0u;
+    const bool layout_ok = bios_flash_find_logical_block(runtime, 0x0005u, sys) &&
+                           bios_flash_find_logical_block(runtime, 0x0080u, pw80) &&
+                           bios_flash_find_logical_block(runtime, 0x0081u, pw81) &&
+                           bios_flash_find_logical_block(runtime, 0x00C0u, c0) &&
+                           bios_flash_find_logical_block(runtime, 0x00C1u, c1) &&
+                           bios_flash_find_logical_block(runtime, 0x00C2u, c2) &&
+                           bios_flash_find_logical_block(runtime, 0x00C3u, c3) &&
+                           bios_flash_find_logical_block(runtime, 0x00C4u, c4) &&
+                           bios_flash_find_logical_block(runtime, 0x00C5u, c5) &&
+                           bios_flash_find_logical_block(runtime, 0x00C6u, c6) &&
+                           bios_flash_find_logical_block(runtime, 0x00C7u, c7) &&
+                           bios_flash_find_logical_block(runtime, 0x00C8u, c8) &&
+                           bios_flash_find_logical_block(runtime, 0x00E0u, e0) &&
+                           bios_flash_find_logical_block(runtime, 0x00E8u, e8) &&
+                           bios_flash_find_logical_block(runtime, 0x00E9u, e9) &&
+                           bios_flash_find_logical_block(runtime, 0x00EBu, eb);
+    if (!layout_ok) {
+        // Preserve factory/system area (including the unique 64-bit ID) while
+        // rebuilding only partition 2. This automatically migrates cpp33a's
+        // old flash image without forcing the user to delete it.
+        bios_flash_seed_dreamkey(runtime);
+        runtime.bios_flash_dirty = true;
+        bios_flash_save(runtime);
+        std::cout << "[BIOS FLASH] migrated ISP partition to cpp34c full PlanetWeb/DreamKey/Katana layout\n";
+    }
+    if (!bios_flash_base0_valid(runtime)) {
+        bios_flash_seed_base0(runtime);
+        runtime.bios_flash_dirty = true;
+        bios_flash_save(runtime);
+        std::cout << "[BIOS FLASH] migrated retail base block 0 @0x1C040 (cpp34c)\n";
+    }
+    bios_flash_report_layout(runtime);
+}
+
+bool bios_flash_partition(std::uint32_t part, std::uint32_t& offset, std::uint32_t& size) {
+    // Katana flash partition map (128 KiB total). Partition IDs match the BIOS ABI.
+    switch (part) {
+        case 0u: offset = 0x1A000u; size = 0x02000u; return true; // factory/system
+        case 1u: offset = 0x18000u; size = 0x02000u; return true; // reserved
+        case 2u: offset = 0x1C000u; size = 0x04000u; return true; // block 1 / user
+        case 3u: offset = 0x10000u; size = 0x08000u; return true; // game settings
+        case 4u: offset = 0x00000u; size = 0x10000u; return true; // block 2
+        default: return false;
+    }
+}
+
+void native_bios_flash(SH4Context& ctx, DCRuntime& runtime) {
+    bios_flash_ensure_initialized(runtime);
+    switch (ctx.r[7]) {
+        case 0u: { // FLASHROM_INFO: r4=partition, r5={offset,size}
+            ++runtime.bios_flash_info_calls;
+            if (runtime.bios_flash_info_calls == 10000u ||
+                runtime.bios_flash_info_calls == 100000u ||
+                runtime.bios_flash_info_calls == 1000000u) {
+                std::cout << "[BIOS FLASH HOT] INFO calls=" << runtime.bios_flash_info_calls
+                          << " part=" << ctx.r[4] << " caller=0x" << std::hex << std::uppercase
+                          << ctx.pr << std::dec << "\n";
+            }
+            std::uint32_t offset = 0u, size = 0u;
+            if (!ctx.r[5] || !bios_flash_partition(ctx.r[4], offset, size)) {
+                ctx.r[0] = 0xFFFFFFFFu;
+                break;
+            }
+            dc_write32(runtime, ctx.r[5] + 0u, offset);
+            dc_write32(runtime, ctx.r[5] + 4u, size);
+            ctx.r[0] = 0u;
+            if (runtime.bios_flash_info_calls <= 8u)
+                std::cout << "[BIOS FLASH] INFO part=" << ctx.r[4]
+                          << " -> off=0x" << std::hex << std::uppercase << offset
+                          << " size=0x" << size << std::dec << "\n";
+            break;
+        }
+        case 1u: { // FLASHROM_READ: r4=offset, r5=destination, r6=bytes
+            ++runtime.bios_flash_read_calls;
+            if (runtime.bios_flash_read_calls == 40000u ||
+                runtime.bios_flash_read_calls == 400000u ||
+                runtime.bios_flash_read_calls == 4000000u) {
+                std::cout << "[BIOS FLASH HOT] READ calls=" << runtime.bios_flash_read_calls
+                          << " off=0x" << std::hex << std::uppercase << ctx.r[4]
+                          << " bytes=0x" << ctx.r[6] << " caller=0x" << ctx.pr
+                          << std::dec << "\n";
+            }
+            const std::uint64_t end = static_cast<std::uint64_t>(ctx.r[4]) + ctx.r[6];
+            if (!ctx.r[5] || end > runtime.bios_flash.size()) {
+                ctx.r[0] = 0xFFFFFFFFu;
+                break;
+            }
+            if (ctx.r[6] != 0u)
+                dc_load_bytes(runtime, ctx.r[5], runtime.bios_flash.data() + ctx.r[4], ctx.r[6]);
+            ctx.r[0] = ctx.r[6];
+            if (runtime.bios_flash_read_calls <= 12u)
+                std::cout << "[BIOS FLASH] READ off=0x" << std::hex << std::uppercase << ctx.r[4]
+                          << " bytes=0x" << ctx.r[6] << " dst=0x" << ctx.r[5] << std::dec << "\n";
+            break;
+        }
+        case 2u: { // FLASHROM_PROGRAM: r4=offset, r5=source, r6=bytes
+            ++runtime.bios_flash_program_calls;
+            const std::uint64_t end = static_cast<std::uint64_t>(ctx.r[4]) + ctx.r[6];
+            if (!ctx.r[5] || end > runtime.bios_flash.size()) { ctx.r[0] = 0xFFFFFFFFu; break; }
+            for (std::uint32_t i = 0; i < ctx.r[6]; ++i) runtime.bios_flash[ctx.r[4] + i] &= dc_read8(runtime, ctx.r[5] + i);
+            runtime.bios_flash_dirty = true; bios_flash_save(runtime); ctx.r[0] = ctx.r[6];
+            if (runtime.bios_flash_program_calls <= 12u) std::cout << "[BIOS FLASH] PROGRAM off=0x" << std::hex << ctx.r[4] << " bytes=0x" << ctx.r[6] << std::dec << "\n";
+            break;
+        }
+        case 3u: { // FLASHROM_ERASE: r4=partition start offset
+            ++runtime.bios_flash_erase_calls; bool found = false;
+            for (std::uint32_t part = 1u; part <= 4u; ++part) {
+                std::uint32_t off = 0u, sz = 0u;
+                if (bios_flash_partition(part, off, sz) && off == ctx.r[4]) { std::fill(runtime.bios_flash.begin() + off, runtime.bios_flash.begin() + off + sz, 0xFFu); found = true; break; }
+            }
+            if (!found) { ctx.r[0] = 0xFFFFFFFFu; break; }
+            runtime.bios_flash_dirty = true; bios_flash_save(runtime); ctx.r[0] = 0u;
+            std::cout << "[BIOS FLASH] ERASE partition @0x" << std::hex << ctx.r[4] << std::dec << "\n"; break;
+        }
+        default: ctx.r[0] = 0xFFFFFFFFu; break;
+    }
     ctx.pc = ctx.pr;
 }
 
@@ -16426,13 +18323,37 @@ void native_bios_misc(SH4Context& ctx, DCRuntime& runtime) {
 } // namespace
 
 void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
-    // v0.1.1 CT2: retail IP.BIN expects the main executable in Dreamcast
-    // 32-byte-slice scrambled layout and descrambles it in-place.  The generated
-    // image embeds the plain executable for static analysis, so restage it only
-    // for the opt-in CT2 compatibility profile before IP.BIN runs.
-    if (runtime.ct2_compat) {
-        constexpr std::size_t boot_off = 0x10000u;
-        constexpr std::size_t boot_size = 0x164794u;
+    // Commercial boot images exist in two layouts in real dumps. Cooked 2048-byte
+    // data tracks expose the executable payload in the representation expected by
+    // the retail bootstrap and must remain byte-for-byte (ChuChu Rocket is one
+    // observed example). Raw 2336-byte tracks with a non-zero user-data offset use
+    // the path for which our extracted static image must be restaged into the
+    // Dreamcast 32-byte scrambled layout before IP.BIN runs (SGGG/CT2/Daytona
+    // layouts observed by the regression corpus). Decide from physical geometry,
+    // never from a title/product whitelist. A CLI override exists for diagnostics.
+    bool stage_scrambled = false;
+    if (runtime.commercial_boot_stage_mode == 2u) {
+        stage_scrambled = true;
+    } else if (runtime.commercial_boot_stage_mode == 1u) {
+        stage_scrambled = false;
+    } else if (runtime.gd_disc_ready && runtime.gd_boot_track < runtime.gd_tracks.size()) {
+        const auto& boot_track = runtime.gd_tracks[runtime.gd_boot_track];
+        stage_scrambled = boot_track.sector_size != 2048u || boot_track.user_offset != 0u;
+        std::cout << "[DCR BOOT] staging auto | physical-sector=" << boot_track.sector_size
+                  << " | user-offset=" << boot_track.user_offset
+                  << " | mode=" << (stage_scrambled ? "scrambled" : "plain") << "\n";
+    } else {
+        // With no disc map there is no trustworthy physical-layout evidence. Plain
+        // is the conservative default; raw-layout diagnostics can force scrambled.
+        stage_scrambled = false;
+        std::cout << "[DCR BOOT] staging auto | no disc geometry | mode=plain\n";
+    }
+    if (stage_scrambled && runtime.commercial_boot_image_size != 0u) {
+        const std::uint32_t canonical = runtime.commercial_boot_image_address & 0x1FFFFFFFu;
+        if (canonical < DCRuntime::kMainRamPhysicalBase)
+            throw std::runtime_error("commercial boot staging address is outside main RAM");
+        const std::size_t boot_off = static_cast<std::size_t>(canonical - DCRuntime::kMainRamPhysicalBase);
+        const std::size_t boot_size = runtime.commercial_boot_image_size;
         constexpr std::size_t max_chunk = 2048u * 1024u;
         struct BootRand {
             std::uint32_t seed;
@@ -16440,7 +18361,7 @@ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
             std::uint32_t next() { seed = (seed * 2109u + 9273u) & 0x7FFFu; return (seed + 0xC000u) & 0xFFFFu; }
         };
         if (boot_off + boot_size > runtime.main_ram.size())
-            throw std::runtime_error("CT2 commercial boot staging exceeds main RAM");
+            throw std::runtime_error("commercial boot staging exceeds main RAM");
         std::vector<std::uint8_t> src(boot_size), dst(boot_size);
         std::copy_n(runtime.main_ram.data() + boot_off, boot_size, src.data());
         BootRand rng(static_cast<std::uint32_t>(boot_size));
@@ -16463,7 +18384,12 @@ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
         }
         if (remain) std::copy_n(src.data() + src_pos, remain, dst.data() + dst_pos);
         std::copy(dst.begin(), dst.end(), runtime.main_ram.begin() + boot_off);
-        std::cout << "[DCR CT2] staged scrambled commercial executable (" << boot_size << " bytes)\n";
+        std::cout << "[DCR BOOT] staged scrambled commercial executable @0x" << std::hex << std::uppercase
+                  << runtime.commercial_boot_image_address << std::dec << " (" << boot_size << " bytes)\n";
+    } else if (runtime.commercial_boot_image_size != 0u) {
+        std::cout << "[DCR BOOT] commercial executable kept plain @0x" << std::hex << std::uppercase
+                  << runtime.commercial_boot_image_address << std::dec << " ("
+                  << runtime.commercial_boot_image_size << " bytes)\n";
     }
     // The BIOS leaves low RAM initialised before loading IP.BIN at 0x8C008000.
     // Because the generated image is already embedded when this helper runs,
@@ -16518,6 +18444,16 @@ std::uint32_t dc_load_pc_literal32(DCRuntime& runtime, std::uint32_t source_addr
     if (runtime.active_relocation_source != 0u && runtime.active_relocation_target != 0u)
         return dc_read32(runtime, dc_relocate_pc_address(runtime, source_address, storage_address));
 
+    // Commercial IP.BIN is statically recompiled from its original 0x8C008000
+    // image. Retail boot code later reuses that low RAM while the SH-4 may still
+    // execute the already-fetched/recompiled bootstrap. In that case the literal
+    // belongs to the static instruction image, not to the bytes that subsequently
+    // replaced the RAM page. Relocated copies still take the path above.
+    if (runtime.commercial_boot_active) {
+        const std::uint32_t source_phys = source_address & 0x1FFFFFFFu;
+        if (source_phys >= 0x0C008000u && source_phys < 0x0C010000u) return baked_value;
+    }
+
     // Preserve the zero-cost baked fast path until guest code has written to the
     // SDRAM page that owns this literal. P1/P2 aliases collapse to the same
     // physical offset, so uncached loader patches are observed by cached code.
@@ -16540,6 +18476,12 @@ std::uint32_t dc_load_pc_literal16(DCRuntime& runtime, std::uint32_t source_addr
     if (runtime.active_relocation_source != 0u && runtime.active_relocation_target != 0u) {
         const auto raw = dc_read16(runtime, dc_relocate_pc_address(runtime, source_address, storage_address));
         return static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(raw)));
+    }
+    if (runtime.commercial_boot_active) {
+        const std::uint32_t source_phys = source_address & 0x1FFFFFFFu;
+        if (source_phys >= 0x0C008000u && source_phys < 0x0C010000u) {
+            return static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(baked_value)));
+        }
     }
     const std::uint32_t physical = storage_address & 0x1FFFFFFFu;
     if (physical >= DCRuntime::kMainRamPhysicalBase && physical < 0x10000000u) {
@@ -16600,12 +18542,13 @@ void dc_trace_print_history(const DCRuntime& runtime, std::ostream& out) {
 }
 
 void call_recompiled(SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) {
+    const bool static_code_overwritten = dc_registered_static_code_overwritten(runtime, target);
     // Performance fast path for the overwhelmingly common retail case: the
     // direct-mapped cache already knows the exact non-relocated generated
     // function, no verbose trace is requested, and no KOS scene observer needs
     // post-call argument capture. This avoids the generic relocation/lookup/
     // try-restore machinery on millions of calls per second.
-    if (runtime.fast_dynamic_dispatch_ready) {
+    if (runtime.fast_dynamic_dispatch_ready && !static_code_overwritten) {
         const std::uint32_t requested_target = target;
         auto& fast_cached = runtime.dispatch_cache[
             (requested_target >> 1u) & (DCRuntime::kDispatchCacheSize - 1u)];
@@ -16650,7 +18593,7 @@ void call_recompiled(SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) 
 
     auto& cached = runtime.dispatch_cache[
         (requested_target >> 1u) & (DCRuntime::kDispatchCacheSize - 1u)];
-    if (cached.requested == requested_target && cached.function != nullptr) {
+    if (!static_code_overwritten && cached.requested == requested_target && cached.function != nullptr) {
         DCR_HOT_METRIC_INC(runtime.dispatch_cache_hits);
         target = cached.target;
         relocation_source = cached.relocation_source;
@@ -16658,19 +18601,45 @@ void call_recompiled(SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) 
         function = cached.function;
     } else {
         ++runtime.dispatch_cache_misses;
-        if (const auto alias = runtime.relocated_code_aliases.find(requested_target);
-            alias != runtime.relocated_code_aliases.end()) {
-            relocation_source = alias->second;
-            relocation_target = requested_target;
+        bool rebound_overwritten = false;
+        if (static_code_overwritten) {
+            std::uint32_t source = 0u;
+            if (find_relocated_code_template(runtime, requested_target, source)) {
+                const auto existing_alias = runtime.relocated_code_aliases.find(requested_target);
+                const bool new_alias = existing_alias == runtime.relocated_code_aliases.end() ||
+                                       existing_alias->second != source;
+                if (new_alias) runtime.relocated_code_aliases[requested_target] = source;
+                ++runtime.relocated_code_matches;
+                if (new_alias && dc_code_relocation_trace_enabled())
+                    std::cerr << "[DCR code-rebind] 0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
+                          << requested_target << " -> template 0x" << std::setw(8) << source << std::dec << "\n";
+                target = source;
+                relocation_source = source;
+                relocation_target = requested_target;
+                rebound_overwritten = true;
+            }
         }
-        target = dc_canonical_code_target(runtime, target);
+        if (!rebound_overwritten) {
+            if (const auto alias = runtime.relocated_code_aliases.find(requested_target);
+                alias != runtime.relocated_code_aliases.end()) {
+                target = alias->second;
+                relocation_source = alias->second;
+                relocation_target = requested_target;
+            } else {
+                target = dc_canonical_code_target(runtime, target);
+            }
+        }
         auto it = runtime.targets.find(target);
         if (it == runtime.targets.end() || it->second == nullptr) {
             std::uint32_t source = 0u;
             if (find_relocated_code_template(runtime, requested_target, source)) {
-                runtime.relocated_code_aliases[requested_target] = source;
+                const auto existing_alias = runtime.relocated_code_aliases.find(requested_target);
+                const bool new_alias = existing_alias == runtime.relocated_code_aliases.end() ||
+                                       existing_alias->second != source;
+                if (new_alias) runtime.relocated_code_aliases[requested_target] = source;
                 ++runtime.relocated_code_matches;
-                std::cerr << "[DCR code-reloc] 0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
+                if (new_alias && dc_code_relocation_trace_enabled())
+                    std::cerr << "[DCR code-reloc] 0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
                           << requested_target << " -> template 0x" << std::setw(8) << source << std::dec << "\n";
                 target = source;
                 relocation_source = source;
@@ -16804,7 +18773,7 @@ struct ImageEmitInfo {
     std::size_t zero_fill_bytes{};
 };
 
-ImageEmitInfo emit_image_cpp(const Elf32Image& elf) {
+ImageEmitInfo emit_image_cpp(const Elf32Image& elf, bool embed_raw_image = true) {
     std::ostringstream out;
     out << "#include \"dc_image.hpp\"\n\n"
         << "#include <array>\n"
@@ -16822,6 +18791,10 @@ ImageEmitInfo emit_image_cpp(const Elf32Image& elf) {
         const auto& sec = elf.sections[i];
         if ((sec.flags & SHF_ALLOC) == 0 || sec.size == 0) continue;
         if (!maps_to_main_ram(sec.address, sec.size)) continue;
+        // Portable retail build: .raw_boot belongs to the user's own disc and is
+        // loaded at runtime from a locally prepared BOOTSTRAP.BIN instead of being
+        // copied into dcr_game_module.dll. Other alloc sections keep legacy behavior.
+        if (!embed_raw_image && sec.name == ".raw_boot") continue;
 
         if (sec.type == SHT_NOBITS) {
             zeroed.push_back({i, &sec});
@@ -18556,7 +20529,7 @@ std::string emit_operation(const DCIRInstruction& i, const std::set<std::uint32_
             // all FPU helpers into every translation unit, which was expensive
             // for MSVC in 0.0.109/0.0.110). Resolve the architectural FR bank
             // once, preserve PR/RM traps, and retain single-rounding FMAC through dc_host_fma().
-            out << "    ++runtime.fpu_fmac_ops;\n"
+            out << "    DCR_FPU_METRIC_INC(runtime.fpu_fmac_ops);\n"
                 << "    dc_require_fpu_round_nearest(ctx, " << hex8(i.source_address) << ");\n"
                 << "    if ((ctx.fpscr & (1u << 19)) != 0u) dc_unimplemented(" << hex8(i.source_address) << ", \"FMAC is only available when FPSCR.PR=0\");\n"
                 << "    { auto& frb = ((ctx.fpscr & (1u << 21)) != 0u) ? ctx.xf_bits : ctx.fr_bits; "
@@ -18598,7 +20571,7 @@ std::string emit_operation(const DCIRInstruction& i, const std::set<std::uint32_
             // ChuChu stress scene). Keep the exact 1/sqrt result used by the
             // reference path, but resolve FPSCR and the FR bank locally so the
             // instruction no longer crosses four tiny runtime helpers.
-            out << "    ++runtime.fpu_fsrra_ops;\n"
+            out << "    DCR_FPU_METRIC_INC(runtime.fpu_fsrra_ops);\n"
                 << "    dc_require_fpu_round_nearest(ctx, " << hex8(i.source_address) << ");\n"
                 << "    if ((ctx.fpscr & (1u << 19)) != 0u) dc_unimplemented(" << hex8(i.source_address) << ", \"FSRRA requires FPSCR.PR=0\");\n"
                 << "    { auto& frb = ((ctx.fpscr & (1u << 21)) != 0u) ? ctx.xf_bits : ctx.fr_bits; const float x = std::bit_cast<float>(frb[" << static_cast<unsigned>(i.dst) << "u]); frb[" << static_cast<unsigned>(i.dst) << "u] = std::bit_cast<std::uint32_t>(1.0f / std::sqrt(x)); }\n";
@@ -18627,7 +20600,7 @@ std::string emit_operation(const DCIRInstruction& i, const std::set<std::uint32_
             // products in double precision, and round only on the final float
             // writeback.  Emit the dot product directly so the host compiler
             // sees four scalar loads and one expression instead of a loop.
-            out << "    ++runtime.fpu_fipr_ops;\n"
+            out << "    DCR_FPU_METRIC_INC(runtime.fpu_fipr_ops);\n"
                 << "    dc_require_fpu_round_nearest(ctx, " << hex8(i.source_address) << ");\n"
                 << "    if ((ctx.fpscr & (1u << 19)) != 0u) dc_unimplemented(" << hex8(i.source_address) << ", \"FIPR requires FPSCR.PR=0\");\n"
                 << "    { auto& frb = ((ctx.fpscr & (1u << 21)) != 0u) ? ctx.xf_bits : ctx.fr_bits; "
@@ -18648,7 +20621,7 @@ std::string emit_operation(const DCIRInstruction& i, const std::set<std::uint32_
             // writeback), but emit the four dot products directly.  This avoids
             // rebuilding temporary v[4]/m[16]/o[4] arrays and nested loops for
             // every FTRV while preserving FR/XF bank semantics under FPSCR.FR.
-            out << "    ++runtime.fpu_ftrv_ops; if ((ctx.fpscr & (1u << 21)) != 0u) ++runtime.fpu_ftrv_fr1_ops;\n"
+            out << "    DCR_FPU_METRIC_INC(runtime.fpu_ftrv_ops); if ((ctx.fpscr & (1u << 21)) != 0u) DCR_FPU_METRIC_INC(runtime.fpu_ftrv_fr1_ops);\n"
                 << "    dc_require_fpu_round_nearest(ctx, " << hex8(i.source_address) << ");\n"
                 << "    if ((ctx.fpscr & (1u << 19)) != 0u) dc_unimplemented(" << hex8(i.source_address) << ", \"FTRV requires FPSCR.PR=0\");\n"
                 << "    { auto& frb = ((ctx.fpscr & (1u << 21)) != 0u) ? ctx.xf_bits : ctx.fr_bits; const auto& xfb = ((ctx.fpscr & (1u << 21)) != 0u) ? ctx.fr_bits : ctx.xf_bits; "
@@ -18666,13 +20639,13 @@ std::string emit_operation(const DCIRInstruction& i, const std::set<std::uint32_
                 << "frb[" << static_cast<unsigned>(i.dst + 3u) << "u] = std::bit_cast<std::uint32_t>(static_cast<float>(o3)); }\n";
             break;
         case DCIROp::Fsca:
-            out << "    ++runtime.fpu_fsca_ops;\n"
+            out << "    DCR_FPU_METRIC_INC(runtime.fpu_fsca_ops);\n"
                 << "    dc_require_fpu_round_nearest(ctx, " << hex8(i.source_address) << ");\n"
                 << "    if (dc_fpu_double_precision(ctx)) dc_unimplemented(" << hex8(i.source_address) << ", \"FSCA requires FPSCR.PR=0\");\n"
                 << "    { constexpr double tau = 6.283185307179586476925286766559; const double angle = static_cast<double>(ctx.fpul & 0xFFFFu) * tau / 65536.0; dc_set_fr_float(ctx, " << static_cast<unsigned>(i.dst) << "u, static_cast<float>(std::sin(angle))); dc_set_fr_float(ctx, " << static_cast<unsigned>(i.dst + 1u) << "u, static_cast<float>(std::cos(angle))); }\n";
             break;
         case DCIROp::Frchg:
-            out << "    ++runtime.fpu_frchg_ops; ctx.fpscr ^= (1u << 21);\n";
+            out << "    DCR_FPU_METRIC_INC(runtime.fpu_frchg_ops); ctx.fpscr ^= (1u << 21);\n";
             break;
         case DCIROp::Fschg:
             out << "    ctx.fpscr ^= (1u << 20);\n";
@@ -19157,7 +21130,7 @@ std::string emit_operation(const DCIRInstruction& i, const std::set<std::uint32_
                     << "        switch (delayed_target) {\n";
                 for (const auto& [target, function_name] : direct_hints) {
                     out << "            case " << hex8(target) << ":\n"
-                        << "                ++runtime.dynamic_direct_hint_hits;\n"
+                        << "                DCR_HOT_METRIC_INC(runtime.dynamic_direct_hint_hits);\n"
                         << "                dc_trace_record_inline(runtime, runtime.current_pc, " << hex8(target) << ", ctx.r[8], ctx.r[15]);\n"
                         << "                ctx.pc = " << hex8(target) << ";\n"
                         << "                " << function_name << "(ctx, runtime);\n"
@@ -19888,7 +21861,7 @@ FpuPersistentFlushKind fpu_persistent_flush_before_normal(const DCIRInstruction&
 std::string emit_fpu_region_prologue(const FpuBlockCachePlan& plan,
                                      const std::string& prefix = "rfc_") {
     std::ostringstream out;
-    out << "        if (runtime.fpu_aot_mode != 3u || runtime.fpu_region_metrics) {\n"
+    out << "        if (DCR_FPU_REGION_METRICS_ENABLED(runtime)) {\n"
         << "            ++runtime.fpu_block_cache_hits; runtime.fpu_block_cache_ops += " << plan.fpu_ops
         << "u; runtime.fpu_block_cache_reuses += " << plan.reuse_estimate
         << "u; runtime.fpu_block_cache_writebacks += " << plan.writebacks << "u;\n"
@@ -19941,14 +21914,14 @@ std::string emit_fpu_static_super_decls(const FpuStaticSuperPlan& plan, bool hot
         if (plan.fr_write[n]) out << "        sfc_fr_bank[" << n << "u] = sfc_fr" << n << ";\n";
     for (unsigned n = 0; n < 16u; ++n)
         if (plan.xf_write[n]) out << "        sfc_xf_bank[" << n << "u] = sfc_xf" << n << ";\n";
-    out << "        runtime.fpu_super_actual_writebacks += " << plan.writebacks << "u;\n"
-        << "        runtime.fpu_block_cache_hits += sfc_stat_regions; runtime.fpu_block_cache_ops += sfc_stat_ops; runtime.fpu_block_cache_reuses += sfc_stat_reuses; runtime.fpu_block_cache_writebacks += sfc_stat_planned_wb;\n"
-        << "        runtime.fpu_ftrv_ops += sfc_stat_ftrv; if (sfc_fr_swapped) runtime.fpu_ftrv_fr1_ops += sfc_stat_ftrv; runtime.fpu_fipr_ops += sfc_stat_fipr; runtime.fpu_fmac_ops += sfc_stat_fmac; runtime.fpu_fsca_ops += sfc_stat_fsca; runtime.fpu_fsrra_ops += sfc_stat_fsrra;\n"
-        << "        runtime.fpu_super_cross_block_keeps += sfc_stat_cross; runtime.fpu_super_reuses += sfc_stat_super_reuses; runtime.fpu_super_entries += sfc_stat_entries; runtime.fpu_super_static_loads += sfc_stat_static_loads;\n"
+    out << "        DCR_FPU_METRIC_ADD(runtime.fpu_super_actual_writebacks, " << plan.writebacks << "u);\n"
+        << "        DCR_FPU_METRIC_ADD(runtime.fpu_block_cache_hits, sfc_stat_regions); DCR_FPU_METRIC_ADD(runtime.fpu_block_cache_ops, sfc_stat_ops); DCR_FPU_METRIC_ADD(runtime.fpu_block_cache_reuses, sfc_stat_reuses); DCR_FPU_METRIC_ADD(runtime.fpu_block_cache_writebacks, sfc_stat_planned_wb);\n"
+        << "        DCR_FPU_METRIC_ADD(runtime.fpu_ftrv_ops, sfc_stat_ftrv); if (sfc_fr_swapped) DCR_FPU_METRIC_ADD(runtime.fpu_ftrv_fr1_ops, sfc_stat_ftrv); DCR_FPU_METRIC_ADD(runtime.fpu_fipr_ops, sfc_stat_fipr); DCR_FPU_METRIC_ADD(runtime.fpu_fmac_ops, sfc_stat_fmac); DCR_FPU_METRIC_ADD(runtime.fpu_fsca_ops, sfc_stat_fsca); DCR_FPU_METRIC_ADD(runtime.fpu_fsrra_ops, sfc_stat_fsrra);\n"
+        << "        DCR_FPU_METRIC_ADD(runtime.fpu_super_cross_block_keeps, sfc_stat_cross); DCR_FPU_METRIC_ADD(runtime.fpu_super_reuses, sfc_stat_super_reuses); DCR_FPU_METRIC_ADD(runtime.fpu_super_entries, sfc_stat_entries); DCR_FPU_METRIC_ADD(runtime.fpu_super_static_loads, sfc_stat_static_loads);\n"
         << "        sfc_stat_regions=sfc_stat_ops=sfc_stat_reuses=sfc_stat_planned_wb=0; sfc_stat_ftrv=sfc_stat_fipr=sfc_stat_fmac=sfc_stat_fsca=sfc_stat_fsrra=sfc_stat_cross=sfc_stat_super_reuses=sfc_stat_entries=sfc_stat_static_loads=0;\n"
-        << "        if (sfc_reason == 1u) ++runtime.fpu_super_tick_flushes;\n"
-        << "        else if (sfc_reason == 2u) ++runtime.fpu_super_barrier_flushes;\n"
-        << "        else if (sfc_reason == 3u) ++runtime.fpu_super_exit_flushes;\n"
+        << "        if (sfc_reason == 1u) DCR_FPU_METRIC_INC(runtime.fpu_super_tick_flushes);\n"
+        << "        else if (sfc_reason == 2u) DCR_FPU_METRIC_INC(runtime.fpu_super_barrier_flushes);\n"
+        << "        else if (sfc_reason == 3u) DCR_FPU_METRIC_INC(runtime.fpu_super_exit_flushes);\n"
         << "        sfc_active = false;\n"
         << "    };\n"
         << "    auto sfc_activate = [&]() {\n"
@@ -19960,7 +21933,7 @@ std::string emit_fpu_static_super_decls(const FpuStaticSuperPlan& plan, bool hot
         if (plan.fr_touch[n]) out << "        sfc_fr" << n << " = sfc_fr_bank[" << n << "u];\n";
     for (unsigned n = 0; n < 16u; ++n)
         if (plan.xf_touch[n]) out << "        sfc_xf" << n << " = sfc_xf_bank[" << n << "u];\n";
-    out << "        ++sfc_stat_entries; sfc_stat_static_loads += " << plan.static_loads << "u;\n"
+    out << "        DCR_FPU_METRIC_INC(sfc_stat_entries); DCR_FPU_METRIC_ADD(sfc_stat_static_loads, " << plan.static_loads << "u);\n"
         << "    };\n"
         << "    auto sfc_tick = [&](std::uint64_t sfc_cycles) -> bool {\n"
         << "#if !defined(DCR_DISABLE_HOT_TICK_CALL_COUNTER)\n"
@@ -19968,7 +21941,7 @@ std::string emit_fpu_static_super_decls(const FpuStaticSuperPlan& plan, bool hot
         << "#endif\n"
         << "        runtime.sh4_tick_pending_cycles += sfc_cycles;\n"
         << "        const std::uint64_t sfc_batch = runtime.sh4_tick_batch_cycles != 0u ? runtime.sh4_tick_batch_cycles : 1u;\n"
-        << "        if (runtime.sh4_tick_pending_cycles < sfc_batch) { if (sfc_active) ++sfc_stat_cross; return false; }\n"
+        << "        if (runtime.sh4_tick_pending_cycles < sfc_batch) { if (sfc_active) DCR_FPU_METRIC_INC(sfc_stat_cross); return false; }\n"
         << "        sfc_flush(1u);\n"
         << "        const std::uint64_t sfc_accumulated = runtime.sh4_tick_pending_cycles;\n"
         << "        runtime.sh4_tick_pending_cycles = 0u;\n"
@@ -19982,7 +21955,7 @@ std::string emit_fpu_static_super_decls(const FpuStaticSuperPlan& plan, bool hot
             << "#endif\n"
             << "        runtime.sh4_tick_pending_cycles += sfc_cycles;\n"
             << "        const std::uint64_t sfc_batch = runtime.sh4_tick_batch_cycles != 0u ? runtime.sh4_tick_batch_cycles : 1u;\n"
-            << "        if (runtime.sh4_tick_pending_cycles < sfc_batch) { if (sfc_active) ++sfc_stat_cross; ++htr_stat_elisions; return false; }\n"
+            << "        if (runtime.sh4_tick_pending_cycles < sfc_batch) { if (sfc_active) DCR_FPU_METRIC_INC(sfc_stat_cross); ++htr_stat_elisions; return false; }\n"
             << "        sfc_flush(1u); htr_sync(htr_pc);\n"
             << "        const std::uint64_t sfc_accumulated = runtime.sh4_tick_pending_cycles; runtime.sh4_tick_pending_cycles = 0u;\n"
             << "        ++runtime.sh4_tick_full_calls; ++htr_stat_full; htr_flush_stats();\n"
@@ -20298,6 +22271,26 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
     result.compile_test_source = options.output_directory / "generated_compile_test.cpp";
     result.printf_address = find_symbol_address(elf, "_printf").value_or(0);
 
+    std::uint32_t raw_boot_address = 0u;
+    std::uint32_t raw_boot_size = 0u;
+    for (const auto& section : elf.sections) {
+        if (section.name == ".raw_boot" && section.size != 0u) {
+            raw_boot_address = section.address;
+            raw_boot_size = section.size;
+            break;
+        }
+    }
+    // Retail synthetic .raw_boot contains the 32 KiB IP.BIN at 0x8C008000
+    // followed by the main executable at 0x8C010000. Only the executable is
+    // stored scrambled on GD-ROM; staging IP.BIN as scrambled corrupts the
+    // bootstrap itself. Keep non-retail/raw images unchanged.
+    std::uint32_t commercial_boot_address = raw_boot_address;
+    std::uint32_t commercial_boot_size = raw_boot_size;
+    if (raw_boot_address == 0x8C008000u && raw_boot_size > 0x8000u) {
+        commercial_boot_address += 0x8000u;
+        commercial_boot_size -= 0x8000u;
+    }
+
     std::ostringstream header;
     header << "#pragma once\n\n"
            << "#include \"dc_runtime.hpp\"\n\n"
@@ -20391,11 +22384,11 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                     source << "    if (runtime.fpu_aot_mode == 2u) {\n"
                            << "        // 0.0.155: static superblock cache; one direct register set per function.\n"
                            << "        if ((ctx.fpscr & ((1u << 19) | (1u << 20) | 3u)) == 0u) {\n"
-                           << "        ++sfc_stat_regions; sfc_stat_ops += " << fpu_cache.fpu_ops
-                           << "u; sfc_stat_reuses += " << fpu_cache.reuse_estimate
-                           << "u; sfc_stat_planned_wb += " << fpu_cache.writebacks << "u;\n"
-                           << "        sfc_stat_ftrv += " << fpu_cache.ftrv_ops << "u; sfc_stat_fipr += " << fpu_cache.fipr_ops << "u; sfc_stat_fmac += " << fpu_cache.fmac_ops << "u; sfc_stat_fsca += " << fpu_cache.fsca_ops << "u; sfc_stat_fsrra += " << fpu_cache.fsrra_ops << "u;\n"
-                           << "        if (!sfc_active) sfc_activate(); else ++sfc_stat_super_reuses;\n";
+                           << "        DCR_FPU_METRIC_INC(sfc_stat_regions); DCR_FPU_METRIC_ADD(sfc_stat_ops, " << fpu_cache.fpu_ops
+                           << "u); DCR_FPU_METRIC_ADD(sfc_stat_reuses, " << fpu_cache.reuse_estimate
+                           << "u); DCR_FPU_METRIC_ADD(sfc_stat_planned_wb, " << fpu_cache.writebacks << "u);\n"
+                           << "        DCR_FPU_METRIC_ADD(sfc_stat_ftrv, " << fpu_cache.ftrv_ops << "u); DCR_FPU_METRIC_ADD(sfc_stat_fipr, " << fpu_cache.fipr_ops << "u); DCR_FPU_METRIC_ADD(sfc_stat_fmac, " << fpu_cache.fmac_ops << "u); DCR_FPU_METRIC_ADD(sfc_stat_fsca, " << fpu_cache.fsca_ops << "u); DCR_FPU_METRIC_ADD(sfc_stat_fsrra, " << fpu_cache.fsrra_ops << "u);\n"
+                           << "        if (!sfc_active) sfc_activate(); else DCR_FPU_METRIC_INC(sfc_stat_super_reuses);\n";
                     for (std::size_t j = region.begin; j < region.end; ++j) {
                         auto emitted = block.instructions[j];
                         if (emitted.op == DCIROp::Pref) {
@@ -20408,7 +22401,7 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                             emitted, block_starts, gpr_cache_plan);
                     }
                     source << "        } else {\n"
-                           << "            sfc_flush(2u); ++runtime.fpu_block_cache_fallbacks;\n";
+                           << "            sfc_flush(2u); DCR_FPU_METRIC_INC(runtime.fpu_block_cache_fallbacks);\n";
                     for (std::size_t j = region.begin; j < region.end; ++j) {
                         auto emitted = block.instructions[j];
                         if (emitted.op == DCIROp::Pref) {
@@ -20445,7 +22438,7 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                 // same stores again on the not-taken/fallthrough path is redundant.
                 if (!region_ends_control_boundary) source << emit_fpu_region_writeback(fpu_cache, "rfc_");
                 source << "    } else {\n"
-                       << "        ++runtime.fpu_block_cache_fallbacks;\n";
+                       << "        DCR_FPU_METRIC_INC(runtime.fpu_block_cache_fallbacks);\n";
                 for (std::size_t j = region.begin; j < region.end; ++j) {
                     auto emitted = block.instructions[j];
                     if (emitted.op == DCIROp::Pref) {
@@ -20504,7 +22497,7 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
         write_file(result.arm7_source, generated_arm7_cpp());
 
         write_file(result.image_header, image_hpp());
-        const auto image = emit_image_cpp(elf);
+        const auto image = emit_image_cpp(elf, options.embed_raw_image);
         write_file(result.image_source, image.source);
         result.embedded_bytes = image.embedded_bytes;
         result.zero_fill_bytes = image.zero_fill_bytes;
@@ -20705,6 +22698,8 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "    DCRSessionLogGuard dcr_session_log;\n"
                    << "    if (dcr_session_log.enabled()) std::cout << \"[DCR LOG] session-log=\" << dcr_session_log.path() << \"\\n\";\n"
                    << "    DCRuntime runtime;\n"
+                   << "    runtime.commercial_boot_image_address = " << hex8(commercial_boot_address) << ";\n"
+                   << "    runtime.commercial_boot_image_size = " << commercial_boot_size << "u;\n"
                    << "#ifdef _WIN32\n"
                    << "    g_dcr_crash_runtime = &runtime;\n"
                    << "    SetUnhandledExceptionFilter(dcr_unhandled_exception_filter);\n"
@@ -20723,6 +22718,8 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "        std::uint64_t commercial_continuation_limit = 0u;\n"
                    << "        std::uint64_t commercial_stages = 0u;\n"
                    << "        std::string disc_map;\n"
+                   << "        std::string external_raw_image;\n"
+                   << "        std::uint32_t external_raw_base = 0x8C008000u;\n"
                    << "        bool host_window = false;\n"
                    << "        std::uint64_t diag_heartbeat_ms = 0u;\n"
                    << "        bool pvr_window = false;\n"
@@ -20766,10 +22763,38 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "        ctx.r[15] = kStackTop;\n"
                    << "        ctx.pr = kHostReturnSentinel;\n"
                    << "        ctx.pc = " << hex8(function.entry) << ";\n"
+                   << "        auto set_boot_stage_mode = [&](const std::string& mode) {\n"
+                   << "            if (mode == \"auto\") runtime.commercial_boot_stage_mode = 0u;\n"
+                   << "            else if (mode == \"plain\" || mode == \"pass-through\" || mode == \"passthrough\") runtime.commercial_boot_stage_mode = 1u;\n"
+                   << "            else if (mode == \"scrambled\" || mode == \"scramble\") runtime.commercial_boot_stage_mode = 2u;\n"
+                   << "            else throw std::runtime_error(\"Unknown --commercial-boot-stage mode: \" + mode);\n"
+                   << "        };\n"
                    << "        for (int ai = 1; ai < argc; ++ai) {\n"
                    << "            const std::string pre = argv[ai];\n"
                    << "            if (pre == \"--commercial-boot\") { commercial_boot = true; runtime.commercial_boot_active = true; }\n"
                    << "            else if (pre == \"--ct2-compat\") runtime.ct2_compat = true;\n"
+                   << "            else if (pre.rfind(\"--disc-map=\", 0) == 0) disc_map = pre.substr(11);\n"
+                   << "            else if (pre == \"--disc-map\" && ai + 1 < argc) disc_map = argv[ai + 1];\n"
+                   << "            else if (pre.rfind(\"--external-raw-image=\", 0) == 0) external_raw_image = pre.substr(21);\n"
+                   << "            else if (pre == \"--external-raw-image\" && ai + 1 < argc) external_raw_image = argv[ai + 1];\n"
+                   << "            else if (pre.rfind(\"--external-raw-base=\", 0) == 0) external_raw_base = static_cast<std::uint32_t>(std::stoul(pre.substr(20), nullptr, 0));\n"
+                   << "            else if (pre == \"--external-raw-base\" && ai + 1 < argc) external_raw_base = static_cast<std::uint32_t>(std::stoul(argv[ai + 1], nullptr, 0));\n"
+                   << "            else if (pre.rfind(\"--commercial-boot-stage=\", 0) == 0) set_boot_stage_mode(pre.substr(24));\n"
+                   << "            else if (pre == \"--commercial-boot-stage\" && ai + 1 < argc) set_boot_stage_mode(argv[ai + 1]);\n"
+                   << "        }\n"
+                   << "        if (!disc_map.empty()) dc_gdrom_load_disc_map(runtime, disc_map);\n"
+                   << "        if (!external_raw_image.empty()) {\n"
+                   << "            std::ifstream raw(external_raw_image, std::ios::binary);\n"
+                   << "            if (!raw) throw std::runtime_error(\"Unable to open --external-raw-image: \" + external_raw_image);\n"
+                   << "            raw.seekg(0, std::ios::end); const auto raw_end = raw.tellg();\n"
+                   << "            if (raw_end < 0) throw std::runtime_error(\"Unable to determine external raw image size\");\n"
+                   << "            std::vector<std::uint8_t> raw_bytes(static_cast<std::size_t>(raw_end));\n"
+                   << "            raw.seekg(0, std::ios::beg); if (!raw_bytes.empty()) raw.read(reinterpret_cast<char*>(raw_bytes.data()), static_cast<std::streamsize>(raw_bytes.size()));\n"
+                   << "            if (!raw && !raw_bytes.empty()) throw std::runtime_error(\"Unable to read complete external raw image\");\n"
+                   << "            if (!raw_bytes.empty()) dc_load_bytes(runtime, external_raw_base, raw_bytes.data(), raw_bytes.size());\n"
+                   << "            runtime.commercial_boot_image_address = external_raw_base;\n"
+                   << "            runtime.commercial_boot_image_size = static_cast<std::uint32_t>(raw_bytes.size());\n"
+                   << "            std::cout << \"[DCR PORTABLE] external raw image loaded @0x\" << std::hex << std::uppercase << external_raw_base << std::dec << \" bytes=\" << raw_bytes.size() << \"\\n\";\n"
                    << "        }\n"
                    << "        if (commercial_boot) { dc_setup_commercial_boot(ctx, runtime); ctx.pc = " << hex8(function.entry) << "; }\n"
                    << "        for (int i = 1; i < argc; ++i) {\n"
@@ -20786,6 +22811,9 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "                probe_controller_a_then_start = true;\n"
                    << "            } else if (key == \"--probe-controller-start-burst\") {\n"
                    << "                probe_controller_start_burst = true;\n"
+                   << "            } else if (key == \"--probe-sggg-newgame\") {\n"
+                   << "                probe_controller_a_then_start = true;\n"
+                   << "                probe_controller_start_burst = true;\n"
                    << "            } else if (key == \"--maple-host-input\") {\n"
                    << "                maple_host_input = true;\n"
                    << "            } else if (key.rfind(\"--controller-profile=\", 0) == 0) {\n"
@@ -20797,12 +22825,18 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "                runtime.sh4_abi_audit = true;\n"
                    << "            } else if (key == \"--commercial-boot\") {\n"
                    << "                commercial_boot = true; runtime.commercial_boot_active = true; // setup already applied in pre-scan\n"
+                   << "            } else if (key.rfind(\"--commercial-boot-stage\", 0) == 0) {\n"
+                   << "                set_boot_stage_mode(read_value()); // setup already applied in pre-scan\n"
                    << "            } else if (key == \"--ct2-compat\") {\n"
                    << "                runtime.ct2_compat = true;\n"
                    << "            } else if (key.rfind(\"--commercial-continuation-limit\", 0) == 0) {\n"
                    << "                commercial_continuation_limit = std::stoull(read_value(), nullptr, 0);\n"
                    << "            } else if (key.rfind(\"--disc-map\", 0) == 0) {\n"
                    << "                disc_map = read_value();\n"
+                   << "            } else if (key.rfind(\"--external-raw-image\", 0) == 0) {\n"
+                   << "                external_raw_image = read_value(); // already loaded in pre-scan\n"
+                   << "            } else if (key.rfind(\"--external-raw-base\", 0) == 0) {\n"
+                   << "                external_raw_base = static_cast<std::uint32_t>(std::stoul(read_value(), nullptr, 0)); // already applied\n"
                    << "            } else if (key == \"--host-window\") {\n"
                    << "                host_window = true;\n"
                    << "            } else if (key.rfind(\"--diag-heartbeat-ms\", 0) == 0) {\n"
@@ -20952,7 +22986,7 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "                dc_write_fpscr(ctx, static_cast<std::uint32_t>(std::stoul(read_value(), nullptr, 0)));\n"
                    << "            } else { throw std::runtime_error(\"Unknown runner option: \" + key); }\n"
                    << "        }\n"
-                   << "        if (!disc_map.empty()) dc_gdrom_load_disc_map(runtime, disc_map);\n"
+                   << "        // Disc map was loaded during pre-scan so commercial boot staging can use physical geometry.\n"
                    << "        if (commercial_boot && disc_map.empty()) std::cerr << \"[GDROM] warning: no --disc-map supplied; disc reads will stop at first data request\\n\";\n"
                    << "        if (!controller_profile.empty() && !dc_maple_load_controller_profile(runtime, controller_profile))\n"
                    << "            throw std::runtime_error(\"No se pudo cargar controller profile: \" + controller_profile);\n"
@@ -20985,12 +23019,12 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
                    << "        runtime.fast_dispatch_enabled = fast_dispatch;\n"
                    << "        runtime.direct_dispatch_enabled = direct_dispatch;\n"
                    << "        dc_refresh_dispatch_ready(runtime);\n"
-                   << "        if (pvr_window) dc_pvr_enable_window(runtime, \"DreamcastRecomp v0.1.1 Official - PVR live\", pvr_window_scale, pvr_window_interval, pvr_window_throttle_ms, pvr_window_fps);\n"
+                   << "        if (pvr_window) dc_pvr_enable_window(runtime, \"DreamcastRecomp v1.2 cpp33c PLANETWEB_DUAL_ISP - PVR live\", pvr_window_scale, pvr_window_interval, pvr_window_throttle_ms, pvr_window_fps);\n"
                    << "        runtime.device_clock_host_max_catchup_steps = device_clock_host_max_catchup;\n"
                    << "        if (device_clock) dc_device_clock_enable(runtime, true, device_clock_host);\n"
                    << "        if (diag_heartbeat_ms != 0u) dc_diag_heartbeat_enable(runtime, diag_heartbeat_ms);\n"
-                   << "        if (host_window) dc_host_status_enable(runtime, \"DreamcastRecomp v0.1.1 Official - runner activo\");\n\n"
-                   << "        std::cout << \"DreamcastRecomp v0.1.1 Official native runner\\n\"\n"
+                   << "        if (host_window) dc_host_status_enable(runtime, \"DreamcastRecomp v1.2 cpp33c PLANETWEB_DUAL_ISP - runner activo\");\n\n"
+                   << "        std::cout << \"DreamcastRecomp v1.2 cpp33c PLANETWEB_DUAL_ISP native runner\\n\"\n"
                    << "                     \"===================================\\n\"\n"
                    << "                     \"Executing " << function.name << " @ " << hex8(function.entry) << "\\n\\n\";\n\n"
                    << "        runtime.sh4_async_redirect = false;\n"
@@ -21085,7 +23119,7 @@ CppEmitResult emit_cpp(const Elf32Image& elf,
               << "endif()\n"
               << "# IPO/LTO is intentionally disabled by default for large commercial closures.\n"
               << "if(WIN32)\n"
-              << "    target_link_libraries(dreamcast_generated PUBLIC user32 gdi32 winmm d3d11 d3dcompiler dxgi)\n"
+              << "    target_link_libraries(dreamcast_generated PUBLIC user32 gdi32 winmm d3d11 d3dcompiler dxgi ws2_32)\n"
               << "endif()\n\n"
               << "add_executable(generated_compile_test generated_compile_test.cpp)\n"
               << "target_link_libraries(generated_compile_test PRIVATE dreamcast_generated)\n\n";
@@ -21131,6 +23165,26 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
     result.cmake_file = options.output_directory / "CMakeLists.txt";
     result.compile_test_source = options.output_directory / "generated_compile_test.cpp";
     result.printf_address = find_symbol_address(elf, "_printf").value_or(0);
+
+    std::uint32_t raw_boot_address = 0u;
+    std::uint32_t raw_boot_size = 0u;
+    for (const auto& section : elf.sections) {
+        if (section.name == ".raw_boot" && section.size != 0u) {
+            raw_boot_address = section.address;
+            raw_boot_size = section.size;
+            break;
+        }
+    }
+    // Retail synthetic .raw_boot contains the 32 KiB IP.BIN at 0x8C008000
+    // followed by the main executable at 0x8C010000. Only the executable is
+    // stored scrambled on GD-ROM; staging IP.BIN as scrambled corrupts the
+    // bootstrap itself. Keep non-retail/raw images unchanged.
+    std::uint32_t commercial_boot_address = raw_boot_address;
+    std::uint32_t commercial_boot_size = raw_boot_size;
+    if (raw_boot_address == 0x8C008000u && raw_boot_size > 0x8000u) {
+        commercial_boot_address += 0x8000u;
+        commercial_boot_size -= 0x8000u;
+    }
 
     std::ostringstream header;
     header << "#pragma once\n\n"
@@ -21338,11 +23392,11 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                     if (fpu_super_plan.enabled) {
                         function_out << "    if (runtime.fpu_aot_mode == 2u) {\n"
                                      << "        if ((ctx.fpscr & ((1u << 19) | (1u << 20) | 3u)) == 0u) {\n"
-                                     << "        ++sfc_stat_regions; sfc_stat_ops += " << fpu_cache.fpu_ops
-                                     << "u; sfc_stat_reuses += " << fpu_cache.reuse_estimate
-                                     << "u; sfc_stat_planned_wb += " << fpu_cache.writebacks << "u;\n"
-                                     << "        sfc_stat_ftrv += " << fpu_cache.ftrv_ops << "u; sfc_stat_fipr += " << fpu_cache.fipr_ops << "u; sfc_stat_fmac += " << fpu_cache.fmac_ops << "u; sfc_stat_fsca += " << fpu_cache.fsca_ops << "u; sfc_stat_fsrra += " << fpu_cache.fsrra_ops << "u;\n"
-                                     << "        if (!sfc_active) sfc_activate(); else ++sfc_stat_super_reuses;\n";
+                                     << "        DCR_FPU_METRIC_INC(sfc_stat_regions); DCR_FPU_METRIC_ADD(sfc_stat_ops, " << fpu_cache.fpu_ops
+                                     << "u); DCR_FPU_METRIC_ADD(sfc_stat_reuses, " << fpu_cache.reuse_estimate
+                                     << "u); DCR_FPU_METRIC_ADD(sfc_stat_planned_wb, " << fpu_cache.writebacks << "u);\n"
+                                     << "        DCR_FPU_METRIC_ADD(sfc_stat_ftrv, " << fpu_cache.ftrv_ops << "u); DCR_FPU_METRIC_ADD(sfc_stat_fipr, " << fpu_cache.fipr_ops << "u); DCR_FPU_METRIC_ADD(sfc_stat_fmac, " << fpu_cache.fmac_ops << "u); DCR_FPU_METRIC_ADD(sfc_stat_fsca, " << fpu_cache.fsca_ops << "u); DCR_FPU_METRIC_ADD(sfc_stat_fsrra, " << fpu_cache.fsrra_ops << "u);\n"
+                                     << "        if (!sfc_active) sfc_activate(); else DCR_FPU_METRIC_INC(sfc_stat_super_reuses);\n";
                         for (std::size_t j = region.begin; j < region.end; ++j) {
                             auto emitted = block.instructions[j];
                             if (emitted.op == DCIROp::Pref) {
@@ -21355,7 +23409,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                                 emitted, block_starts, gpr_cache_plan);
                         }
                         function_out << "        } else {\n"
-                                     << "            sfc_flush(2u); ++runtime.fpu_block_cache_fallbacks;\n";
+                                     << "            sfc_flush(2u); DCR_FPU_METRIC_INC(runtime.fpu_block_cache_fallbacks);\n";
                         for (std::size_t j = region.begin; j < region.end; ++j) {
                             auto emitted = block.instructions[j];
                             if (emitted.op == DCIROp::Pref) {
@@ -21387,7 +23441,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                         dcir_fpu_cache_control_boundary(block.instructions[region.end - 1u].op);
                     if (!region_ends_control_boundary) function_out << emit_fpu_region_writeback(fpu_cache, "rfc_");
                     function_out << "    } else {\n"
-                                 << "        ++runtime.fpu_block_cache_fallbacks;\n";
+                                 << "        DCR_FPU_METRIC_INC(runtime.fpu_block_cache_fallbacks);\n";
                     for (std::size_t j = region.begin; j < region.end; ++j) {
                         auto emitted = block.instructions[j];
                         if (emitted.op == DCIROp::Pref) {
@@ -21478,7 +23532,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
         write_file(result.arm7_header, generated_arm7_hpp());
         write_file(result.arm7_source, generated_arm7_cpp());
         write_file(result.image_header, image_hpp());
-        const auto image = emit_image_cpp(elf);
+        const auto image = emit_image_cpp(elf, options.embed_raw_image);
         write_file(result.image_source, image.source);
         result.embedded_bytes = image.embedded_bytes;
         result.zero_fill_bytes = image.zero_fill_bytes;
@@ -21495,6 +23549,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                      << "    dcrecomp_generated::DCRuntime runtime;\n"
                      << "    dcrecomp_generated::load_embedded_elf_image(runtime);\n"
                      << "    dcrecomp_generated::" << result.registration_function_name << "(runtime);\n"
+                     << "    dcrecomp_generated::dc_capture_static_code_signatures(runtime);\n"
                      << "    dcrecomp_generated::register_native_overrides(runtime);\n"
                      << "    // 0.0.40 regression: P4 Store Queue writes must stay in the SQ until PREF.\n"
                      << "    const auto sq_before = dcrecomp_generated::dc_read32(runtime, 0x00800000u);\n"
@@ -21678,6 +23733,8 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "    DCRSessionLogGuard dcr_session_log;\n"
                    << "    if (dcr_session_log.enabled()) std::cout << \"[DCR LOG] session-log=\" << dcr_session_log.path() << \"\\n\";\n"
                    << "    DCRuntime runtime;\n"
+                   << "    runtime.commercial_boot_image_address = " << hex8(commercial_boot_address) << ";\n"
+                   << "    runtime.commercial_boot_image_size = " << commercial_boot_size << "u;\n"
                    << "#ifdef _WIN32\n"
                    << "    g_dcr_crash_runtime = &runtime;\n"
                    << "    SetUnhandledExceptionFilter(dcr_unhandled_exception_filter);\n"
@@ -21698,6 +23755,8 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "        std::uint64_t commercial_continuation_limit = 0u;\n"
                    << "        std::uint64_t commercial_stages = 0u;\n"
                    << "        std::string disc_map;\n"
+                   << "        std::string external_raw_image;\n"
+                   << "        std::uint32_t external_raw_base = 0x8C008000u;\n"
                    << "        bool host_window = false;\n"
                    << "        std::uint64_t diag_heartbeat_ms = 0u;\n"
                    << "        bool pvr_window = false;\n"
@@ -21741,11 +23800,40 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "        ctx.r[15] = kStackTop;\n"
                    << "        ctx.pr = kHostReturnSentinel;\n"
                    << "        ctx.pc = " << hex8(program.root_address) << ";\n"
+                   << "        auto set_boot_stage_mode = [&](const std::string& mode) {\n"
+                   << "            if (mode == \"auto\") runtime.commercial_boot_stage_mode = 0u;\n"
+                   << "            else if (mode == \"plain\" || mode == \"pass-through\" || mode == \"passthrough\") runtime.commercial_boot_stage_mode = 1u;\n"
+                   << "            else if (mode == \"scrambled\" || mode == \"scramble\") runtime.commercial_boot_stage_mode = 2u;\n"
+                   << "            else throw std::runtime_error(\"Unknown --commercial-boot-stage mode: \" + mode);\n"
+                   << "        };\n"
                    << "        for (int ai = 1; ai < argc; ++ai) {\n"
                    << "            const std::string pre = argv[ai];\n"
                    << "            if (pre == \"--commercial-boot\") { commercial_boot = true; runtime.commercial_boot_active = true; }\n"
                    << "            else if (pre == \"--ct2-compat\") runtime.ct2_compat = true;\n"
+                   << "            else if (pre.rfind(\"--disc-map=\", 0) == 0) disc_map = pre.substr(11);\n"
+                   << "            else if (pre == \"--disc-map\" && ai + 1 < argc) disc_map = argv[ai + 1];\n"
+                   << "            else if (pre.rfind(\"--external-raw-image=\", 0) == 0) external_raw_image = pre.substr(21);\n"
+                   << "            else if (pre == \"--external-raw-image\" && ai + 1 < argc) external_raw_image = argv[ai + 1];\n"
+                   << "            else if (pre.rfind(\"--external-raw-base=\", 0) == 0) external_raw_base = static_cast<std::uint32_t>(std::stoul(pre.substr(20), nullptr, 0));\n"
+                   << "            else if (pre == \"--external-raw-base\" && ai + 1 < argc) external_raw_base = static_cast<std::uint32_t>(std::stoul(argv[ai + 1], nullptr, 0));\n"
+                   << "            else if (pre.rfind(\"--commercial-boot-stage=\", 0) == 0) set_boot_stage_mode(pre.substr(24));\n"
+                   << "            else if (pre == \"--commercial-boot-stage\" && ai + 1 < argc) set_boot_stage_mode(argv[ai + 1]);\n"
                    << "        }\n"
+                   << "        if (!disc_map.empty()) dc_gdrom_load_disc_map(runtime, disc_map);\n"
+                   << "        if (!external_raw_image.empty()) {\n"
+                   << "            std::ifstream raw(external_raw_image, std::ios::binary);\n"
+                   << "            if (!raw) throw std::runtime_error(\"Unable to open --external-raw-image: \" + external_raw_image);\n"
+                   << "            raw.seekg(0, std::ios::end); const auto raw_end = raw.tellg();\n"
+                   << "            if (raw_end < 0) throw std::runtime_error(\"Unable to determine external raw image size\");\n"
+                   << "            std::vector<std::uint8_t> raw_bytes(static_cast<std::size_t>(raw_end));\n"
+                   << "            raw.seekg(0, std::ios::beg); if (!raw_bytes.empty()) raw.read(reinterpret_cast<char*>(raw_bytes.data()), static_cast<std::streamsize>(raw_bytes.size()));\n"
+                   << "            if (!raw && !raw_bytes.empty()) throw std::runtime_error(\"Unable to read complete external raw image\");\n"
+                   << "            if (!raw_bytes.empty()) dc_load_bytes(runtime, external_raw_base, raw_bytes.data(), raw_bytes.size());\n"
+                   << "            runtime.commercial_boot_image_address = external_raw_base;\n"
+                   << "            runtime.commercial_boot_image_size = static_cast<std::uint32_t>(raw_bytes.size());\n"
+                   << "            std::cout << \"[DCR PORTABLE] external raw image loaded @0x\" << std::hex << std::uppercase << external_raw_base << std::dec << \" bytes=\" << raw_bytes.size() << \"\\n\";\n"
+                   << "        }\n"
+                   << "        dc_capture_static_code_signatures(runtime);\n"
                    << "        if (commercial_boot) { dc_setup_commercial_boot(ctx, runtime); ctx.pc = " << hex8(program.root_address) << "; }\n"
                    << "        for (int i = 1; i < argc; ++i) {\n"
                    << "            std::string key = argv[i];\n"
@@ -21761,6 +23849,9 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "                probe_controller_a_then_start = true;\n"
                    << "            } else if (key == \"--probe-controller-start-burst\") {\n"
                    << "                probe_controller_start_burst = true;\n"
+                   << "            } else if (key == \"--probe-sggg-newgame\") {\n"
+                   << "                probe_controller_a_then_start = true;\n"
+                   << "                probe_controller_start_burst = true;\n"
                    << "            } else if (key == \"--maple-host-input\") {\n"
                    << "                maple_host_input = true;\n"
                    << "            } else if (key.rfind(\"--controller-profile=\", 0) == 0) {\n"
@@ -21772,6 +23863,8 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "                runtime.sh4_abi_audit = true;\n"
                    << "            } else if (key == \"--commercial-boot\") {\n"
                    << "                commercial_boot = true; runtime.commercial_boot_active = true; // setup already applied in pre-scan\n"
+                   << "            } else if (key.rfind(\"--commercial-boot-stage\", 0) == 0) {\n"
+                   << "                set_boot_stage_mode(read_value()); // setup already applied in pre-scan\n"
                    << "            } else if (key == \"--ct2-compat\") {\n"
                    << "                runtime.ct2_compat = true;\n"
                    << "            } else if (key.rfind(\"--direct-game-entry\", 0) == 0) {\n"
@@ -21780,6 +23873,10 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "                commercial_continuation_limit = std::stoull(read_value(), nullptr, 0);\n"
                    << "            } else if (key.rfind(\"--disc-map\", 0) == 0) {\n"
                    << "                disc_map = read_value();\n"
+                   << "            } else if (key.rfind(\"--external-raw-image\", 0) == 0) {\n"
+                   << "                external_raw_image = read_value(); // already loaded in pre-scan\n"
+                   << "            } else if (key.rfind(\"--external-raw-base\", 0) == 0) {\n"
+                   << "                external_raw_base = static_cast<std::uint32_t>(std::stoul(read_value(), nullptr, 0)); // already applied\n"
                    << "            } else if (key == \"--host-window\") {\n"
                    << "                host_window = true;\n"
                    << "            } else if (key.rfind(\"--diag-heartbeat-ms\", 0) == 0) {\n"
@@ -21929,7 +24026,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "                dc_write_fpscr(ctx, static_cast<std::uint32_t>(std::stoul(read_value(), nullptr, 0)));\n"
                    << "            } else { throw std::runtime_error(\"Unknown runner option: \" + key); }\n"
                    << "        }\n"
-                   << "        if (!disc_map.empty()) dc_gdrom_load_disc_map(runtime, disc_map);\n"
+                   << "        // Disc map was loaded during pre-scan so commercial boot staging can use physical geometry.\n"
                    << "        if (commercial_boot && disc_map.empty()) std::cerr << \"[GDROM] warning: no --disc-map supplied; disc reads will stop at first data request\\n\";\n"
                    << "        if (!controller_profile.empty() && !dc_maple_load_controller_profile(runtime, controller_profile))\n"
                    << "            throw std::runtime_error(\"No se pudo cargar controller profile: \" + controller_profile);\n"
@@ -21962,11 +24059,11 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "        runtime.fast_dispatch_enabled = fast_dispatch;\n"
                    << "        runtime.direct_dispatch_enabled = direct_dispatch;\n"
                    << "        dc_refresh_dispatch_ready(runtime);\n"
-                   << "        if (pvr_window) dc_pvr_enable_window(runtime, \"DreamcastRecomp v0.1.1 Official - PVR live\", pvr_window_scale, pvr_window_interval, pvr_window_throttle_ms, pvr_window_fps);\n"
+                   << "        if (pvr_window) dc_pvr_enable_window(runtime, \"DreamcastRecomp v1.2 cpp33c PLANETWEB_DUAL_ISP - PVR live\", pvr_window_scale, pvr_window_interval, pvr_window_throttle_ms, pvr_window_fps);\n"
                    << "        runtime.device_clock_host_max_catchup_steps = device_clock_host_max_catchup;\n"
                    << "        if (device_clock) dc_device_clock_enable(runtime, true, device_clock_host);\n"
                    << "        if (diag_heartbeat_ms != 0u) dc_diag_heartbeat_enable(runtime, diag_heartbeat_ms);\n"
-                   << "        if (host_window) dc_host_status_enable(runtime, \"DreamcastRecomp v0.1.1 Official - runner activo\");\n\n"
+                   << "        if (host_window) dc_host_status_enable(runtime, \"DreamcastRecomp v1.2 cpp33c PLANETWEB_DUAL_ISP - runner activo\");\n\n"
                    << "        std::uint32_t dcr_initial_target = " << hex8(program.root_address) << ";\n"
                    << "        if (direct_game_entry) {\n"
                    << "            if (!commercial_boot) throw std::runtime_error(\"--direct-game-entry requires --commercial-boot\");\n"
@@ -21981,7 +24078,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
                    << "            dcr_initial_target = direct_game_pc;\n"
                    << "            std::cerr << \"[DCR DIRECT-GAME] bypass bootstrap; entry=0x\" << std::hex << std::uppercase << direct_game_pc << std::dec << \"\\n\";\n"
                    << "        }\n"
-                   << "        std::cout << \"DreamcastRecomp v0.1.1 Official native runner\\n\"\n"
+                   << "        std::cout << \"DreamcastRecomp v1.2 cpp33c PLANETWEB_DUAL_ISP native runner\\n\"\n"
                    << "                     \"===================================\\n\"\n"
                    << "                     \"Reachable functions: " << result.functions.size() << "\\n\"\n"
                    << "                     \"Executing " << program.root_name << " @ " << hex8(program.root_address) << "\\n\\n\";\n\n"
@@ -22081,7 +24178,7 @@ CppProgramEmitResult emit_cpp_program(const Elf32Image& elf,
               << "    target_compile_options(dreamcast_generated PRIVATE $<$<CONFIG:Release>:-O3> -pipe)\n"
               << "endif()\n"
               << "if(WIN32)\n"
-              << "    target_link_libraries(dreamcast_generated PUBLIC user32 gdi32 winmm d3d11 d3dcompiler dxgi)\n"
+              << "    target_link_libraries(dreamcast_generated PUBLIC user32 gdi32 winmm d3d11 d3dcompiler dxgi ws2_32)\n"
               << "endif()\n\n"
               << "add_executable(generated_compile_test generated_compile_test.cpp)\n"
               << "target_link_libraries(generated_compile_test PRIVATE dreamcast_generated)\n\n";

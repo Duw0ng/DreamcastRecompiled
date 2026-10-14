@@ -1,0 +1,34 @@
+DreamcastRecomp cpp20 native-GPU validation
+===========================================
+
+Implemented plan:
+1. GPU texture decode: implemented (D3D11 compute on FL11; compatibility fallback retained)
+2. PVRSoftVertex -> PVRGpuVertex copy removal: implemented
+3. Persistent vertex/index buffers: implemented (3-slot stream ring)
+4. Render-to-texture GPU residency: implemented with lazy CPU/VRAM synchronization
+5. PVR pipeline/state cache: implemented
+6. GPU fast-path expansion: implemented for previous whole-frame fallback causes
+7. PVRRendererBackend abstraction: implemented; D3D11 is first backend
+
+Tests:
+- ctest excluding generated build tests: 52/52 PASS
+- generated_single_build: PASS
+- generated_program_build: PASS
+- total logical tests: 54/54 PASS
+
+Host limitation:
+- The current container is Linux and does not contain the Windows SDK/D3D11 runtime.
+- Generated Windows D3D11 source is structurally emitted and covered by emitter assertions,
+  but the actual D3D11 device/compute/RTT behavior must be exercised on Windows.
+
+Suggested Windows command:
+  run_game.bat "C:\Games\game.cdi" --renderer=dx11
+
+Watch heartbeat fields:
+  pvr-gpu=
+  pvr-gtex=
+  pvr-gnative=
+
+pvr-gnative fields:
+  compute-decodes / texels / cpu-decodes-avoided / pipeline-hits / pipeline-misses /
+  gpu-rtt-commits / lazy-rtt-readbacks / fallback-materializations

@@ -1,0 +1,34 @@
+name: Build DCRV1.2 Stable Release Windows x64
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'launcher/**'
+      - 'scripts/windows/**'
+      - '.github/workflows/build-python-aqua-windows.yml'
+
+jobs:
+  windows-portable:
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Install builder on CI runner (not on testers' PCs)
+        run: python -m pip install --disable-pip-version-check "pyinstaller>=6.10,<7"
+      - name: Compile Aqua host with Python, Tcl/Tk and DLLs
+        shell: pwsh
+        run: .\scripts\windows\build_offline_host.ps1 -PythonCommand python
+      - name: Package finished offline Windows x64 release
+        shell: pwsh
+        run: .\scripts\windows\package_offline_release.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DreamcastRecompiled_V1.2_Stable_Release_WIN64
+          path: dist/DreamcastRecompiled_V1.2_Stable_Release_WIN64.zip
+          if-no-files-found: error

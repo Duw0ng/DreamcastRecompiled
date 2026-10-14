@@ -1,0 +1,1089 @@
+diff -ruN '--exclude=build*' '--exclude=hotpatch_cpp22' '--exclude=.git' /mnt/data/cpp21_inspect/cpp21_stage/src/codegen/cpp_emitter.cpp src/codegen/cpp_emitter.cpp
+--- /mnt/data/cpp21_inspect/cpp21_stage/src/codegen/cpp_emitter.cpp	2026-09-22 04:57:38.000000000 +0000
++++ src/codegen/cpp_emitter.cpp	2026-09-22 07:24:48.799421048 +0000
+@@ -6507,39 +6507,168 @@
+     return e.pixels;
+ }
+ 
+-// Native GPU texture capture: preserve the exact Dreamcast storage bytes at
+-// TA state-capture time, but postpone texel decoding until the D3D11 compute
+-// pass. This replaces O(width*height) CPU decode with a compact memcpy.
++// cpp22: persistent immutable texture snapshots. The first native-GPU pass
++// keyed the D3D cache by the address of a freshly allocated vector. That made
++// the same unchanged Dreamcast texture look new for every deferred surface and
++// caused hundreds of CreateBuffer/CreateTexture2D/Dispatch sequences per frame.
++// Keep the snapshot pointer stable while the texture's own VRAM pages are
++// unchanged. The key uses the texture-local page epoch, so unrelated VRAM
++// traffic does not invalidate the cache.
++struct PVRGpuRawSnapshotKey {
++    std::uint32_t texture_offset{};
++    std::uint16_t width{};
++    std::uint16_t height{};
++    std::uint16_t stride_pixels{};
++    std::uint8_t pixel_mode{};
++    std::uint8_t flags{};
++    std::uint8_t palette_select{};
++    std::uint8_t reserved{};
++    std::uint64_t vram_epoch{};
++    bool operator==(const PVRGpuRawSnapshotKey& rhs) const noexcept {
++        return texture_offset == rhs.texture_offset && width == rhs.width && height == rhs.height &&
++               stride_pixels == rhs.stride_pixels && pixel_mode == rhs.pixel_mode && flags == rhs.flags &&
++               palette_select == rhs.palette_select && vram_epoch == rhs.vram_epoch;
++    }
++};
++struct PVRGpuRawSnapshotKeyHash {
++    std::size_t operator()(const PVRGpuRawSnapshotKey& k) const noexcept {
++        std::uint64_t h = static_cast<std::uint64_t>(k.texture_offset) * 0x9E3779B185EBCA87ull;
++        h ^= static_cast<std::uint64_t>(k.width) << 7u;
++        h ^= static_cast<std::uint64_t>(k.height) << 19u;
++        h ^= static_cast<std::uint64_t>(k.stride_pixels) << 31u;
++        h ^= static_cast<std::uint64_t>(k.pixel_mode) << 47u;
++        h ^= static_cast<std::uint64_t>(k.flags) << 51u;
++        h ^= static_cast<std::uint64_t>(k.palette_select) << 57u;
++        h ^= k.vram_epoch * 0xD6E8FEB86659FD93ull;
++        h ^= h >> 30u; h *= 0xBF58476D1CE4E5B9ull;
++        h ^= h >> 27u; h *= 0x94D049BB133111EBull;
++        h ^= h >> 31u;
++        return static_cast<std::size_t>(h);
++    }
++};
++struct PVRGpuPaletteSnapshotKey {
++    std::uint64_t epoch{};
++    std::uint8_t format{};
++    bool operator==(const PVRGpuPaletteSnapshotKey& rhs) const noexcept {
++        return epoch == rhs.epoch && format == rhs.format;
++    }
++};
++struct PVRGpuPaletteSnapshotKeyHash {
++    std::size_t operator()(const PVRGpuPaletteSnapshotKey& k) const noexcept {
++        std::uint64_t h = k.epoch ^ (static_cast<std::uint64_t>(k.format) << 61u);
++        h ^= h >> 33u; h *= 0xFF51AFD7ED558CCDull;
++        h ^= h >> 33u;
++        return static_cast<std::size_t>(h);
++    }
++};
++
++std::mutex g_pvr_gpu_snapshot_cache_mutex;
++std::unordered_map<PVRGpuRawSnapshotKey,
++    std::weak_ptr<const std::vector<std::uint8_t>>, PVRGpuRawSnapshotKeyHash> g_pvr_gpu_raw_snapshot_cache;
++std::unordered_map<PVRGpuPaletteSnapshotKey,
++    std::weak_ptr<const std::vector<std::uint32_t>>, PVRGpuPaletteSnapshotKeyHash> g_pvr_gpu_palette_snapshot_cache;
++std::atomic<std::uint64_t> g_pvr_gpu_raw_snapshot_hits{0u};
++std::atomic<std::uint64_t> g_pvr_gpu_raw_snapshot_misses{0u};
++std::atomic<std::uint64_t> g_pvr_gpu_palette_snapshot_hits{0u};
++std::atomic<std::uint64_t> g_pvr_gpu_palette_snapshot_misses{0u};
++std::atomic<std::uint64_t> g_pvr_gpu_texture_lru_evictions{0u};
++
++PVRGpuRawSnapshotKey pvr_gpu_raw_snapshot_key(const DCRuntime& runtime, const PVRSoftState& st) {
++    PVRGpuRawSnapshotKey key{};
++    key.texture_offset = st.texture_offset & static_cast<std::uint32_t>(DCRuntime::kVramSize - 1u);
++    key.width = st.texture_width;
++    key.height = st.texture_height;
++    key.stride_pixels = static_cast<std::uint16_t>(std::min<std::uint32_t>(0xFFFFu,
++        pvr_texture_stride_pixels(runtime, st)));
++    key.pixel_mode = st.pixel_mode;
++    key.flags = pvr_texture_cache_flags(st);
++    key.palette_select = st.palette_select;
++    key.vram_epoch = pvr_texture_vram_epoch(runtime, st);
++    return key;
++}
++
++// Native GPU texture capture now reuses immutable raw snapshots until a write
++// touches one of the texture's actual VRAM pages. This removes the allocation +
++// memcpy storm as well as making the existing pointer-keyed D3D cache stable.
+ std::shared_ptr<const std::vector<std::uint8_t>> pvr_capture_texture_raw_snapshot(
+     DCRuntime& runtime, const PVRSoftState& st) {
+     if (!st.textured || st.texture_width == 0u || st.texture_height == 0u) return {};
+     const std::uint64_t bytes64 = pvr_texture_storage_bytes(runtime, st);
+     if (bytes64 == 0u) return {};
+     const std::size_t bytes = static_cast<std::size_t>(std::min<std::uint64_t>(bytes64, DCRuntime::kVramSize));
+-    // If this is not a directly sampleable GPU RTT shadow, synchronize any
+-    // overlapping lazy RTT before snapshotting raw guest VRAM.
+     if (!pvr_gpu_rtt_direct_available(runtime, st))
+         pvr_gpu_sync_rtt_for_vram_read(runtime,
+             static_cast<std::size_t>(st.texture_offset) & (DCRuntime::kVramSize - 1u), bytes);
+-    auto raw = std::make_shared<std::vector<std::uint8_t>>(bytes);
++
++    const PVRGpuRawSnapshotKey key = pvr_gpu_raw_snapshot_key(runtime, st);
++    {
++        std::lock_guard<std::mutex> lock(g_pvr_gpu_snapshot_cache_mutex);
++        auto it = g_pvr_gpu_raw_snapshot_cache.find(key);
++        if (it != g_pvr_gpu_raw_snapshot_cache.end()) {
++            if (auto existing = it->second.lock()) {
++                ++g_pvr_gpu_raw_snapshot_hits;
++                return existing;
++            }
++            g_pvr_gpu_raw_snapshot_cache.erase(it);
++        }
++    }
++
++    auto raw_mut = std::make_shared<std::vector<std::uint8_t>>(bytes);
+     std::size_t src = static_cast<std::size_t>(st.texture_offset) & (DCRuntime::kVramSize - 1u);
+     std::size_t dst = 0u;
+     std::size_t remaining = bytes;
+     while (remaining != 0u) {
+         const std::size_t chunk = std::min<std::size_t>(remaining, DCRuntime::kVramSize - src);
+-        std::memcpy(raw->data() + dst, runtime.vram.data() + src, chunk);
++        std::memcpy(raw_mut->data() + dst, runtime.vram.data() + src, chunk);
+         dst += chunk;
+         remaining -= chunk;
+         src = 0u;
+     }
++    std::shared_ptr<const std::vector<std::uint8_t>> raw = raw_mut;
++    {
++        std::lock_guard<std::mutex> lock(g_pvr_gpu_snapshot_cache_mutex);
++        if (g_pvr_gpu_raw_snapshot_cache.size() >= 4096u) {
++            for (auto it = g_pvr_gpu_raw_snapshot_cache.begin(); it != g_pvr_gpu_raw_snapshot_cache.end(); ) {
++                if (it->second.expired()) it = g_pvr_gpu_raw_snapshot_cache.erase(it);
++                else ++it;
++            }
++        }
++        g_pvr_gpu_raw_snapshot_cache[key] = raw;
++    }
++    ++g_pvr_gpu_raw_snapshot_misses;
+     return raw;
+ }
+ 
+ std::shared_ptr<const std::vector<std::uint32_t>> pvr_capture_palette_raw_snapshot(
+     DCRuntime& runtime, const PVRSoftState& st) {
+     if (st.pixel_mode != 5u && st.pixel_mode != 6u) return {};
+-    auto palette = std::make_shared<std::vector<std::uint32_t>>(runtime.pvr_palette_raw.begin(),
+-                                                               runtime.pvr_palette_raw.end());
++    const PVRGpuPaletteSnapshotKey key{runtime.pvr_palette_write_epoch,
++                                      static_cast<std::uint8_t>(runtime.pvr_palette_format & 3u)};
++    {
++        std::lock_guard<std::mutex> lock(g_pvr_gpu_snapshot_cache_mutex);
++        auto it = g_pvr_gpu_palette_snapshot_cache.find(key);
++        if (it != g_pvr_gpu_palette_snapshot_cache.end()) {
++            if (auto existing = it->second.lock()) {
++                ++g_pvr_gpu_palette_snapshot_hits;
++                return existing;
++            }
++            g_pvr_gpu_palette_snapshot_cache.erase(it);
++        }
++    }
++    auto palette_mut = std::make_shared<std::vector<std::uint32_t>>(runtime.pvr_palette_raw.begin(),
++                                                                   runtime.pvr_palette_raw.end());
++    std::shared_ptr<const std::vector<std::uint32_t>> palette = palette_mut;
++    {
++        std::lock_guard<std::mutex> lock(g_pvr_gpu_snapshot_cache_mutex);
++        if (g_pvr_gpu_palette_snapshot_cache.size() >= 128u) {
++            for (auto it = g_pvr_gpu_palette_snapshot_cache.begin(); it != g_pvr_gpu_palette_snapshot_cache.end(); ) {
++                if (it->second.expired()) it = g_pvr_gpu_palette_snapshot_cache.erase(it);
++                else ++it;
++            }
++        }
++        g_pvr_gpu_palette_snapshot_cache[key] = palette;
++    }
++    ++g_pvr_gpu_palette_snapshot_misses;
+     return palette;
+ }
+ 
+@@ -6686,6 +6815,7 @@
+ };
+ 
+ struct PVRGpuTextureEntry {
++    std::uint64_t last_use{};
+     std::shared_ptr<const std::vector<std::uint8_t>> raw_owner;
+     std::shared_ptr<const std::vector<std::uint32_t>> palette_owner;
+     std::shared_ptr<const std::vector<std::uint32_t>> cpu_owner;
+@@ -6768,6 +6898,7 @@
+     // bit5 is reserved for mip/trilinear filter selection in 0.0.147.
+     std::array<ComPtr<ID3D11SamplerState>, 64> sampler_states{};
+     std::unordered_map<const void*, PVRGpuTextureEntry> textures;
++    std::uint64_t texture_use_clock{};
+     std::unordered_map<std::uint64_t, PVRGpuPipelineState> pipeline_cache;
+     std::unordered_map<std::uint32_t, PVRGpuRttEntry> rtt_cache;
+     // Index/run scratch remains persistent because translucent sorting still
+@@ -7585,12 +7716,27 @@
+         it->second.cpu_owner == deferred.texture_pixels &&
+         it->second.palette_owner == deferred.palette_raw &&
+         it->second.width == state.texture_width && it->second.height == state.texture_height) {
++        it->second.last_use = ++gpu.texture_use_clock;
+         ++runtime.pvr_gpu_texture_reuses;
+         return it->second.srv.Get();
+     }
+ 
+-    if (gpu.textures.size() >= 512u) gpu.textures.clear();
++    // cpp22: never flush the entire GPU texture cache. A clear-all policy made
++    // busy scenes repeatedly recreate hundreds of resources. Evict only the
++    // least-recently-used entry and keep the hot working set resident.
++    if (gpu.textures.size() >= 512u) {
++        auto victim = gpu.textures.end();
++        for (auto scan = gpu.textures.begin(); scan != gpu.textures.end(); ++scan) {
++            if (victim == gpu.textures.end() || scan->second.last_use < victim->second.last_use)
++                victim = scan;
++        }
++        if (victim != gpu.textures.end()) {
++            gpu.textures.erase(victim);
++            ++g_pvr_gpu_texture_lru_evictions;
++        }
++    }
+     PVRGpuTextureEntry entry{};
++    entry.last_use = ++gpu.texture_use_clock;
+     entry.raw_owner = deferred.texture_raw;
+     entry.palette_owner = deferred.palette_raw;
+     entry.cpu_owner = deferred.texture_pixels;
+@@ -14908,6 +15054,11 @@
+                       << "/" << runtime.pvr_gpu_rtt_gpu_commits
+                       << "/" << runtime.pvr_gpu_rtt_lazy_readbacks
+                       << "/" << runtime.pvr_gpu_fallback_materializations
++                      << " | pvr-gcache=" << g_pvr_gpu_raw_snapshot_hits.load(std::memory_order_relaxed)
++                      << "/" << g_pvr_gpu_raw_snapshot_misses.load(std::memory_order_relaxed)
++                      << "/" << g_pvr_gpu_palette_snapshot_hits.load(std::memory_order_relaxed)
++                      << "/" << g_pvr_gpu_palette_snapshot_misses.load(std::memory_order_relaxed)
++                      << "/" << g_pvr_gpu_texture_lru_evictions.load(std::memory_order_relaxed)
+                       << " | pvr-clockticks=" << runtime.device_clock_pvr_ticks
+                       << " | spg=" << runtime.pvr_spg_last_scanline
+                       << "/" << runtime.pvr_spg_last_field
+--- /mnt/data/cpp21_inspect/cpp21_stage/run_game.bat	2026-09-22 00:56:13.000000000 +0000
++++ run_game.bat	2026-09-22 07:29:30.716781444 +0000
+@@ -1,376 +1,453 @@
+-@echo off
+-setlocal EnableExtensions EnableDelayedExpansion
+-cd /d "%~dp0"
+-
+-set "DCR_VERSION=v0.1.1 Official"
+-set "PERF=0"
+-set "DEBUG=0"
+-set "PVR_PROFILE=0"
+-set "SOFTWARE=0"
+-set "RENDERER=AUTO"
+-set "RENDERER_EXPLICIT=0"
+-set "NO_AUDIO=0"
+-set "CLEAN=0"
+-set "NOPAUSE=0"
+-
+-if "%~1"=="" goto :usage
+-if /I "%~1"=="--help" goto :usage_ok
+-if /I "%~1"=="-h" goto :usage_ok
+-
+-set "DISC=%~f1"
+-shift
+-
+-:parse_args
+-if "%~1"=="" goto :args_done
+-set "ARG=%~1"
+-
+-if /I "!ARG!"=="--renderer" goto :parse_renderer_value
+-if /I "!ARG:~0,11!"=="--renderer=" (
+-  set "RENDERER=!ARG:~11!"
+-  set "RENDERER_EXPLICIT=1"
+-  shift
+-  goto :parse_args
+-)
+-if /I "!ARG:~0,6!"=="--gpu=" (
+-  set "RENDERER=!ARG:~6!"
+-  set "RENDERER_EXPLICIT=1"
+-  shift
+-  goto :parse_args
+-)
+-
+-if /I "!ARG!"=="--perf" (
+-  set "PERF=1"
+-) else if /I "!ARG!"=="--debug" (
+-  set "DEBUG=1"
+-) else if /I "!ARG!"=="--profile" (
+-  set "PVR_PROFILE=1"
+-) else if /I "!ARG!"=="--software" (
+-  set "SOFTWARE=1"
+-  set "RENDERER=software"
+-  set "RENDERER_EXPLICIT=1"
+-) else if /I "!ARG!"=="--gpu" (
+-  set "RENDERER=dx11"
+-  set "RENDERER_EXPLICIT=1"
+-) else if /I "!ARG!"=="--no-audio" (
+-  set "NO_AUDIO=1"
+-) else if /I "!ARG!"=="--clean" (
+-  set "CLEAN=1"
+-) else if /I "!ARG!"=="--no-pause" (
+-  set "NOPAUSE=1"
+-) else if /I "!ARG!"=="--help" (
+-  goto :usage_ok
+-) else if /I "!ARG!"=="-h" (
+-  goto :usage_ok
+-) else (
+-  echo [ERROR] Opcion desconocida: %~1
+-  echo.
+-  goto :usage
+-)
+-shift
+-goto :parse_args
+-
+-:parse_renderer_value
+-shift
+-if "%~1"=="" (
+-  echo [ERROR] --renderer requiere un backend.
+-  echo [INFO] Disponibles hoy: auto, dx11, software.
+-  exit /b 1
+-)
+-set "RENDERER=%~1"
+-set "RENDERER_EXPLICIT=1"
+-shift
+-goto :parse_args
+-
+-:args_done
+-rem Normaliza aliases de renderer. Solo DX11 esta implementado como backend GPU hoy.
+-if /I "!RENDERER!"=="AUTO" set "RENDERER=auto"
+-if /I "!RENDERER!"=="D3D11" set "RENDERER=dx11"
+-if /I "!RENDERER!"=="DIRECT3D11" set "RENDERER=dx11"
+-if /I "!RENDERER!"=="DIRECTX11" set "RENDERER=dx11"
+-if /I "!RENDERER!"=="DX11" set "RENDERER=dx11"
+-if /I "!RENDERER!"=="SW" set "RENDERER=software"
+-if /I "!RENDERER!"=="CPU" set "RENDERER=software"
+-if /I "!RENDERER!"=="SOFTWARE" set "RENDERER=software"
+-if /I "!RENDERER!"=="D3D12" set "RENDERER=dx12"
+-if /I "!RENDERER!"=="DIRECT3D12" set "RENDERER=dx12"
+-if /I "!RENDERER!"=="DIRECTX12" set "RENDERER=dx12"
+-if /I "!RENDERER!"=="D3D10" set "RENDERER=dx10"
+-if /I "!RENDERER!"=="DIRECT3D10" set "RENDERER=dx10"
+-if /I "!RENDERER!"=="DIRECTX10" set "RENDERER=dx10"
+-if /I "!RENDERER!"=="D3D9" set "RENDERER=dx9"
+-if /I "!RENDERER!"=="DIRECT3D9" set "RENDERER=dx9"
+-if /I "!RENDERER!"=="DIRECTX9" set "RENDERER=dx9"
+-if /I "!RENDERER!"=="VK" set "RENDERER=vulkan"
+-
+-if /I "!RENDERER!"=="vulkan" goto :renderer_not_implemented
+-if /I "!RENDERER!"=="dx12" goto :renderer_not_implemented
+-if /I "!RENDERER!"=="dx10" goto :renderer_not_implemented
+-if /I "!RENDERER!"=="dx9" goto :renderer_not_implemented
+-if /I not "!RENDERER!"=="auto" if /I not "!RENDERER!"=="dx11" if /I not "!RENDERER!"=="software" (
+-  echo [ERROR] Renderer desconocido: !RENDERER!
+-  echo [INFO] Disponibles hoy: auto, dx11, software.
+-  echo [INFO] Reservados para futuros backends: vulkan, dx12, dx10, dx9.
+-  exit /b 1
+-)
+-if not exist "%DISC%" (
+-  echo [ERROR] No encuentro el juego: "%DISC%"
+-  exit /b 1
+-)
+-
+-where cmake >nul 2>nul
+-if errorlevel 1 (
+-  echo [ERROR] CMake no esta disponible en PATH.
+-  echo [INFO] Instala Visual Studio 2022 o Build Tools con "Desktop development with C++" y CMake.
+-  exit /b 2
+-)
+-
+-set "OUT=generated\official_v0.1.1"
+-set "CPP=%OUT%\cpp"
+-set "CB=_cb_v0.1.1"
+-set "PADARG="
+-if exist "profiles\controller_profile.ini" (
+-  set "PADARG=--controller-profile=profiles\controller_profile.ini"
+-)
+-
+-if "%CLEAN%"=="1" (
+-  echo [CLEAN] Eliminando cache de la release oficial...
+-  if exist "%OUT%" rmdir /s /q "%OUT%"
+-  if exist "%CB%" rmdir /s /q "%CB%"
+-)
+-if not exist "%OUT%" mkdir "%OUT%"
+-
+-set "DCR_TRACE_HISTORY=0"
+-set "HEARTBEAT=1000"
+-set "EXTRA_RUN="
+-if "%PERF%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --perf-profile --perf-sample-stride=64"
+-if "%DEBUG%"=="1" (
+-  set "DCR_TRACE_HISTORY=1"
+-  set "HEARTBEAT=500"
+-  set "EXTRA_RUN=!EXTRA_RUN! --host-window"
+-)
+-if "%PVR_PROFILE%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --pvr-profile --host-window"
+-
+-set "GPU_ARGS="
+-set "ACTIVE_RENDERER="
+-set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768 --aica-play"
+-set "AUDIO_ARGS_BASIC=--aica-arm7 --aica-play"
+-if "%NO_AUDIO%"=="1" (
+-  set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768"
+-  set "AUDIO_ARGS_BASIC=--aica-arm7"
+-)
+-
+-cls
+-echo ============================================================
+-echo  DreamcastRecomp %DCR_VERSION%
+-echo  Universal CDI runner
+-echo ============================================================
+-echo  Juego : %DISC%
+-echo  Perf  : %PERF%   Debug: %DEBUG%   PVR profile: %PVR_PROFILE%
+-echo  Render pedido: !RENDERER!
+-echo  Audio : %NO_AUDIO% ^(0=on, 1=muted^)
+-echo ============================================================
+-echo.
+-
+-rem Build only the tools needed by the universal path. CMake/MSBuild remain incremental.
+-echo [1/6] Preparando herramientas %DCR_VERSION%...
+-cmake -S . -B build -A x64
+-if errorlevel 1 exit /b 2
+-cmake --build build --config Release --target dc_disc_probe dc_boot_prepare dc_raw_recomp --parallel 1
+-if errorlevel 1 exit /b 2
+-
+-for %%T in (dc_disc_probe dc_boot_prepare dc_raw_recomp) do (
+-  if not exist "build\Release\%%T.exe" (
+-    echo [ERROR] Falta build\Release\%%T.exe despues del build.
+-    exit /b 2
+-  )
+-)
+-
+-echo.
+-echo [2/6] Analizando CDI y creando mapa GD-ROM...
+-build\Release\dc_disc_probe.exe "%DISC%" ^
+-  --extract-ip="%OUT%\IP.BIN" ^
+-  --extract-boot="%OUT%\BOOT.DISC.BIN" ^
+-  --extract-disc-map="%OUT%\disc.map"
+-if errorlevel 1 exit /b 3
+-
+-set "TITLE="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "title=" "%OUT%\disc.map"') do set "TITLE=%%B"
+-set "VOLUME="
+-for /f "tokens=1,* delims==" %%A in ('findstr /B /I "volume=" "%OUT%\disc.map"') do set "VOLUME=%%B"
+-
+-set "MODE=GENERIC"
+-if /I "!TITLE!"=="PIZZICATO POLKA" set "MODE=DAYTONA"
+-if /I "!TITLE!"=="RECORD OF LODOSS WAR" set "MODE=LODOSS"
+-if /I "!TITLE!"=="CHUCHU ROCKET" set "MODE=CHUCHU"
+-if /I "!TITLE!"=="CRAZY TAXI 2" set "MODE=CT2"
+-
+-rem AUTO conserva el comportamiento previo por perfil.
+-set "ACTIVE_RENDERER=!RENDERER!"
+-if /I "!ACTIVE_RENDERER!"=="auto" (
+-  if /I "!MODE!"=="DAYTONA" (
+-    set "ACTIVE_RENDERER=software"
+-  ) else if /I "!MODE!"=="LODOSS" (
+-    set "ACTIVE_RENDERER=software"
+-  ) else (
+-    set "ACTIVE_RENDERER=dx11"
+-  )
+-)
+-
+-if /I "!ACTIVE_RENDERER!"=="dx11" (
+-  rem Backend GPU disponible hoy: Direct3D 11.
+-  set "GPU_ARGS=--pvr-gpu --pvr-render-done-scheduled --pvr-mt"
+-) else (
+-  rem Renderer CPU/software. Mantiene PVR multithread.
+-  set "GPU_ARGS=--pvr-mt"
+-)
+-
+-echo [INFO] Titulo : !TITLE!
+-echo [INFO] Volumen: !VOLUME!
+-echo [INFO] Perfil : !MODE!
+-echo [INFO] Render : !ACTIVE_RENDERER!
+-if defined PADARG (echo [INFO] Mando  : profiles\controller_profile.ini) else (echo [INFO] Mando  : default teclado/XInput/PS4-DirectInput)
+-
+-if /I "!MODE!"=="LODOSS" goto :prepare_lodoss
+-
+-echo.
+-echo [3/6] Preparando bootstrap comercial...
+-build\Release\dc_boot_prepare.exe "%OUT%\IP.BIN" "%OUT%\BOOT.DISC.BIN" ^
+-  --mode=auto ^
+-  --boot-out="%OUT%\BOOT.BIN" ^
+-  --combined-out="%OUT%\BOOTSTRAP.BIN"
+-if errorlevel 1 exit /b 4
+-
+-echo.
+-echo [4/6] Recompilando closure SH-4...
+-if /I "!MODE!"=="DAYTONA" (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 ^
+-    --seed-file="profiles\daytona_usa_known_seeds.txt" ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-) else if /I "!MODE!"=="CT2" (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
+-    --seed-file="profiles\crazy_taxi_2_known_seeds.txt" ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-) else (
+-  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
+-    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
+-    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
+-    --map="%OUT%\function_map.csv" --output="%CPP%"
+-)
+-if errorlevel 1 exit /b 5
+-goto :compile_runner
+-
+-:prepare_lodoss
+-echo.
+-echo [3/6] Extrayendo ejecutable secundario 1NOSDC.BIN de Lodoss...
+-build\Release\dc_disc_probe.exe "%DISC%" --extract-file=1NOSDC.BIN="%OUT%\1NOSDC.BIN"
+-if errorlevel 1 exit /b 4
+-
+-echo.
+-echo [4/6] Recompilando closure SH-4 de Lodoss...
+-build\Release\dc_raw_recomp.exe "%OUT%\1NOSDC.BIN" ^
+-  --base=0x8C010000 --entry=0x8C010000 ^
+-  --seed-file="profiles\record_of_lodoss_war_known_seeds.txt" ^
+-  --max-functions=10000 --max-closure-entries=9000 --closure-passes=64 ^
+-  --map="%OUT%\function_map.csv" --output="%CPP%"
+-if errorlevel 1 exit /b 5
+-
+-:compile_runner
+-echo.
+-echo [5/6] Compilando runner nativo generado...
+-cmake -S "%CPP%" -B "%CB%" -A x64
+-if errorlevel 1 exit /b 6
+-cmake --build "%CB%" --config Release --target dreamcast_program --parallel 1
+-if errorlevel 1 exit /b 7
+-
+-echo.
+-echo [6/6] Ejecutando !MODE!...
+-echo [INFO] Controles: flechas=D-pad, WASD=analogico, Z/J/Space=A, X/K=B, C/U=X, V/I=Y, Enter=START.
+-echo [INFO] Opciones activas: !EXTRA_RUN!
+-echo.
+-
+-set "EXE=%CB%\Release\dreamcast_program.exe"
+-if not exist "!EXE!" (
+-  echo [ERROR] No se genero !EXE!
+-  exit /b 7
+-)
+-
+-if /I "!MODE!"=="DAYTONA" (
+-  "!EXE!" ^
+-    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else if /I "!MODE!"=="CT2" (
+-  "!EXE!" ^
+-    --commercial-boot --ct2-compat --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
+-    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
+-    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else if /I "!MODE!"=="LODOSS" (
+-  "!EXE!" ^
+-    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-) else (
+-  "!EXE!" ^
+-    --commercial-boot --disc-map="%OUT%\disc.map" ^
+-    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
+-    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
+-    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
+-    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
+-)
+-
+-set "RC=!ERRORLEVEL!"
+-echo.
+-echo [INFO] DreamcastRecomp %DCR_VERSION% termino con RC=!RC!.
+-if "!RC!"=="130" echo [INFO] RC=130 = cierre manual de la ventana.
+-exit /b !RC!
+-
+-:renderer_not_implemented
+-echo.
+-echo [ERROR] El backend !RENDERER! esta reservado pero todavia no esta implementado.
+-echo [INFO] Backend GPU disponible actualmente: dx11 ^(Direct3D 11^).
+-echo [INFO] Software tambien esta disponible con --renderer=software.
+-echo [INFO] La seleccion ya queda estructurada para Vulkan / DX12 / DX10 / DX9.
+-exit /b 8
+-
+-:usage
+-echo.
+-echo DreamcastRecomp v0.1.1 Official
+-echo.
+-echo Uso:
+-echo   %~nx0 "juego.cdi" [opciones]
+-echo.
+-echo Ejemplos:
+-echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi"
+-echo   %~nx0 "C:\Juegos\Crazy Taxi 2.cdi" --perf
+-echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi" --renderer=dx11
+-echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --renderer=dx11
+-echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --debug
+-echo   %~nx0 "C:\Juegos\Record of Lodoss War.cdi" --clean
+- echo.
+-echo Opciones:
+-echo   --perf       Perfil de rendimiento de bajo overhead.
+-echo   --debug      Diagnostico adicional + heartbeat cada 500 ms.
+-echo   --profile    Perfil detallado PVR ^(mas lento^).
+-echo   --renderer=BACKEND  Selecciona renderer: auto, dx11 o software.
+-echo   --renderer BACKEND  Igual que arriba, con valor separado.
+-echo   --gpu                Alias de --renderer=dx11.
+-echo   --gpu=BACKEND        Alias preparado para seleccionar backend GPU.
+-echo   --software           Alias legacy de --renderer=software.
+-echo                       Reservados: vulkan, dx12, dx10, dx9.
+-echo   --no-audio   Ejecuta ARM7/AICA sin salida de audio al host.
+-echo   --clean      Regenera el workspace oficial desde cero.
+-echo   --no-pause   Reservado para wrappers/automatizacion.
+-echo   --help, -h   Muestra esta ayuda.
+-echo.
+-echo Tambien puedes arrastrar un archivo .cdi sobre run_game.bat.
+-exit /b 1
+-
+-:usage_ok
+-call :usage
+-exit /b 0
++@echo off
++setlocal EnableExtensions EnableDelayedExpansion
++cd /d "%~dp0"
++
++set "DCR_VERSION=v0.1.1 Official"
++set "PERF=0"
++set "DEBUG=0"
++set "PVR_PROFILE=0"
++set "SOFTWARE=0"
++set "RENDERER=AUTO"
++set "RENDERER_EXPLICIT=0"
++set "NO_AUDIO=0"
++set "CLEAN=0"
++set "NOPAUSE=0"
++set "REUSE=0"
++
++if "%~1"=="" goto :usage
++if /I "%~1"=="--help" goto :usage_ok
++if /I "%~1"=="-h" goto :usage_ok
++
++set "DISC=%~f1"
++shift
++
++:parse_args
++if "%~1"=="" goto :args_done
++set "ARG=%~1"
++
++if /I "!ARG!"=="--renderer" goto :parse_renderer_value
++if /I "!ARG:~0,11!"=="--renderer=" (
++  set "RENDERER=!ARG:~11!"
++  set "RENDERER_EXPLICIT=1"
++  shift
++  goto :parse_args
++)
++if /I "!ARG:~0,6!"=="--gpu=" (
++  set "RENDERER=!ARG:~6!"
++  set "RENDERER_EXPLICIT=1"
++  shift
++  goto :parse_args
++)
++
++if /I "!ARG!"=="--perf" (
++  set "PERF=1"
++) else if /I "!ARG!"=="--debug" (
++  set "DEBUG=1"
++) else if /I "!ARG!"=="--profile" (
++  set "PVR_PROFILE=1"
++) else if /I "!ARG!"=="--software" (
++  set "SOFTWARE=1"
++  set "RENDERER=software"
++  set "RENDERER_EXPLICIT=1"
++) else if /I "!ARG!"=="--gpu" (
++  set "RENDERER=dx11"
++  set "RENDERER_EXPLICIT=1"
++) else if /I "!ARG!"=="--no-audio" (
++  set "NO_AUDIO=1"
++) else if /I "!ARG!"=="--clean" (
++  set "CLEAN=1"
++) else if /I "!ARG!"=="--no-pause" (
++  set "NOPAUSE=1"
++) else if /I "!ARG!"=="--reuse" (
++  set "REUSE=1"
++) else if /I "!ARG!"=="--no-recompile" (
++  set "REUSE=1"
++) else if /I "!ARG!"=="--help" (
++  goto :usage_ok
++) else if /I "!ARG!"=="-h" (
++  goto :usage_ok
++) else (
++  echo [ERROR] Opcion desconocida: %~1
++  echo.
++  goto :usage
++)
++shift
++goto :parse_args
++
++:parse_renderer_value
++shift
++if "%~1"=="" (
++  echo [ERROR] --renderer requiere un backend.
++  echo [INFO] Disponibles hoy: auto, dx11, software.
++  exit /b 1
++)
++set "RENDERER=%~1"
++set "RENDERER_EXPLICIT=1"
++shift
++goto :parse_args
++
++:args_done
++rem Normaliza aliases de renderer. Solo DX11 esta implementado como backend GPU hoy.
++if /I "!RENDERER!"=="AUTO" set "RENDERER=auto"
++if /I "!RENDERER!"=="D3D11" set "RENDERER=dx11"
++if /I "!RENDERER!"=="DIRECT3D11" set "RENDERER=dx11"
++if /I "!RENDERER!"=="DIRECTX11" set "RENDERER=dx11"
++if /I "!RENDERER!"=="DX11" set "RENDERER=dx11"
++if /I "!RENDERER!"=="SW" set "RENDERER=software"
++if /I "!RENDERER!"=="CPU" set "RENDERER=software"
++if /I "!RENDERER!"=="SOFTWARE" set "RENDERER=software"
++if /I "!RENDERER!"=="D3D12" set "RENDERER=dx12"
++if /I "!RENDERER!"=="DIRECT3D12" set "RENDERER=dx12"
++if /I "!RENDERER!"=="DIRECTX12" set "RENDERER=dx12"
++if /I "!RENDERER!"=="D3D10" set "RENDERER=dx10"
++if /I "!RENDERER!"=="DIRECT3D10" set "RENDERER=dx10"
++if /I "!RENDERER!"=="DIRECTX10" set "RENDERER=dx10"
++if /I "!RENDERER!"=="D3D9" set "RENDERER=dx9"
++if /I "!RENDERER!"=="DIRECT3D9" set "RENDERER=dx9"
++if /I "!RENDERER!"=="DIRECTX9" set "RENDERER=dx9"
++if /I "!RENDERER!"=="VK" set "RENDERER=vulkan"
++
++if /I "!RENDERER!"=="vulkan" goto :renderer_not_implemented
++if /I "!RENDERER!"=="dx12" goto :renderer_not_implemented
++if /I "!RENDERER!"=="dx10" goto :renderer_not_implemented
++if /I "!RENDERER!"=="dx9" goto :renderer_not_implemented
++if /I not "!RENDERER!"=="auto" if /I not "!RENDERER!"=="dx11" if /I not "!RENDERER!"=="software" (
++  echo [ERROR] Renderer desconocido: !RENDERER!
++  echo [INFO] Disponibles hoy: auto, dx11, software.
++  echo [INFO] Reservados para futuros backends: vulkan, dx12, dx10, dx9.
++  exit /b 1
++)
++if not exist "%DISC%" (
++  echo [ERROR] No encuentro el juego: "%DISC%"
++  exit /b 1
++)
++
++where cmake >nul 2>nul
++if errorlevel 1 (
++  echo [ERROR] CMake no esta disponible en PATH.
++  echo [INFO] Instala Visual Studio 2022 o Build Tools con "Desktop development with C++" y CMake.
++  exit /b 2
++)
++
++set "OUT=generated\official_v0.1.1"
++set "CPP=%OUT%\cpp"
++set "CB=_cb_v0.1.1"
++set "PADARG="
++if exist "profiles\controller_profile.ini" (
++  set "PADARG=--controller-profile=profiles\controller_profile.ini"
++)
++
++if "%REUSE%"=="1" goto :reuse_existing
++
++if "%CLEAN%"=="1" (
++  echo [CLEAN] Eliminando cache de la release oficial...
++  if exist "%OUT%" rmdir /s /q "%OUT%"
++  if exist "%CB%" rmdir /s /q "%CB%"
++)
++if not exist "%OUT%" mkdir "%OUT%"
++
++set "DCR_TRACE_HISTORY=0"
++set "HEARTBEAT=1000"
++set "EXTRA_RUN="
++if "%PERF%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --perf-profile --perf-sample-stride=64"
++if "%DEBUG%"=="1" (
++  set "DCR_TRACE_HISTORY=1"
++  set "HEARTBEAT=500"
++  set "EXTRA_RUN=!EXTRA_RUN! --host-window"
++)
++if "%PVR_PROFILE%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --pvr-profile --host-window"
++
++set "GPU_ARGS="
++set "ACTIVE_RENDERER="
++set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768 --aica-play"
++set "AUDIO_ARGS_BASIC=--aica-arm7 --aica-play"
++if "%NO_AUDIO%"=="1" (
++  set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768"
++  set "AUDIO_ARGS_BASIC=--aica-arm7"
++)
++
++cls
++echo ============================================================
++echo  DreamcastRecomp %DCR_VERSION%
++echo  Universal CDI runner
++echo ============================================================
++echo  Juego : %DISC%
++echo  Perf  : %PERF%   Debug: %DEBUG%   PVR profile: %PVR_PROFILE%
++echo  Render pedido: !RENDERER!
++echo  Audio : %NO_AUDIO% ^(0=on, 1=muted^)
++echo ============================================================
++echo.
++
++rem Build only the tools needed by the universal path. CMake/MSBuild remain incremental.
++echo [1/6] Preparando herramientas %DCR_VERSION%...
++cmake -S . -B build -A x64
++if errorlevel 1 exit /b 2
++cmake --build build --config Release --target dc_disc_probe dc_boot_prepare dc_raw_recomp --parallel 1
++if errorlevel 1 exit /b 2
++
++for %%T in (dc_disc_probe dc_boot_prepare dc_raw_recomp) do (
++  if not exist "build\Release\%%T.exe" (
++    echo [ERROR] Falta build\Release\%%T.exe despues del build.
++    exit /b 2
++  )
++)
++
++echo.
++echo [2/6] Analizando CDI y creando mapa GD-ROM...
++build\Release\dc_disc_probe.exe "%DISC%" ^
++  --extract-ip="%OUT%\IP.BIN" ^
++  --extract-boot="%OUT%\BOOT.DISC.BIN" ^
++  --extract-disc-map="%OUT%\disc.map"
++if errorlevel 1 exit /b 3
++
++set "TITLE="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "title=" "%OUT%\disc.map"') do set "TITLE=%%B"
++set "VOLUME="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "volume=" "%OUT%\disc.map"') do set "VOLUME=%%B"
++
++set "MODE=GENERIC"
++if /I "!TITLE!"=="PIZZICATO POLKA" set "MODE=DAYTONA"
++if /I "!TITLE!"=="RECORD OF LODOSS WAR" set "MODE=LODOSS"
++if /I "!TITLE!"=="CHUCHU ROCKET" set "MODE=CHUCHU"
++if /I "!TITLE!"=="CRAZY TAXI 2" set "MODE=CT2"
++
++rem AUTO conserva el comportamiento previo por perfil.
++set "ACTIVE_RENDERER=!RENDERER!"
++if /I "!ACTIVE_RENDERER!"=="auto" (
++  if /I "!MODE!"=="DAYTONA" (
++    set "ACTIVE_RENDERER=software"
++  ) else if /I "!MODE!"=="LODOSS" (
++    set "ACTIVE_RENDERER=software"
++  ) else (
++    set "ACTIVE_RENDERER=dx11"
++  )
++)
++
++if /I "!ACTIVE_RENDERER!"=="dx11" (
++  rem Backend GPU disponible hoy: Direct3D 11.
++  set "GPU_ARGS=--pvr-gpu --pvr-render-done-scheduled --pvr-mt"
++) else (
++  rem Renderer CPU/software. Mantiene PVR multithread.
++  set "GPU_ARGS=--pvr-mt"
++)
++
++echo [INFO] Titulo : !TITLE!
++echo [INFO] Volumen: !VOLUME!
++echo [INFO] Perfil : !MODE!
++echo [INFO] Render : !ACTIVE_RENDERER!
++if defined PADARG (echo [INFO] Mando  : profiles\controller_profile.ini) else (echo [INFO] Mando  : default teclado/XInput/PS4-DirectInput)
++
++if /I "!MODE!"=="LODOSS" goto :prepare_lodoss
++
++echo.
++echo [3/6] Preparando bootstrap comercial...
++build\Release\dc_boot_prepare.exe "%OUT%\IP.BIN" "%OUT%\BOOT.DISC.BIN" ^
++  --mode=auto ^
++  --boot-out="%OUT%\BOOT.BIN" ^
++  --combined-out="%OUT%\BOOTSTRAP.BIN"
++if errorlevel 1 exit /b 4
++
++echo.
++echo [4/6] Recompilando closure SH-4...
++if /I "!MODE!"=="DAYTONA" (
++  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
++    --base=0x8C008000 --entry=0x8C008300 ^
++    --seed-file="profiles\daytona_usa_known_seeds.txt" ^
++    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
++    --map="%OUT%\function_map.csv" --output="%CPP%"
++) else if /I "!MODE!"=="CT2" (
++  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
++    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
++    --seed-file="profiles\crazy_taxi_2_known_seeds.txt" ^
++    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
++    --map="%OUT%\function_map.csv" --output="%CPP%"
++) else (
++  build\Release\dc_raw_recomp.exe "%OUT%\BOOTSTRAP.BIN" ^
++    --base=0x8C008000 --entry=0x8C008300 --seed=0x8C010000 ^
++    --max-functions=8192 --max-closure-entries=6144 --closure-passes=64 ^
++    --map="%OUT%\function_map.csv" --output="%CPP%"
++)
++if errorlevel 1 exit /b 5
++goto :compile_runner
++
++:prepare_lodoss
++echo.
++echo [3/6] Extrayendo ejecutable secundario 1NOSDC.BIN de Lodoss...
++build\Release\dc_disc_probe.exe "%DISC%" --extract-file=1NOSDC.BIN="%OUT%\1NOSDC.BIN"
++if errorlevel 1 exit /b 4
++
++echo.
++echo [4/6] Recompilando closure SH-4 de Lodoss...
++build\Release\dc_raw_recomp.exe "%OUT%\1NOSDC.BIN" ^
++  --base=0x8C010000 --entry=0x8C010000 ^
++  --seed-file="profiles\record_of_lodoss_war_known_seeds.txt" ^
++  --max-functions=10000 --max-closure-entries=9000 --closure-passes=64 ^
++  --map="%OUT%\function_map.csv" --output="%CPP%"
++if errorlevel 1 exit /b 5
++
++:compile_runner
++echo.
++echo [5/6] Compilando runner nativo generado...
++cmake -S "%CPP%" -B "%CB%" -A x64
++if errorlevel 1 exit /b 6
++cmake --build "%CB%" --config Release --target dreamcast_program --parallel 1
++if errorlevel 1 exit /b 7
++
++goto :execute_runner
++
++:execute_runner
++echo.
++if "%REUSE%"=="1" (echo [CACHE] Ejecutando runner ya compilado; no se regenera SH-4.) else (echo [6/6] Ejecutando !MODE!...)
++echo [INFO] Controles: flechas=D-pad, WASD=analogico, Z/J/Space=A, X/K=B, C/U=X, V/I=Y, Enter=START.
++echo [INFO] Opciones activas: !EXTRA_RUN!
++echo.
++
++set "EXE=%CB%\Release\dreamcast_program.exe"
++if not exist "!EXE!" (
++  echo [ERROR] No se genero !EXE!
++  exit /b 7
++)
++
++if /I "!MODE!"=="DAYTONA" (
++  "!EXE!" ^
++    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
++    --pvr-window --pvr-frame-sync !GPU_ARGS! --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++) else if /I "!MODE!"=="CT2" (
++  "!EXE!" ^
++    --commercial-boot --ct2-compat --disc-map="%OUT%\disc.map" ^
++    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
++    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
++    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++) else if /I "!MODE!"=="LODOSS" (
++  "!EXE!" ^
++    --direct-game-entry=0x8C010000 --commercial-boot --disc-map="%OUT%\disc.map" ^
++    --pvr-window --pvr-frame-sync !GPU_ARGS! --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++    --maple-host-input !PADARG! --device-clock !AUDIO_ARGS_BASIC! --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++) else (
++  "!EXE!" ^
++    --commercial-boot --disc-map="%OUT%\disc.map" ^
++    --pvr-window --pvr-frame-sync !GPU_ARGS! ^
++    --fast-dispatch --direct-dispatch --sh4-tick-batch=256 ^
++    --maple-host-input !PADARG! !AUDIO_ARGS_FULL! ^
++    --device-clock-host --device-clock-host-max-catchup=4096 --diag-heartbeat-ms=!HEARTBEAT! !EXTRA_RUN!
++)
++
++set "RC=!ERRORLEVEL!"
++echo.
++echo [INFO] DreamcastRecomp %DCR_VERSION% termino con RC=!RC!.
++if "!RC!"=="130" echo [INFO] RC=130 = cierre manual de la ventana.
++exit /b !RC!
++
++:reuse_existing
++if not exist "%OUT%\disc.map" (
++  echo [ERROR] --reuse requiere una generacion previa: falta %OUT%\disc.map
++  echo [INFO] Ejecuta run_game.bat normalmente una sola vez para este juego.
++  exit /b 9
++)
++if not exist "%CB%\Release\dreamcast_program.exe" (
++  echo [ERROR] --reuse requiere el runner ya compilado: falta %CB%\Release\dreamcast_program.exe
++  exit /b 9
++)
++set "MAP_IMAGE="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "image=" "%OUT%\disc.map"') do set "MAP_IMAGE=%%B"
++if defined MAP_IMAGE if /I not "!MAP_IMAGE!"=="%DISC%" (
++  echo [ERROR] El cache generado pertenece a otro CDI:
++  echo [CACHE] !MAP_IMAGE!
++  echo [PEDIDO] %DISC%
++  echo [INFO] Para cambiar de juego hace falta una generacion normal.
++  exit /b 9
++)
++set "TITLE="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "title=" "%OUT%\disc.map"') do set "TITLE=%%B"
++set "VOLUME="
++for /f "tokens=1,* delims==" %%A in ('findstr /B /I "volume=" "%OUT%\disc.map"') do set "VOLUME=%%B"
++set "MODE=GENERIC"
++if /I "!TITLE!"=="PIZZICATO POLKA" set "MODE=DAYTONA"
++if /I "!TITLE!"=="RECORD OF LODOSS WAR" set "MODE=LODOSS"
++if /I "!TITLE!"=="CHUCHU ROCKET" set "MODE=CHUCHU"
++if /I "!TITLE!"=="CRAZY TAXI 2" set "MODE=CT2"
++set "ACTIVE_RENDERER=!RENDERER!"
++if /I "!ACTIVE_RENDERER!"=="auto" (
++  if /I "!MODE!"=="DAYTONA" (
++    set "ACTIVE_RENDERER=software"
++  ) else if /I "!MODE!"=="LODOSS" (
++    set "ACTIVE_RENDERER=software"
++  ) else (
++    set "ACTIVE_RENDERER=dx11"
++  )
++)
++if /I "!ACTIVE_RENDERER!"=="dx11" (set "GPU_ARGS=--pvr-gpu --pvr-render-done-scheduled --pvr-mt") else (set "GPU_ARGS=--pvr-mt")
++set "DCR_TRACE_HISTORY=0"
++set "HEARTBEAT=1000"
++set "EXTRA_RUN="
++if "%PERF%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --perf-profile --perf-sample-stride=64"
++if "%DEBUG%"=="1" (
++  set "DCR_TRACE_HISTORY=1"
++  set "HEARTBEAT=500"
++  set "EXTRA_RUN=!EXTRA_RUN! --host-window"
++)
++if "%PVR_PROFILE%"=="1" set "EXTRA_RUN=!EXTRA_RUN! --pvr-profile --host-window"
++set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768 --aica-play"
++set "AUDIO_ARGS_BASIC=--aica-arm7 --aica-play"
++if "%NO_AUDIO%"=="1" (
++  set "AUDIO_ARGS_FULL=--aica-arm7 --aica-arm7-slice=128 --aica-arm7-boot=32768"
++  set "AUDIO_ARGS_BASIC=--aica-arm7"
++)
++echo ============================================================
++echo  DreamcastRecomp %DCR_VERSION% - CACHE REUSE
++echo ============================================================
++echo  Juego  : %DISC%
++echo  Perfil : !MODE!
++echo  Render : !ACTIVE_RENDERER!
++echo ============================================================
++goto :execute_runner
++
++:renderer_not_implemented
++echo.
++echo [ERROR] El backend !RENDERER! esta reservado pero todavia no esta implementado.
++echo [INFO] Backend GPU disponible actualmente: dx11 ^(Direct3D 11^).
++echo [INFO] Software tambien esta disponible con --renderer=software.
++echo [INFO] La seleccion ya queda estructurada para Vulkan / DX12 / DX10 / DX9.
++exit /b 8
++
++:usage
++echo.
++echo DreamcastRecomp v0.1.1 Official
++echo.
++echo Uso:
++echo   %~nx0 "juego.cdi" [opciones]
++echo.
++echo Ejemplos:
++echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi"
++echo   %~nx0 "C:\Juegos\Crazy Taxi 2.cdi" --perf
++echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi" --renderer=dx11
++echo   %~nx0 "C:\Juegos\ChuChu Rocket.cdi" --reuse --renderer=dx11
++echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --renderer=dx11
++echo   %~nx0 "C:\Juegos\Daytona USA.cdi" --debug
++echo   %~nx0 "C:\Juegos\Record of Lodoss War.cdi" --clean
++ echo.
++echo Opciones:
++echo   --perf       Perfil de rendimiento de bajo overhead.
++echo   --debug      Diagnostico adicional + heartbeat cada 500 ms.
++echo   --profile    Perfil detallado PVR ^(mas lento^).
++echo   --renderer=BACKEND  Selecciona renderer: auto, dx11 o software.
++echo   --renderer BACKEND  Igual que arriba, con valor separado.
++echo   --gpu                Alias de --renderer=dx11.
++echo   --gpu=BACKEND        Alias preparado para seleccionar backend GPU.
++echo   --software           Alias legacy de --renderer=software.
++echo                       Reservados: vulkan, dx12, dx10, dx9.
++echo   --no-audio   Ejecuta ARM7/AICA sin salida de audio al host.
++echo   --reuse       Usa closure/objetos/EXE existentes; no recompila el juego.
++echo   --no-recompile Alias de --reuse.
++echo   --clean      Regenera el workspace oficial desde cero.
++echo   --no-pause   Reservado para wrappers/automatizacion.
++echo   --help, -h   Muestra esta ayuda.
++echo.
++echo Tambien puedes arrastrar un archivo .cdi sobre run_game.bat.
++exit /b 1
++
++:usage_ok
++call :usage
++exit /b 0
+--- /mnt/data/cpp21_inspect/cpp21_stage/tests/cpp_emitter_tests.cpp	2026-09-22 05:12:15.000000000 +0000
++++ tests/cpp_emitter_tests.cpp	2026-09-22 07:25:09.408185940 +0000
+@@ -287,6 +287,16 @@
+             runtime.find("pvr_gpu_rtt_lazy_readbacks") != std::string::npos &&
+             runtime.find("pvr_gpu_fallback_materializations") != std::string::npos,
+             "heartbeat reports native-GPU texture, pipeline, RTT, and fallback telemetry");
++    require(runtime.find("g_pvr_gpu_raw_snapshot_cache") != std::string::npos &&
++            runtime.find("pvr_texture_vram_epoch(runtime, st)") != std::string::npos &&
++            runtime.find("g_pvr_gpu_raw_snapshot_hits") != std::string::npos &&
++            runtime.find(" | pvr-gcache=") != std::string::npos,
++            "cpp22 reuses immutable raw GPU texture snapshots until their own VRAM pages change");
++    require(runtime.find("gpu.textures.size() >= 512u") != std::string::npos &&
++            runtime.find("gpu.textures.clear()") == std::string::npos &&
++            runtime.find("last_use") != std::string::npos &&
++            runtime.find("g_pvr_gpu_texture_lru_evictions") != std::string::npos,
++            "cpp22 evicts one least-recently-used GPU texture instead of clearing the entire cache");
+     require(runner.find("--pvr-gpu") != std::string::npos, "runner exposes experimental D3D11 PVR backend");
+     require(generated_cmake.find("d3d11 d3dcompiler") != std::string::npos, "generated Windows target links D3D11 and runtime shader compiler");
+     require(runtime.find("pvr_resolve_texel_coord") != std::string::npos, "bilinear PVR sampling resolves wrap/clamp taps without four normalized-coordinate passes");

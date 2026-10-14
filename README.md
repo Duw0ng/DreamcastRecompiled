@@ -6,7 +6,7 @@
 
 **[Releases](https://github.com/Duw0ng/DreamcastRecompiled/releases) · [Español](docs/README.es.md) · [ChuChu Rocket! tester guide](docs/CHUCHU_ROCKET_TESTER_V1.2.md) · [Report issues](https://github.com/Duw0ng/DreamcastRecompiled/issues)**
 
-> **Release status:** V1.2 is the stable baseline for validated paths, **not** a claim of universal Dreamcast compatibility. The public V1.2 GitHub release and downloadable asset have not yet been published. Game-derived native code in the tester archive requires redistribution-rights review before public upload.
+> **Release status:** V1.2 is the stable baseline for validated paths, **not** a claim of universal Dreamcast compatibility. The public V1.2 GitHub release and downloadable asset have not yet been published.
 
 ## What is DreamcastRecompiled?
 
@@ -36,7 +36,7 @@ User-provided Dreamcast disc image
 
 ## ChuChu Rocket! — primary tester game
 
-**The V1.2 private Windows tester build contains an SH-4 native game module compiled from ChuChu Rocket! code.** On the validated disc path the launcher verifies the disc identity and runs the native module without rebuilding SH-4 locally. This lets testers exercise the recompilation pipeline and measure performance.
+**The V1.2 Windows tester build contains an SH-4 native game module compiled from ChuChu Rocket! code.** On the validated disc path the launcher checks the disc title and the bundle integrity and runs the native module without rebuilding SH-4 locally. This lets testers exercise the recompilation pipeline and measure performance.
 
 **The compiled module alone is NOT a playable game.** Testers must supply their **own compatible original CDI disc image**. The game still loads boot data and disc assets through the GD-ROM path; no game image is included.
 
@@ -49,7 +49,7 @@ User-provided Dreamcast disc image
 | Disc boot executable | `1ST_READ.BIN` |
 | Recorded disc date | `2000-02-17` |
 
-These values come from the disc probe of the project's reference copy; a different revision or rebuilt CDI may not be compatible. See **[exact tester steps and limitations](docs/CHUCHU_ROCKET_TESTER_V1.2.md)**.
+These values come from the disc probe of the project's reference copy; a different revision or rebuilt CDI may not be compatible. The automatic selection checks title/volume; it does not enforce an executable hash or exact revision. Use the reference revision below. See **[exact tester steps and limitations](docs/CHUCHU_ROCKET_TESTER_V1.2.md)**.
 
 > **Tester distribution model:** The V1.2 archive includes precompiled SH-4 code for the validated ChuChu Rocket! build but **does not contain a retail CDI or game assets**. A user-supplied compatible game image is required to start. The project MIT license covers original project code, not third-party commercial program rights; no ownership or rights over ChuChu Rocket! are claimed. Distribution of compiled game-derived code remains subject to applicable rights and law.
 
@@ -89,6 +89,10 @@ Our priorities are broader SH-4 coverage, improved PVR rendering and AICA audio,
 ## Bug reports
 
 Please [open an issue](https://github.com/Duw0ng/DreamcastRecompiled/issues) with the game title, region/revision, steps to reproduce, Windows version, CPU/GPU, controller, and a complete runtime/launcher log. **Do not attach commercial `.cdi`, firmware, extracted executables or game-derived DLLs.**
+
+## Source checkout versus Windows release
+
+The repository contains project source and launcher assets. The Windows release archive additionally includes the Python/Tk host and the prepared ChuChu Rocket! module. Download the packaged release for compiler-free testing; GitHub source archives do not contain those bundled binaries.
 
 ## Source and credits
 

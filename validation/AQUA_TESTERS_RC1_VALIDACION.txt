@@ -1,0 +1,9 @@
+Dreamcast Recompiled v1.2 AQUA - Tester Candidate RC1
+Motor comparado por SHA-256 contra DreamcastRecompiled_v1.2_AQUA_ESTABLE_TESTEADA.zip.
+Coinciden byte por byte: runtime/, src/, include/, profiles/, tools/native/, safe_guests/, CMakeLists.txt.
+run_game.bat: cambia solo textos de presentación (DCR_VERSION, título de ventana y ecos de diagnóstico); mantiene sellos ABI/caché.
+Python launcher: compilación de sintaxis correcta, prueba de arranque GUI y páginas VMU claro/oscuro bajo Xvfb.
+VMU: tres casos de prueba propios pasados (vacía, guardado válido/cadena rota, tamaño incorrecto).
+Suite de pruebas Python (incluidas heredadas): 128 de 133 pasadas; 5 fallas conocidas de contratos antiguos.
+Win64: compilado PE32+ GUI (Go), no validado aún ejecutándolo en Windows real.
+PyInstaller Windows/Tcl-Tk: NO incluido; preparación del Aqua Tkinter opcional requiere Internet.

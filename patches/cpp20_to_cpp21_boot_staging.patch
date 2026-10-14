@@ -1,0 +1,144 @@
+--- /mnt/data/cmp20/src/codegen/cpp_emitter.cpp	2026-09-22 04:12:28.396501838 +0000
++++ /mnt/data/cpp21_fix/src/codegen/cpp_emitter.cpp	2026-09-22 04:57:38.552340565 +0000
+@@ -2400,6 +2400,10 @@
+     // Keeping this in the runtime makes the Katana/IP.BIN scramble-restage path title-agnostic.
+     std::uint32_t commercial_boot_image_address{};
+     std::uint32_t commercial_boot_image_size{};
++    // Commercial boot staging policy: 0=auto from disc geometry, 1=plain/pass-through,
++    // 2=restage to Dreamcast 32-byte scrambled layout. Auto intentionally uses the
++    // physical boot-track representation rather than title-specific allowlists.
++    std::uint8_t commercial_boot_stage_mode{};
+ 
+     // 128 KiB Dreamcast system flash image used by BIOS FlashROM HLE.
+     // Initialized lazily to erased 0xFF state; INFO/READ are sufficient for boot/title code.
+@@ -17164,11 +17168,32 @@
+ } // namespace
+ 
+ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
+-    // Retail IP.BIN expects the main executable in Dreamcast 32-byte-slice
+-    // scrambled layout and descrambles it in-place. Static analysis embeds the
+-    // plain .raw_boot image, so restage that exact generated section before
+-    // IP.BIN executes. This is generic for commercial titles rather than CT2-only.
+-    if (runtime.commercial_boot_image_size != 0u) {
++    // Commercial boot images exist in two layouts in real dumps. Cooked 2048-byte
++    // data tracks expose the executable payload in the representation expected by
++    // the retail bootstrap and must remain byte-for-byte (ChuChu Rocket is one
++    // observed example). Raw 2336-byte tracks with a non-zero user-data offset use
++    // the path for which our extracted static image must be restaged into the
++    // Dreamcast 32-byte scrambled layout before IP.BIN runs (SGGG/CT2/Daytona
++    // layouts observed by the regression corpus). Decide from physical geometry,
++    // never from a title/product whitelist. A CLI override exists for diagnostics.
++    bool stage_scrambled = false;
++    if (runtime.commercial_boot_stage_mode == 2u) {
++        stage_scrambled = true;
++    } else if (runtime.commercial_boot_stage_mode == 1u) {
++        stage_scrambled = false;
++    } else if (runtime.gd_disc_ready && runtime.gd_boot_track < runtime.gd_tracks.size()) {
++        const auto& boot_track = runtime.gd_tracks[runtime.gd_boot_track];
++        stage_scrambled = boot_track.sector_size != 2048u || boot_track.user_offset != 0u;
++        std::cout << "[DCR BOOT] staging auto | physical-sector=" << boot_track.sector_size
++                  << " | user-offset=" << boot_track.user_offset
++                  << " | mode=" << (stage_scrambled ? "scrambled" : "plain") << "\n";
++    } else {
++        // With no disc map there is no trustworthy physical-layout evidence. Plain
++        // is the conservative default; raw-layout diagnostics can force scrambled.
++        stage_scrambled = false;
++        std::cout << "[DCR BOOT] staging auto | no disc geometry | mode=plain\n";
++    }
++    if (stage_scrambled && runtime.commercial_boot_image_size != 0u) {
+         const std::uint32_t canonical = runtime.commercial_boot_image_address & 0x1FFFFFFFu;
+         if (canonical < DCRuntime::kMainRamPhysicalBase)
+             throw std::runtime_error("commercial boot staging address is outside main RAM");
+@@ -17206,6 +17231,10 @@
+         std::copy(dst.begin(), dst.end(), runtime.main_ram.begin() + boot_off);
+         std::cout << "[DCR BOOT] staged scrambled commercial executable @0x" << std::hex << std::uppercase
+                   << runtime.commercial_boot_image_address << std::dec << " (" << boot_size << " bytes)\n";
++    } else if (runtime.commercial_boot_image_size != 0u) {
++        std::cout << "[DCR BOOT] commercial executable kept plain @0x" << std::hex << std::uppercase
++                  << runtime.commercial_boot_image_address << std::dec << " ("
++                  << runtime.commercial_boot_image_size << " bytes)\n";
+     }
+     // The BIOS leaves low RAM initialised before loading IP.BIN at 0x8C008000.
+     // Because the generated image is already embedded when this helper runs,
+@@ -21565,11 +21594,22 @@
+                    << "        ctx.r[15] = kStackTop;\n"
+                    << "        ctx.pr = kHostReturnSentinel;\n"
+                    << "        ctx.pc = " << hex8(function.entry) << ";\n"
++                   << "        auto set_boot_stage_mode = [&](const std::string& mode) {\n"
++                   << "            if (mode == \"auto\") runtime.commercial_boot_stage_mode = 0u;\n"
++                   << "            else if (mode == \"plain\" || mode == \"pass-through\" || mode == \"passthrough\") runtime.commercial_boot_stage_mode = 1u;\n"
++                   << "            else if (mode == \"scrambled\" || mode == \"scramble\") runtime.commercial_boot_stage_mode = 2u;\n"
++                   << "            else throw std::runtime_error(\"Unknown --commercial-boot-stage mode: \" + mode);\n"
++                   << "        };\n"
+                    << "        for (int ai = 1; ai < argc; ++ai) {\n"
+                    << "            const std::string pre = argv[ai];\n"
+                    << "            if (pre == \"--commercial-boot\") { commercial_boot = true; runtime.commercial_boot_active = true; }\n"
+                    << "            else if (pre == \"--ct2-compat\") runtime.ct2_compat = true;\n"
++                   << "            else if (pre.rfind(\"--disc-map=\", 0) == 0) disc_map = pre.substr(11);\n"
++                   << "            else if (pre == \"--disc-map\" && ai + 1 < argc) disc_map = argv[ai + 1];\n"
++                   << "            else if (pre.rfind(\"--commercial-boot-stage=\", 0) == 0) set_boot_stage_mode(pre.substr(24));\n"
++                   << "            else if (pre == \"--commercial-boot-stage\" && ai + 1 < argc) set_boot_stage_mode(argv[ai + 1]);\n"
+                    << "        }\n"
++                   << "        if (!disc_map.empty()) dc_gdrom_load_disc_map(runtime, disc_map);\n"
+                    << "        if (commercial_boot) { dc_setup_commercial_boot(ctx, runtime); ctx.pc = " << hex8(function.entry) << "; }\n"
+                    << "        for (int i = 1; i < argc; ++i) {\n"
+                    << "            std::string key = argv[i];\n"
+@@ -21599,6 +21639,8 @@
+                    << "                runtime.sh4_abi_audit = true;\n"
+                    << "            } else if (key == \"--commercial-boot\") {\n"
+                    << "                commercial_boot = true; runtime.commercial_boot_active = true; // setup already applied in pre-scan\n"
++                   << "            } else if (key.rfind(\"--commercial-boot-stage\", 0) == 0) {\n"
++                   << "                set_boot_stage_mode(read_value()); // setup already applied in pre-scan\n"
+                    << "            } else if (key == \"--ct2-compat\") {\n"
+                    << "                runtime.ct2_compat = true;\n"
+                    << "            } else if (key.rfind(\"--commercial-continuation-limit\", 0) == 0) {\n"
+@@ -21754,7 +21796,7 @@
+                    << "                dc_write_fpscr(ctx, static_cast<std::uint32_t>(std::stoul(read_value(), nullptr, 0)));\n"
+                    << "            } else { throw std::runtime_error(\"Unknown runner option: \" + key); }\n"
+                    << "        }\n"
+-                   << "        if (!disc_map.empty()) dc_gdrom_load_disc_map(runtime, disc_map);\n"
++                   << "        // Disc map was loaded during pre-scan so commercial boot staging can use physical geometry.\n"
+                    << "        if (commercial_boot && disc_map.empty()) std::cerr << \"[GDROM] warning: no --disc-map supplied; disc reads will stop at first data request\\n\";\n"
+                    << "        if (!controller_profile.empty() && !dc_maple_load_controller_profile(runtime, controller_profile))\n"
+                    << "            throw std::runtime_error(\"No se pudo cargar controller profile: \" + controller_profile);\n"
+@@ -22567,11 +22609,22 @@
+                    << "        ctx.r[15] = kStackTop;\n"
+                    << "        ctx.pr = kHostReturnSentinel;\n"
+                    << "        ctx.pc = " << hex8(program.root_address) << ";\n"
++                   << "        auto set_boot_stage_mode = [&](const std::string& mode) {\n"
++                   << "            if (mode == \"auto\") runtime.commercial_boot_stage_mode = 0u;\n"
++                   << "            else if (mode == \"plain\" || mode == \"pass-through\" || mode == \"passthrough\") runtime.commercial_boot_stage_mode = 1u;\n"
++                   << "            else if (mode == \"scrambled\" || mode == \"scramble\") runtime.commercial_boot_stage_mode = 2u;\n"
++                   << "            else throw std::runtime_error(\"Unknown --commercial-boot-stage mode: \" + mode);\n"
++                   << "        };\n"
+                    << "        for (int ai = 1; ai < argc; ++ai) {\n"
+                    << "            const std::string pre = argv[ai];\n"
+                    << "            if (pre == \"--commercial-boot\") { commercial_boot = true; runtime.commercial_boot_active = true; }\n"
+                    << "            else if (pre == \"--ct2-compat\") runtime.ct2_compat = true;\n"
++                   << "            else if (pre.rfind(\"--disc-map=\", 0) == 0) disc_map = pre.substr(11);\n"
++                   << "            else if (pre == \"--disc-map\" && ai + 1 < argc) disc_map = argv[ai + 1];\n"
++                   << "            else if (pre.rfind(\"--commercial-boot-stage=\", 0) == 0) set_boot_stage_mode(pre.substr(24));\n"
++                   << "            else if (pre == \"--commercial-boot-stage\" && ai + 1 < argc) set_boot_stage_mode(argv[ai + 1]);\n"
+                    << "        }\n"
++                   << "        if (!disc_map.empty()) dc_gdrom_load_disc_map(runtime, disc_map);\n"
+                    << "        if (commercial_boot) { dc_setup_commercial_boot(ctx, runtime); ctx.pc = " << hex8(program.root_address) << "; }\n"
+                    << "        for (int i = 1; i < argc; ++i) {\n"
+                    << "            std::string key = argv[i];\n"
+@@ -22601,6 +22654,8 @@
+                    << "                runtime.sh4_abi_audit = true;\n"
+                    << "            } else if (key == \"--commercial-boot\") {\n"
+                    << "                commercial_boot = true; runtime.commercial_boot_active = true; // setup already applied in pre-scan\n"
++                   << "            } else if (key.rfind(\"--commercial-boot-stage\", 0) == 0) {\n"
++                   << "                set_boot_stage_mode(read_value()); // setup already applied in pre-scan\n"
+                    << "            } else if (key == \"--ct2-compat\") {\n"
+                    << "                runtime.ct2_compat = true;\n"
+                    << "            } else if (key.rfind(\"--direct-game-entry\", 0) == 0) {\n"
+@@ -22758,7 +22813,7 @@
+                    << "                dc_write_fpscr(ctx, static_cast<std::uint32_t>(std::stoul(read_value(), nullptr, 0)));\n"
+                    << "            } else { throw std::runtime_error(\"Unknown runner option: \" + key); }\n"
+                    << "        }\n"
+-                   << "        if (!disc_map.empty()) dc_gdrom_load_disc_map(runtime, disc_map);\n"
++                   << "        // Disc map was loaded during pre-scan so commercial boot staging can use physical geometry.\n"
+                    << "        if (commercial_boot && disc_map.empty()) std::cerr << \"[GDROM] warning: no --disc-map supplied; disc reads will stop at first data request\\n\";\n"
+                    << "        if (!controller_profile.empty() && !dc_maple_load_controller_profile(runtime, controller_profile))\n"
+                    << "            throw std::runtime_error(\"No se pudo cargar controller profile: \" + controller_profile);\n"

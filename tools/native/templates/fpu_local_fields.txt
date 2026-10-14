@@ -1,0 +1,13 @@
+sfc_stat_regions
+sfc_stat_ops
+sfc_stat_reuses
+sfc_stat_planned_wb
+sfc_stat_ftrv
+sfc_stat_fipr
+sfc_stat_fmac
+sfc_stat_fsca
+sfc_stat_fsrra
+sfc_stat_cross
+sfc_stat_super_reuses
+sfc_stat_entries
+sfc_stat_static_loads

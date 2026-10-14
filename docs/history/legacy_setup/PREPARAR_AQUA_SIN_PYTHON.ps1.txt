@@ -1,0 +1,95 @@
+﻿# Dreamcast Recompiled: prepara Python/Tk solo dentro del directorio del proyecto.
+# En modo "onedir", el .exe Aqua resultante NO necesita Python instalado.
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$build = Join-Path $root '.dcr_builder'
+$pythonDir = Join-Path $build 'Python312'
+$python = Join-Path $pythonDir 'python.exe'
+$installer = Join-Path $build 'python-3.12.10-amd64.exe'
+$url = 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe'
+$dist = Join-Path $build 'dist'
+$work = Join-Path $build 'work'
+$spec = Join-Path $build 'spec'
+$log = Join-Path $build 'preparacion.log'
+New-Item -Path $build -ItemType Directory -Force | Out-Null
+Start-Transcript -LiteralPath $log -Append | Out-Null
+try {
+  Set-Location -LiteralPath $root
+  if (-not [Environment]::Is64BitOperatingSystem) { throw 'Este paquete requiere Windows de 64 bits.' }
+  if (-not (Test-Path -LiteralPath (Join-Path $root 'launcher\launch.py'))) {
+      throw 'Falta launcher\launch.py. Extraé todo el ZIP.'
+  }
+  if (-not (Test-Path -LiteralPath (Join-Path $root 'launcher\assets\dreamcast_launcher_1152.png'))) {
+      throw 'Faltan las imágenes Aqua en launcher\assets.'
+  }
+  if (-not (Test-Path -LiteralPath $python)) {
+    Write-Host '[1/4] Descargando Python 3.12.10 desde python.org (solo para construir el paquete)...'
+    if (-not (Test-Path -LiteralPath $installer)) {
+      Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+    }
+    $sig = Get-AuthenticodeSignature -LiteralPath $installer
+    if ($sig.Status -ne 'Valid' -or -not $sig.SignerCertificate -or
+        $sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') {
+      throw 'La firma digital del instalador oficial de Python no es válida. No se ejecutó.'
+    }
+    # Instalación AÍSLADA en el proyecto, sin modificar PATH ni registrar .py.
+    $args = @('/quiet', 'InstallAllUsers=0', ('TargetDir="' + $pythonDir + '"'),
+       'Include_pip=1','Include_tcltk=1','Include_launcher=0','PrependPath=0',
+       'AppendPath=0','AssociateFiles=0','Shortcuts=0','Include_test=0',
+       'Include_doc=0','Include_symbols=0','Include_debug=0')
+    $p = Start-Process -FilePath $installer -ArgumentList $args -PassThru -Wait
+    if ($p.ExitCode -ne 0) { throw ('El instalador de Python terminó con código ' + $p.ExitCode) }
+  }
+  if (-not (Test-Path -LiteralPath $python)) { throw 'No aparece el Python aislado luego de preparar el entorno.' }
+  Write-Host '[2/4] Verificando Tkinter e instalando PyInstaller en el entorno aislado...'
+  & $python -c 'import tkinter,sys; print(sys.version);print(tkinter.TkVersion)'
+  if ($LASTEXITCODE -ne 0) { throw 'Python aislado no tiene Tkinter completo.' }
+  & $python -m pip install --disable-pip-version-check --no-input --upgrade 'pyinstaller>=6.10,<7'
+  if ($LASTEXITCODE -ne 0) { throw 'Falló la instalación de PyInstaller en el entorno aislado.' }
+  Write-Host '[3/4] Empaquetando launcher Python Aqua sin consola ni Python externo...'
+  $argv = @('-m','PyInstaller','--noconfirm','--clean','--onedir','--windowed','--noupx',
+     '--name','DreamcastRecompiled','--distpath',$dist,'--workpath',$work,
+     '--specpath',$spec,'--icon',(Join-Path $root 'launcher\assets\DreamcastRecompiled.ico'),
+     '--add-data',((Join-Path $root 'launcher\assets') + ';assets'),
+     '--hidden-import','aqua_ui','--hidden-import','integrated_pages',
+     '--hidden-import','controller_visual','--hidden-import','controller_tester',
+     '--hidden-import','controller_profiles','--hidden-import','controller_devices',
+     '--hidden-import','controller_calibration','--hidden-import','settings_v7',
+     '--hidden-import','game_limits',
+     '--hidden-import','vmu_ui','--hidden-import','vmu_inspector','--hidden-import','vmu_lcd',
+     '--hidden-import','vmu_standalone','--hidden-import','vmu_companion','--hidden-import','vmu_pixels',
+     (Join-Path $root 'launcher\launch.py'))
+  & $python @argv
+  if ($LASTEXITCODE -ne 0) { throw 'PyInstaller terminó con errores. No se reemplazó ningún launcher.' }
+  $built = Join-Path $dist 'DreamcastRecompiled'
+  $exe = Join-Path $built 'DreamcastRecompiled.exe'
+  $libs = Join-Path $built '_internal'
+  if (-not (Test-Path -LiteralPath $exe) -or -not (Test-Path -LiteralPath $libs)) {
+    throw 'Faltan los binarios o bibliotecas empaquetadas por PyInstaller.'
+  }
+  Write-Host '[4/4] Instalando ejecutable y librerías PRIVADAS en la carpeta del proyecto...'
+  $targetInternal = Join-Path $root '_internal'
+  $oldInternal = Join-Path $build '_internal_previous'
+  if (Test-Path -LiteralPath $oldInternal) { Remove-Item -LiteralPath $oldInternal -Recurse -Force }
+  if (Test-Path -LiteralPath $targetInternal) { Move-Item -LiteralPath $targetInternal -Destination $oldInternal }
+  try {
+     Copy-Item -LiteralPath $libs -Destination $targetInternal -Recurse
+     Copy-Item -LiteralPath $exe -Destination (Join-Path $root 'DreamcastRecompiled.exe') -Force
+  } catch {
+     if (Test-Path -LiteralPath $targetInternal) { Remove-Item -LiteralPath $targetInternal -Recurse -Force }
+     if (Test-Path -LiteralPath $oldInternal) { Move-Item -LiteralPath $oldInternal -Destination $targetInternal }
+     throw
+  }
+  Write-Host ''
+  Write-Host '[OK] Launcher Aqua empaquetado: DreamcastRecompiled.exe' -ForegroundColor Green
+  Write-Host 'El .exe funciona con las librerías _internal, aunque Windows no tenga Python.'
+  Write-Host 'Para compartir con testers, conservá el exe y _internal junto al proyecto.'
+  exit 0
+} catch {
+  Write-Host ('[ERROR] ' + $_.Exception.Message) -ForegroundColor Red
+  Write-Host ('Detalles: ' + $log)
+  exit 1
+} finally {
+  try { Stop-Transcript | Out-Null } catch {}
+}

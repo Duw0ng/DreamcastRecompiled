@@ -1,0 +1,20 @@
+#if defined(DCR_FIXED_FPU_MODE)
+#define DCR_FPU_SUPERBLOCK_ENABLED(runtime) (DCR_FIXED_FPU_MODE == 2)
+#else
+#define DCR_FPU_SUPERBLOCK_ENABLED(runtime) ((runtime).fpu_aot_mode == 2u)
+#endif
+
+// cpp38b2: FPU telemetry is independent from the selected FPU execution mode.
+#if defined(DCR_FIXED_FPU_REGION_METRICS)
+#define DCR_FPU_REGION_METRICS_ENABLED(runtime) (DCR_FIXED_FPU_REGION_METRICS != 0)
+#else
+#define DCR_FPU_REGION_METRICS_ENABLED(runtime) ((runtime).fpu_region_metrics)
+#endif
+
+#if defined(DCR_FIXED_FPU_REGION_METRICS) && (DCR_FIXED_FPU_REGION_METRICS == 0)
+#define DCR_FPU_METRIC_INC(value) ((void)0)
+#define DCR_FPU_METRIC_ADD(value, amount) ((void)0)
+#else
+#define DCR_FPU_METRIC_INC(value) do { if (DCR_FPU_REGION_METRICS_ENABLED(runtime)) ++(value); } while (0)
+#define DCR_FPU_METRIC_ADD(value, amount) do { if (DCR_FPU_REGION_METRICS_ENABLED(runtime)) (value) += (amount); } while (0)
+#endif

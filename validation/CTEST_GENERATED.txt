@@ -1,0 +1,14 @@
+Internal ctest changing into directory: /mnt/data/cpp21_fix/build_linux
+Test project /mnt/data/cpp21_fix/build_linux
+    Start  9: cpp_emitter_tests
+1/4 Test  #9: cpp_emitter_tests ................   Passed    0.16 sec
+    Start 12: dc_recomp_multifunc_codegen
+2/4 Test #12: dc_recomp_multifunc_codegen ......   Passed    0.04 sec
+    Start 52: generated_single_build
+3/4 Test #52: generated_single_build ...........   Passed   55.10 sec
+    Start 53: generated_program_build
+4/4 Test #53: generated_program_build ..........   Passed    2.23 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =  57.55 sec
