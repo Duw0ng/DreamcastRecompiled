@@ -1,4 +1,5 @@
 #include "dc_runtime.hpp"
+#include "dcr_aica_arm_memory.hpp"
 #include "dc_sh4_interp.hpp"
 #include "dcr_plugin_api_v2.hpp"
 #include "dcr_plugin_api.hpp"
@@ -2235,6 +2236,22 @@ double aica_native_interpolated_sample(DCRuntime& runtime, AICANativeSlot& slot)
     const double s1 = static_cast<double>(aica_native_sample(runtime, slot, next));
     return s0 + (s1 - s0) * frac;
 }
+// AICA ends a one-shot voice in AEG Release and clears its hardware KYONB
+// latch. Keeping KYONB set causes a later global KYONEX (for an unrelated
+// menu SFX) to restart an already-finished one-shot. Reflect the state into
+// the ARM7-visible register shadow as well as the mixer-local voice state.
+void aica_native_stop_finished_slot(DCRuntime& runtime, std::uint32_t channel) {
+    auto& slot = runtime.aica_native_slots[channel];
+    slot.playing = false;
+    slot.releasing = false;
+    slot.cached_gain_valid = false;
+    slot.reg0 &= ~0x4000u; // Hardware key bit becomes inactive at natural end.
+    const std::uint32_t mmio_key = (kAicaRegsPhysicalBase + channel * kAicaSlotBytes) & ~3u;
+    const auto it = runtime.mmio32.find(mmio_key);
+    if (it != runtime.mmio32.end()) it->second &= ~0x4000u;
+    runtime.aica_native_active_mask &= ~(1ull << channel);
+}
+
 void aica_native_mix_frame(DCRuntime& runtime) {
     double mix_l = 0.0, mix_r = 0.0;
 
@@ -2253,8 +2270,7 @@ void aica_native_mix_frame(DCRuntime& runtime) {
             continue;
         }
         if (slot.loop_end == 0u) {
-            slot.playing = false;
-            runtime.aica_native_active_mask &= ~bit;
+            aica_native_stop_finished_slot(runtime, ch);
             continue;
         }
 
@@ -2263,8 +2279,7 @@ void aica_native_mix_frame(DCRuntime& runtime) {
                 const double span = static_cast<double>(slot.loop_end - slot.loop_start);
                 slot.position = static_cast<double>(slot.loop_start) + std::fmod(slot.position - slot.loop_start, span);
             } else {
-                slot.playing = false;
-                runtime.aica_native_active_mask &= ~bit;
+                aica_native_stop_finished_slot(runtime, ch);
                 continue;
             }
         }
@@ -2291,10 +2306,7 @@ void aica_native_mix_frame(DCRuntime& runtime) {
             slot.envelope_attenuation += slot.release_attenuation_step;
             if (slot.envelope_attenuation >= 1023.0) {
                 slot.envelope_attenuation = 1023.0;
-                slot.releasing = false;
-                slot.playing = false;
-                slot.cached_gain_valid = false;
-                runtime.aica_native_active_mask &= ~bit;
+                aica_native_stop_finished_slot(runtime, ch);
             }
         }
     }
@@ -2425,61 +2437,76 @@ public:
     explicit AICAARM7Bus(DCRuntime& runtime) : runtime_(runtime) {}
 
     std::uint8_t read8(std::uint32_t address) override {
-        if (address < runtime_.aica_ram.size()) return runtime_.aica_ram[address];
+        std::uint8_t value = 0u;
+        if (ram_view().read8(address, value)) return value;
         const auto word = read_reg_word(address);
         return static_cast<std::uint8_t>(word >> ((address & 3u) * 8u));
     }
 
     std::uint16_t read16(std::uint32_t address) override {
-        if (address + 2u <= runtime_.aica_ram.size())
-            return static_cast<std::uint16_t>(runtime_.aica_ram[address]) |
-                   static_cast<std::uint16_t>(static_cast<std::uint16_t>(runtime_.aica_ram[address + 1u]) << 8);
-        if ((address & 3u) == 3u) return static_cast<std::uint16_t>(read8(address)) | static_cast<std::uint16_t>(read8(address + 1u) << 8);
+        std::uint16_t value = 0u;
+        if (ram_view().read16(address, value)) return value;
+        if ((address & 3u) == 3u)
+            return static_cast<std::uint16_t>(read8(address)) |
+                   static_cast<std::uint16_t>(read8(address + 1u) << 8u);
         return static_cast<std::uint16_t>(read_reg_word(address) >> ((address & 2u) * 8u));
     }
 
     std::uint32_t read32(std::uint32_t address) override {
-        if (address + 4u <= runtime_.aica_ram.size()) return load_le32(runtime_.aica_ram.data() + address);
+        std::uint32_t value = 0u;
+        if (ram_view().read32(address, value)) return value;
         if ((address & 3u) != 0u)
             return static_cast<std::uint32_t>(read8(address)) |
-                   (static_cast<std::uint32_t>(read8(address + 1u)) << 8) |
-                   (static_cast<std::uint32_t>(read8(address + 2u)) << 16) |
-                   (static_cast<std::uint32_t>(read8(address + 3u)) << 24);
+                   (static_cast<std::uint32_t>(read8(address + 1u)) << 8u) |
+                   (static_cast<std::uint32_t>(read8(address + 2u)) << 16u) |
+                   (static_cast<std::uint32_t>(read8(address + 3u)) << 24u);
         return read_reg_word(address);
     }
 
     void write8(std::uint32_t address, std::uint8_t value) override {
-        if (address < runtime_.aica_ram.size()) { runtime_.aica_ram[address] = value; return; }
+        if (ram_view().write8(address, value)) return;
         const std::uint32_t shift = (address & 3u) * 8u;
         const std::uint32_t mask = 0xFFu << shift;
-        write_reg_word(address, (read_reg_word(address) & ~mask) | (static_cast<std::uint32_t>(value) << shift));
+        write_reg_word(address, (read_reg_word(address) & ~mask) |
+                                    (static_cast<std::uint32_t>(value) << shift));
     }
 
     void write16(std::uint32_t address, std::uint16_t value) override {
-        if (address + 2u <= runtime_.aica_ram.size()) { store_le16(runtime_.aica_ram.data() + address, value); return; }
-        if ((address & 3u) == 3u) { write8(address, static_cast<std::uint8_t>(value)); write8(address + 1u, static_cast<std::uint8_t>(value >> 8)); return; }
+        if (ram_view().write16(address, value)) return;
+        if ((address & 3u) == 3u) {
+            write8(address, static_cast<std::uint8_t>(value));
+            write8(address + 1u, static_cast<std::uint8_t>(value >> 8u));
+            return;
+        }
         const std::uint32_t shift = (address & 2u) * 8u;
         const std::uint32_t mask = 0xFFFFu << shift;
-        write_reg_word(address, (read_reg_word(address) & ~mask) | (static_cast<std::uint32_t>(value) << shift));
+        write_reg_word(address, (read_reg_word(address) & ~mask) |
+                                    (static_cast<std::uint32_t>(value) << shift));
     }
 
     void write32(std::uint32_t address, std::uint32_t value) override {
-        if (address + 4u <= runtime_.aica_ram.size()) { store_le32(runtime_.aica_ram.data() + address, value); return; }
+        if (ram_view().write32(address, value)) return;
         if ((address & 3u) != 0u) {
-            for (unsigned i = 0; i < 4; ++i) write8(address + i, static_cast<std::uint8_t>(value >> (i * 8u)));
+            for (unsigned i = 0; i < 4; ++i)
+                write8(address + i, static_cast<std::uint8_t>(value >> (i * 8u)));
             return;
         }
         write_reg_word(address, value);
     }
 
 private:
+    AICAArmRamView ram_view() noexcept {
+        return AICAArmRamView(runtime_.aica_ram.data(), runtime_.aica_ram.size());
+    }
+
     std::uint32_t reg_offset(std::uint32_t address) const {
-        if (address < kAicaArmRegsBase || address >= kAicaArmRegsEnd) {
+        std::uint32_t offset = 0u;
+        if (!aica_arm_register_offset(address, offset)) {
             std::ostringstream out;
             out << "AICA ARM7 unmapped access @ 0x" << std::hex << std::uppercase << address;
             throw std::runtime_error(out.str());
         }
-        return (address - kAicaArmRegsBase) & ~3u;
+        return offset & ~3u;
     }
 
     std::uint32_t read_reg_word(std::uint32_t address) const {
@@ -16730,6 +16757,9 @@ void native_bios_misc(SH4Context& ctx, DCRuntime& runtime) {
 } // namespace
 
 void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
+    // Portable Rev 1: remember whether the external image actually contains
+    // IP.BIN followed by the retail executable. Never scramble the 32 KiB IP.BIN.
+    bool external_combined_retail_boot = false;
     // cpp36b1e: portable-safe Guest ABI1 modules intentionally contain no
     // retail bootstrap bytes. Older cached dreamcast_program.exe runners do
     // not know the newer --external-raw-image CLI switch, so the host runtime
@@ -16773,6 +16803,7 @@ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
         const bool combined_retail_boot =
             (external_base == 0x8C008000u || external_base == 0xAC008000u) &&
             raw_bytes.size() > kRetailIpBinSize;
+        external_combined_retail_boot = combined_retail_boot;
         runtime.commercial_boot_image_address = combined_retail_boot
             ? external_base + static_cast<std::uint32_t>(kRetailIpBinSize)
             : external_base;
@@ -16802,11 +16833,26 @@ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
     // layouts observed by the regression corpus). Decide from physical geometry,
     // never from a title/product whitelist. A CLI override exists for diagnostics.
     bool stage_scrambled = false;
-    if (runtime.commercial_boot_stage_mode == 2u) {
+    const bool boot_geometry_available =
+        runtime.gd_disc_ready && runtime.gd_boot_track < runtime.gd_tracks.size();
+    const bool raw_boot_track = boot_geometry_available &&
+        (runtime.gd_tracks[runtime.gd_boot_track].sector_size != 2048u ||
+         runtime.gd_tracks[runtime.gd_boot_track].user_offset != 0u);
+    // The original precompiled portable frontend (unchanged UI) hardcodes
+    // --commercial-boot-stage=plain even for raw SGGG images. In this narrowly
+    // scoped case use the same *physical track geometry* decision as auto.
+    // This restores the proven auto/scrambled SGGG boot without replacing the
+    // user's launcher or changing the SH-4 native guest module.
+    const bool portable_plain_raw_fix = external_combined_retail_boot &&
+        runtime.commercial_boot_stage_mode == 1u && raw_boot_track;
+    if (runtime.commercial_boot_stage_mode == 2u || portable_plain_raw_fix) {
         stage_scrambled = true;
+        if (portable_plain_raw_fix)
+            std::cout << "[DCR BOOT] portable stage correction | combined IP.BIN preserved"
+                         " | requested=plain | physical-track=raw | effective=scrambled\n";
     } else if (runtime.commercial_boot_stage_mode == 1u) {
         stage_scrambled = false;
-    } else if (runtime.gd_disc_ready && runtime.gd_boot_track < runtime.gd_tracks.size()) {
+    } else if (boot_geometry_available) {
         const auto& boot_track = runtime.gd_tracks[runtime.gd_boot_track];
         stage_scrambled = boot_track.sector_size != 2048u || boot_track.user_offset != 0u;
         std::cout << "[DCR BOOT] staging auto | physical-sector=" << boot_track.sector_size
