@@ -16746,6 +16746,9 @@ void native_bios_misc(SH4Context& ctx, DCRuntime& runtime) {
 } // namespace
 
 void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
+    // Portable Rev 1: remember whether the external image actually contains
+    // IP.BIN followed by the retail executable. Never scramble the 32 KiB IP.BIN.
+    bool external_combined_retail_boot = false;
     // cpp36b1e: portable-safe Guest ABI1 modules intentionally contain no
     // retail bootstrap bytes. Older cached dreamcast_program.exe runners do
     // not know the newer --external-raw-image CLI switch, so the host runtime
@@ -16789,6 +16792,7 @@ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
         const bool combined_retail_boot =
             (external_base == 0x8C008000u || external_base == 0xAC008000u) &&
             raw_bytes.size() > kRetailIpBinSize;
+        external_combined_retail_boot = combined_retail_boot;
         runtime.commercial_boot_image_address = combined_retail_boot
             ? external_base + static_cast<std::uint32_t>(kRetailIpBinSize)
             : external_base;
@@ -16818,11 +16822,26 @@ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
     // layouts observed by the regression corpus). Decide from physical geometry,
     // never from a title/product whitelist. A CLI override exists for diagnostics.
     bool stage_scrambled = false;
-    if (runtime.commercial_boot_stage_mode == 2u) {
+    const bool boot_geometry_available =
+        runtime.gd_disc_ready && runtime.gd_boot_track < runtime.gd_tracks.size();
+    const bool raw_boot_track = boot_geometry_available &&
+        (runtime.gd_tracks[runtime.gd_boot_track].sector_size != 2048u ||
+         runtime.gd_tracks[runtime.gd_boot_track].user_offset != 0u);
+    // The original precompiled portable frontend (unchanged UI) hardcodes
+    // --commercial-boot-stage=plain even for raw SGGG images. In this narrowly
+    // scoped case use the same *physical track geometry* decision as auto.
+    // This restores the proven auto/scrambled SGGG boot without replacing the
+    // user's launcher or changing the SH-4 native guest module.
+    const bool portable_plain_raw_fix = external_combined_retail_boot &&
+        runtime.commercial_boot_stage_mode == 1u && raw_boot_track;
+    if (runtime.commercial_boot_stage_mode == 2u || portable_plain_raw_fix) {
         stage_scrambled = true;
+        if (portable_plain_raw_fix)
+            std::cout << "[DCR BOOT] portable stage correction | combined IP.BIN preserved"
+                         " | requested=plain | physical-track=raw | effective=scrambled\\n";
     } else if (runtime.commercial_boot_stage_mode == 1u) {
         stage_scrambled = false;
-    } else if (runtime.gd_disc_ready && runtime.gd_boot_track < runtime.gd_tracks.size()) {
+    } else if (boot_geometry_available) {
         const auto& boot_track = runtime.gd_tracks[runtime.gd_boot_track];
         stage_scrambled = boot_track.sector_size != 2048u || boot_track.user_offset != 0u;
         std::cout << "[DCR BOOT] staging auto | physical-sector=" << boot_track.sector_size
