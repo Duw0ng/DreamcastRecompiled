@@ -16838,7 +16838,7 @@ void dc_setup_commercial_boot(SH4Context& ctx, DCRuntime& runtime) {
         stage_scrambled = true;
         if (portable_plain_raw_fix)
             std::cout << "[DCR BOOT] portable stage correction | combined IP.BIN preserved"
-                         " | requested=plain | physical-track=raw | effective=scrambled\\n";
+                         " | requested=plain | physical-track=raw | effective=scrambled\n";
     } else if (runtime.commercial_boot_stage_mode == 1u) {
         stage_scrambled = false;
     } else if (boot_geometry_available) {
