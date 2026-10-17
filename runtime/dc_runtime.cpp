@@ -2236,6 +2236,22 @@ double aica_native_interpolated_sample(DCRuntime& runtime, AICANativeSlot& slot)
     const double s1 = static_cast<double>(aica_native_sample(runtime, slot, next));
     return s0 + (s1 - s0) * frac;
 }
+// AICA ends a one-shot voice in AEG Release and clears its hardware KYONB
+// latch. Keeping KYONB set causes a later global KYONEX (for an unrelated
+// menu SFX) to restart an already-finished one-shot. Reflect the state into
+// the ARM7-visible register shadow as well as the mixer-local voice state.
+void aica_native_stop_finished_slot(DCRuntime& runtime, std::uint32_t channel) {
+    auto& slot = runtime.aica_native_slots[channel];
+    slot.playing = false;
+    slot.releasing = false;
+    slot.cached_gain_valid = false;
+    slot.reg0 &= ~0x4000u; // Hardware key bit becomes inactive at natural end.
+    const std::uint32_t mmio_key = (kAicaRegsPhysicalBase + channel * kAicaSlotBytes) & ~3u;
+    const auto it = runtime.mmio32.find(mmio_key);
+    if (it != runtime.mmio32.end()) it->second &= ~0x4000u;
+    runtime.aica_native_active_mask &= ~(1ull << channel);
+}
+
 void aica_native_mix_frame(DCRuntime& runtime) {
     double mix_l = 0.0, mix_r = 0.0;
 
@@ -2254,8 +2270,7 @@ void aica_native_mix_frame(DCRuntime& runtime) {
             continue;
         }
         if (slot.loop_end == 0u) {
-            slot.playing = false;
-            runtime.aica_native_active_mask &= ~bit;
+            aica_native_stop_finished_slot(runtime, ch);
             continue;
         }
 
@@ -2264,8 +2279,7 @@ void aica_native_mix_frame(DCRuntime& runtime) {
                 const double span = static_cast<double>(slot.loop_end - slot.loop_start);
                 slot.position = static_cast<double>(slot.loop_start) + std::fmod(slot.position - slot.loop_start, span);
             } else {
-                slot.playing = false;
-                runtime.aica_native_active_mask &= ~bit;
+                aica_native_stop_finished_slot(runtime, ch);
                 continue;
             }
         }
@@ -2292,10 +2306,7 @@ void aica_native_mix_frame(DCRuntime& runtime) {
             slot.envelope_attenuation += slot.release_attenuation_step;
             if (slot.envelope_attenuation >= 1023.0) {
                 slot.envelope_attenuation = 1023.0;
-                slot.releasing = false;
-                slot.playing = false;
-                slot.cached_gain_valid = false;
-                runtime.aica_native_active_mask &= ~bit;
+                aica_native_stop_finished_slot(runtime, ch);
             }
         }
     }
