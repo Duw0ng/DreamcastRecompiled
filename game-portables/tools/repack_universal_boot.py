@@ -119,7 +119,10 @@ def build(source: pathlib.Path, runtime: pathlib.Path, out_dir: pathlib.Path, ga
 
     manifest = read_manifest(data["portable_manifest.txt"])
     if manifest.get("GAME") != game or manifest.get("GUEST_ABI") != "1":
-        raise ValueError("Wrong game module identity or guest ABI")
+        raise ValueError(
+            f"Wrong module identity or guest ABI: GAME={manifest.get('GAME')!r}; "
+            f"GUEST_ABI={manifest.get('GUEST_ABI')!r}; expected={game!r}/'1'"
+        )
 
     old_runtime = data["bin/DreamcastRuntime.dll"]
     old_launcher = data["DreamcastRecompiled.exe"]
