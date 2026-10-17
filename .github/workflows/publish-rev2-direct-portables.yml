@@ -1,0 +1,196 @@
+name: Publish verified v1.2 Rev 2 direct portables
+
+on:
+  push:
+    branches: [dcr-v1.2-universal-game-portable-boot]
+    paths:
+      - '.github/workflows/publish-rev2-direct-portables.yml'
+
+jobs:
+  publish:
+    runs-on: windows-2022
+    permissions:
+      contents: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - game: CHUCHU_ROCKET
+            title: ChuChu Rocket!
+            tag: portable-chuchu-rocket-direct-v1.2
+            asset: CHUCHU_ROCKET_portable_latest.zip
+            run: 39017856761
+            guest: CHUCHU_ROCKET
+            oldsha: b5ee29e5411fc6ea250969fef1a9ac6b57049352f97c374031abf636be1ab4ab
+            newsha: 532a7ab0e28686ce827b4738666ce5f22631eaa0f5740a89c2e4718cfe2105dc
+          - game: SGGG
+            title: Segagaga (SGGG)
+            tag: portable-sggg-direct-v1.2
+            asset: SGGG_portable_latest.zip
+            run: 39017856761
+            guest: SGGG
+            oldsha: cff571dce69468a62adff870242253de998b53e169b930f49a7810ec7ed5dca9
+            newsha: 0a1e1130baa17e188b2dee0f9d24e574f0bc6d5bb07c07eb50c95ff681424557
+          - game: SEGA_TETRIS
+            title: Sega Tetris
+            tag: portable-sega-tetris-direct-v1.2
+            asset: SEGA_TETRIS_portable_latest.zip
+            run: 39017856761
+            guest: SEGA_TETRIS
+            oldsha: 1f31d4cd04853ad833edc7047ae218489638bc92991abdafc0852929025ef6db
+            newsha: b32e93429568a57e13dac75a64099d8dfcb3ba2a529ae71ff7b21c90c4529c61
+          - game: MR_DRILLER
+            title: Mr. Driller
+            tag: portable-mr-driller-direct-v1.2
+            asset: MR_DRILLER_portable_latest.zip
+            run: 39018106681
+            guest: MR.DRILLER
+            oldsha: af2e89c9a145462fbfdad017fc706ac927792359270b7a160a22587df60d57d9
+            newsha: 4e4d52e8e944c781a4d557109eff5261aef83dbadd00c3fecda73b6dbcb25543
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GAME: ${{ matrix.game }}
+      TITLE: ${{ matrix.title }}
+      TAG: ${{ matrix.tag }}
+      ASSET: ${{ matrix.asset }}
+      BUILD_RUN: ${{ matrix.run }}
+      EXPECTED_GUEST: ${{ matrix.guest }}
+      OLD_SHA: ${{ matrix.oldsha }}
+      NEW_SHA: ${{ matrix.newsha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Back up initial release, publish exact tested Rev 2 ZIP, and verify remote assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $repo = $env:GITHUB_REPOSITORY
+          $tag = $env:TAG
+          $archiveTag = "$tag-initial-archive"
+          $root = Join-Path $env:RUNNER_TEMP "dcr-publish-$env:GAME"
+          $ci = Join-Path $root 'artifact'
+          $old = Join-Path $root 'old'
+          $fresh = Join-Path $root 'fresh'
+          $check = Join-Path $root 'check'
+          foreach ($dir in @($ci,$old,$fresh,$check)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+
+          # Retrieve the exact Windows test artifact that the maintainer tested.
+          $artifact = "DCRV1.2_$env:GAME" + "_UNIVERSAL_BOOT_TEST_WIN64"
+          gh run download "$env:BUILD_RUN" --repo "$repo" --name "$artifact" --dir "$ci"
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download verified CI artifact' }
+          $ciZip = Join-Path $ci "$artifact.zip"
+          if (-not (Test-Path $ciZip)) { throw "Missing CI ZIP: $ciZip" }
+          $ciHash = (Get-FileHash -LiteralPath $ciZip -Algorithm SHA256).Hash.ToLower()
+          if ($ciHash -ne $env:NEW_SHA) { throw "The CI ZIP is not the user-tested ZIP: $ciHash" }
+          Add-Type -AssemblyName System.IO.Compression
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($ciZip)
+          try {
+            $manifestEntry = $zip.GetEntry('portable_manifest.txt')
+            if ($null -eq $manifestEntry) { throw 'Guest manifest missing from ZIP' }
+            $reader = New-Object System.IO.StreamReader($manifestEntry.Open())
+            try { $manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            if ($manifest -notmatch "(?m)^GAME=$([regex]::Escape($env:EXPECTED_GUEST))\r?$") {
+              throw "Wrong native guest module for $env:GAME"
+            }
+            foreach ($name in @('DreamcastRecompiled.exe','bin/dcr_game_module.dll','bin/DreamcastRuntime.dll')) {
+              if ($null -eq $zip.GetEntry($name)) { throw "Missing portable component: $name" }
+            }
+          } finally { $zip.Dispose() }
+          Write-Host "Pinned user-tested $env:GAME ZIP: $ciHash"
+
+          # Keep an immutable archive of each initial v1.2 before overwriting
+          # the old public asset URLs. The general v1.2 Stable is not touched.
+          gh release view "$archiveTag" --repo "$repo" *> $null
+          $archiveExists = ($LASTEXITCODE -eq 0)
+          if (-not $archiveExists) {
+            gh release download "$tag" --repo "$repo" --pattern "$env:ASSET" --dir "$old"
+            if ($LASTEXITCODE -ne 0) { throw "Could not download original $env:ASSET" }
+            $original = Join-Path $old "$env:ASSET"
+            $originalHash = (Get-FileHash $original -Algorithm SHA256).Hash.ToLower()
+            if ($originalHash -ne $env:OLD_SHA) { throw "Original source release hash mismatch: $originalHash" }
+            $originalChecksum = "$original.sha256"
+            "$originalHash  $env:ASSET" | Set-Content -LiteralPath $originalChecksum -Encoding ascii
+            $archiveNote = Join-Path $root 'archive.md'
+            @"
+          # $env:TITLE — Original v1.2 (archive)
+
+          Historical initial direct-portable ZIP, preserved before publishing v1.2 Rev 2.
+          This release is not the latest recommended build.
+
+          Current build: https://github.com/$repo/releases/tag/$tag
+          "@ | Set-Content -LiteralPath $archiveNote -Encoding UTF8
+            gh release create "$archiveTag" "$original" "$originalChecksum" --repo "$repo" --prerelease --title "$env:TITLE — Original v1.2 (Archive)" --notes-file "$archiveNote"
+            if ($LASTEXITCODE -ne 0) { throw "Failed to archive original release for $env:GAME" }
+          } else {
+            gh release download "$archiveTag" --repo "$repo" --pattern "$env:ASSET" --dir "$old"
+            if ($LASTEXITCODE -ne 0) { throw "Could not verify legacy archive" }
+            $originalHash = (Get-FileHash (Join-Path $old "$env:ASSET") -Algorithm SHA256).Hash.ToLower()
+            if ($originalHash -ne $env:OLD_SHA) { throw "Archived original release SHA mismatch" }
+          }
+          Write-Host "Original v1.2 safely archived: $archiveTag"
+
+          # Preserve original download filenames, while replacing their bytes
+          # with the validated Rev 2 portable. The checksum matches new bytes.
+          $newAsset = Join-Path $fresh "$env:ASSET"
+          Copy-Item -LiteralPath "$ciZip" -Destination "$newAsset" -Force
+          $newChecksum = "$newAsset.sha256"
+          "$ciHash  $env:ASSET" | Set-Content -LiteralPath "$newChecksum" -Encoding ascii
+          gh release upload "$tag" "$newAsset" "$newChecksum" --repo "$repo" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Could not upload Rev 2 ZIP to $tag" }
+
+          $notes = Join-Path $root 'rev2-notes.md'
+          @"
+          # $env:TITLE — DreamcastRecompiled v1.2 Rev 2
+
+          **Windows x64 | Portable recompilado | Actualizado: 17 octubre 2026**
+
+          El responsable del proyecto probó los cuatro portables nuevos y confirmó que funcionan con sus imágenes compatibles. La interfaz original y los módulos SH-4 específicos de cada juego permanecen; el inicio no necesita recompilación por cada ejecución.
+
+          ## Novedades de esta versión
+          - **Compatibilidad plain/scrambled universal:** los CDI con pistas físicas raw que requieren scrambled ya no quedan forzados al modo plain por launchers antiguos. La selección se hace en el runtime.
+          - **IP.BIN conservado:** los primeros 32 KiB se preservan exactamente.
+          - **Launcher original:** misma interfaz, funciones, mandos y VMU. Las etiquetas visuales que decían ChuChu Rocket! en otros portables fueron adaptadas a cada título. Los identificadores internos relevantes permanecen.
+          - **AICA Rev 2 incluida:** manejo corregido del fin de reproducción de sonidos no repetitivos para evitar reactivaciones erróneas al iniciar otro efecto.
+          - Binario SH-4 de cada juego y plugins originales conservados.
+
+          ## Estado de $env:TITLE
+          "@ | Set-Content -LiteralPath "$notes" -Encoding UTF8
+          if ($env:GAME -eq 'SGGG') {
+            @'
+
+          ### Corrección de audio comprobada en Segagaga
+          Se corrigió la repetición involuntaria de determinados efectos al moverse entre las opciones del menú. Una voz AICA one-shot ahora libera correctamente su bit KYONB al terminar, de modo que un KYONEX global para otro efecto no la reinicie por accidente.
+
+          **Validación:** el responsable del proyecto confirmó que la repetición desapareció y que esto mejora la jugabilidad de SGGG. Pueden subsistir otros problemas de audio, gráficos o compatibilidad.
+          '@ | Add-Content -LiteralPath "$notes" -Encoding UTF8
+          } elseif ($env:GAME -eq 'SEGA_TETRIS') {
+            "Gameplay, audio y gráficos probados; pueden persistir cierres ocasionales. La corrección AICA Rev 2 se incluye, pero su beneficio concreto se comprobó en SGGG." | Add-Content -LiteralPath "$notes" -Encoding UTF8
+          } elseif ($env:GAME -eq 'MR_DRILLER') {
+            "Gameplay probado; todavía pueden persistir errores gráficos en menús u otros problemas de compatibilidad. La corrección AICA Rev 2 se incluye, validada específicamente en SGGG." | Add-Content -LiteralPath "$notes" -Encoding UTF8
+          } else {
+            "Gameplay offline validado; la conectividad online/DCNet continúa siendo experimental. Incluye el nuevo runtime AICA; corrección de repetición comprobada específicamente en SGGG." | Add-Content -LiteralPath "$notes" -Encoding UTF8
+          }
+          @"
+
+          ## Uso
+          1. Extraer por completo $env:ASSET.
+          2. Ejecutar DreamcastRecompiled.exe: **se conserva el launcher original**.
+          3. Seleccionar su propia imagen CDI/GDI compatible de $env:TITLE.
+
+          No se incluyen archivos de juegos, discos ni BIOS. Compatibilidad limitada a las revisiones probadas.
+
+          **Versión inicial archivada:** https://github.com/$repo/releases/tag/$archiveTag
+
+          La release general DreamcastRecompiled v1.2 Stable permanece sin cambios.
+          "@ | Add-Content -LiteralPath "$notes" -Encoding UTF8
+          gh release edit "$tag" --repo "$repo" --title "DreamcastRecompiled — $env:TITLE Direct Portable v1.2 Rev 2" --notes-file "$notes"
+          if ($LASTEXITCODE -ne 0) { throw "Could not update release notes for $tag" }
+
+          # Final public API round-trip: verify the original download URL now
+          # serves exactly the tested Rev 2 bytes.
+          gh release download "$tag" --repo "$repo" --pattern "$env:ASSET" --dir "$check"
+          if ($LASTEXITCODE -ne 0) { throw "Cannot re-download published $env:GAME ZIP" }
+          $publicHash = (Get-FileHash (Join-Path $check "$env:ASSET") -Algorithm SHA256).Hash.ToLower()
+          if ($publicHash -ne $env:NEW_SHA) { throw "PUBLIC ZIP HASH MISMATCH: $publicHash" }
+          Write-Host "[PUBLISHED] $env:TITLE | $tag | $env:ASSET | $publicHash"
