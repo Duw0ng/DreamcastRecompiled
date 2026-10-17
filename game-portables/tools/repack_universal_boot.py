@@ -29,7 +29,7 @@ GAMES = {
         "sha256": "1f31d4cd04853ad833edc7047ae218489638bc92991abdafc0852929025ef6db",
     },
     "MR_DRILLER": {
-        "title": "Mr. Driller", "ui": "Mr. Driller DC",
+        "title": "Mr. Driller", "ui": "Mr. Driller DC", "manifest_id": "MR.DRILLER",
         "sha256": "af2e89c9a145462fbfdad017fc706ac927792359270b7a160a22587df60d57d9",
     },
 }
@@ -118,10 +118,11 @@ def build(source: pathlib.Path, runtime: pathlib.Path, out_dir: pathlib.Path, ga
         data = {name: zin.read(name) for name in names}
 
     manifest = read_manifest(data["portable_manifest.txt"])
-    if manifest.get("GAME") != game or manifest.get("GUEST_ABI") != "1":
+    original_game_id = info.get("manifest_id", game)
+    if manifest.get("GAME") != original_game_id or manifest.get("GUEST_ABI") != "1":
         raise ValueError(
             f"Wrong module identity or guest ABI: GAME={manifest.get('GAME')!r}; "
-            f"GUEST_ABI={manifest.get('GUEST_ABI')!r}; expected={game!r}/'1'"
+            f"GUEST_ABI={manifest.get('GUEST_ABI')!r}; expected={original_game_id!r}/'1'"
         )
 
     old_runtime = data["bin/DreamcastRuntime.dll"]
@@ -179,7 +180,7 @@ def build(source: pathlib.Path, runtime: pathlib.Path, out_dir: pathlib.Path, ga
             raise ValueError("Game module changed")
         if verify.read("DreamcastRecompiled.exe") != new_launcher:
             raise ValueError("Original GUI mutated")
-        if read_manifest(verify.read("portable_manifest.txt"))["GAME"] != game:
+        if read_manifest(verify.read("portable_manifest.txt"))["GAME"] != original_game_id:
             raise ValueError("Game identity changed")
     digest = sha(target.read_bytes())
     target.with_suffix(target.suffix + ".sha256").write_text(
