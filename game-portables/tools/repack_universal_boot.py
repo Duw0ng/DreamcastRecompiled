@@ -57,9 +57,9 @@ def checksums_replace(data: bytes, changes: dict[str, tuple[str, str]]) -> bytes
     out = []
     for line in data.decode("utf-8-sig").splitlines(keepends=True):
         clean = line.rstrip("\r\n")
-        m = re.fullmatch(r"([0-9a-fA-F]{64})([ \t]+\\*?)(.+)", clean)
+        m = re.fullmatch(r"([0-9a-fA-F]{64})([ \t]+\*?)(.+)", clean)
         if m:
-            path = m.group(3).replace("\\\\", "/").lstrip("./")
+            path = m.group(3).replace("\\", "/").lstrip("./")
             change = changes.get(path)
             if change:
                 old, new = change
@@ -111,7 +111,7 @@ def build(source: pathlib.Path, runtime: pathlib.Path, out_dir: pathlib.Path, ga
             raise ValueError("Missing direct-portable files: " + str(REQUIRED-set(names)))
         for name in names:
             p = pathlib.PurePosixPath(name)
-            if p.is_absolute() or ".." in p.parts or "\\\\" in name or ":" in name:
+            if p.is_absolute() or ".." in p.parts or "\\" in name or ":" in name:
                 raise ValueError("Unsafe path: " + name)
             if p.suffix.lower() in MEDIA:
                 raise ValueError("A disc image must not be redistributed: " + name)
