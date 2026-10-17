@@ -133,6 +133,13 @@ if(BUILD_TESTING)
     target_link_libraries(dcr_aica_arm_bus_tests PRIVATE DreamcastRuntime)
     add_test(NAME dcr_aica_arm_bus_tests COMMAND dcr_aica_arm_bus_tests)
 
+    # Rev 2: prevent finished one-shot voices from restarting when an unrelated
+    # AICA slot executes the global KYONEX key strobe.
+    add_executable(dcr_aica_one_shot_keyon_tests tests_aica_one_shot_keyon.cpp)
+    target_include_directories(dcr_aica_one_shot_keyon_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_link_libraries(dcr_aica_one_shot_keyon_tests PRIVATE DreamcastRuntime)
+    add_test(NAME dcr_aica_one_shot_keyon_tests COMMAND dcr_aica_one_shot_keyon_tests)
+
     add_executable(dcr_portable_ipbin_stage_tests tests_portable_ipbin_stage.cpp)
     target_include_directories(dcr_portable_ipbin_stage_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_link_libraries(dcr_portable_ipbin_stage_tests PRIVATE DreamcastRuntime)
