@@ -1,20 +1,19 @@
-# DreamcastRecompiled — Segagaga (SGGG) Direct Portable V1.2 (Experimental)
+# DreamcastRecompiled — Segagaga (SGGG) Direct Portable v1.2 Rev 2
 
-**Windows x64 — standalone, game-specific SH-4 recompilation compatibility preview.**
+**Windows x64 · game-specific native SH-4 module · original standalone launcher.**
 
-Contains a title-specific precompiled SH-4 native module, portable host runtime and hardware plugins. The minimal `DreamcastRecompiled.exe` launches without an additional Python or C++ build setup.
+## Validated changes (17 October 2026)
 
-## Test status
+- **Boot fixed:** raw CDI tracks can select `scrambled` even when the older portable frontend requested `plain`; the 32 KiB `IP.BIN` is preserved.
+- **AICA audio fixed for menu navigation:** when a non-looping one-shot voice completes, its `KYONB` latch is cleared. Subsequent global `KYONEX` commands for unrelated effects do not replay already-finished menu sounds.
+- **Maintainer gameplay confirmation:** the repeated sound on menu option transitions disappeared. This improved SGGG's playability, but is not a claim that all game audio is perfect.
+- **Game name and UI:** original launcher, input and VMU controls kept; inherited visible ChuChu Rocket! text replaced with SGGG-specific naming. No need to recompile SH-4 per launch.
+- **Packaging:** Windows x64 CI builds, AICA and bootstrap tests, verified SHA-256 and title-specific portable guest ABI.
 
-- Partial SGGG execution was previously observed.
-- **Audio defects** and compatibility issues are still outstanding.
-- This is an experimental testing release, **not** a full-playability or stable-60-FPS claim.
+Official downloadable package: [SGGG Direct Portable v1.2 Rev 2](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sggg-direct-v1.2)
 
-## How to try
+The original direct-portable v1.2 binary is preserved in [the historical archive](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sggg-direct-v1.2-initial-archive). The general v1.2 Stable release is unchanged.
 
-1. Extract the full ZIP.
-2. Start `DreamcastRecompiled.exe` on Windows x64.
-3. Select your own compatible SGGG CDI/GDI.
-4. Report your boot progress, sound/graphics issues, Windows/CPU/GPU, and logs.
+## Usage and limitations
 
-**No game disc image or Sega firmware is included.** This independent project is unaffiliated with Sega; commercial game-derived material remains subject to third-party rights.
+Extract the full ZIP on Windows x64, start `DreamcastRecompiled.exe`, and select a compatible user-supplied SGGG CDI/GDI image. The ZIP does not include a game disc or Sega firmware. Other untested disc revisions and compatibility paths may still exhibit bugs.
