@@ -23,6 +23,38 @@ bin/
 
 The included game module is only for the matching title; do not rename it to run other games. The user must select an authorized, compatible game image. For ChuChu Rocket!, MK-51049 V1.007 / CHU_CHU_ROCKET_KAL is the validated disc identity.
 
+
+## Universal boot-stage repair (experimental, v1.2)
+
+The original compact GUI is kept, including controllers and VMU options. Some
+older direct-portable frontends request `--commercial-boot-stage=plain` even
+when the user's CDI uses raw-sector geometry. The shared **runtime** now handles
+that situation generically: a combined IP.BIN + executable uses the boot
+track's `sector_size` and `user_offset` to select the correct scrambled
+executable staging. The first **32768 bytes of IP.BIN are never scrambled**.
+Cooked 2048-byte sector images continue to use plain staging.
+
+A separate, experimental Windows CI workflow
+[validates and repacks all four published direct portables](../.github/workflows/test-universal-game-portables.yml)
+with the same runtime, preserving each title's SH-4 DLL, plugins and all
+other source files. It pins each source release SHA-256, checks guest identity,
+recomputes included checksum manifests after approved binary modifications,
+and publishes *workflow test artifacts only*, never overwriting the stable
+v1.2 release.
+
+The historical Go launchers embed display literals such as `ChuChu Rocket!`.
+To avoid discarding the original working GUI, this workflow makes a
+**fixed-width, equal-byte-count display-text patch** in those exact known Go
+string constants for SGGG, Sega Tetris, and Mr. Driller. Internal game-ID
+constants and binaries that depend on them are intentionally left alone.
+Newly written launcher sources should instead use each
+`portable_manifest.txt` `TITLE` / `GAME` fields, with no baked-in
+`CHUCHU_ROCKET` default for unrelated products.
+
+Do not assume one disc's geometry, launcher, compiled SH-4 module or AICA
+behavior applies to another game. Each ZIP still needs a boot and UI test on
+Windows with an authorized game image before publication.
+
 ## Reuse for future titles
 
 Add a JSON file to `game-portables/direct-releases/` and copy the fields from [the ChuChu Rocket! manifest](direct-releases/chuchu-rocket-direct-v1.2.json). Pin the original ZIP SHA-256, specify the source and destination file mapping and a unique target release tag. The direct packager reconstructs the target archive with Go's standard ZIP writer, verifies the game ID and **requires the exact expected resulting SHA-256**. It will not attach disc images. [GitHub Actions](../.github/workflows/publish-direct-portables.yml) downloads the pinned source release, verifies, repacks and creates the standalone release with a checksum file.
