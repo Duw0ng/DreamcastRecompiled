@@ -43,16 +43,16 @@ jobs:
       matrix:
         include:
           - game: CHUCHU_ROCKET
-            tag: portable-chuchu-rocket-direct-v1.2
+            tag: portable-chuchu-rocket-direct-v1.2-initial-archive
             asset: CHUCHU_ROCKET_portable_latest.zip
           - game: SGGG
-            tag: portable-sggg-direct-v1.2
+            tag: portable-sggg-direct-v1.2-initial-archive
             asset: SGGG_portable_latest.zip
           - game: SEGA_TETRIS
-            tag: portable-sega-tetris-direct-v1.2
+            tag: portable-sega-tetris-direct-v1.2-initial-archive
             asset: SEGA_TETRIS_portable_latest.zip
           - game: MR_DRILLER
-            tag: portable-mr-driller-direct-v1.2
+            tag: portable-mr-driller-direct-v1.2-initial-archive
             asset: MR_DRILLER_portable_latest.zip
     steps:
       - uses: actions/checkout@v4
