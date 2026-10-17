@@ -1,11 +1,10 @@
-name: DCR v1.2 Rev 1 SGGG corrected portable
+name: DCR v1.2 Rev 1 SGGG original launcher restored
 on:
   workflow_dispatch:
   push:
     branches: [dcr-v1.2-rev1-aica-foundation]
     paths:
       - 'runtime/**'
-      - 'game-portables/tools/sggg_direct_launcher/**'
       - '.github/workflows/dcr-rev1-sggg-audio.yml'
 
 jobs:
@@ -16,32 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
-
-      - name: Compile revised standalone SGGG launcher (Windows x64)
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $env:CGO_ENABLED = '0'
-          $env:GOOS = 'windows'
-          $env:GOARCH = 'amd64'
-          go build -trimpath '-ldflags=-s -w -H=windowsgui' -o SGGG_Rev1_Launcher.exe ./game-portables/tools/sggg_direct_launcher/main_windows.go
-          if ($LASTEXITCODE -ne 0) { throw 'SGGG launcher compile failed' }
-
-      - name: Build Rev 1 runtime and AICA memory tests (Windows x64)
+      - name: Build Rev 1 runtime and verify boot + AICA regressions
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           cmake -S runtime -B build-rev1-win -A x64 -DDCR_HOST_AVX2=OFF
-          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
-          cmake --build build-rev1-win --config Release --target DreamcastRuntime dcr_aica_arm_bus_tests --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
+          cmake --build build-rev1-win --config Release --target DreamcastRuntime dcr_portable_ipbin_stage_tests dcr_aica_arm_bus_tests --parallel 2
           if ($LASTEXITCODE -ne 0) { throw 'Runtime compilation failed' }
-          ctest --test-dir build-rev1-win -C Release --output-on-failure -R dcr_aica_arm_bus_tests
-          if ($LASTEXITCODE -ne 0) { throw 'ARM7 memory regression failed' }
+          ctest --test-dir build-rev1-win -C Release --output-on-failure -R 'dcr_portable_ipbin_stage_tests|dcr_aica_arm_bus_tests'
+          if ($LASTEXITCODE -ne 0) { throw 'AICA/boot regression failed' }
 
-      - name: Repack SGGG with auto/auto boot mode and Rev 1 runtime
+      - name: Repack original SGGG portable without replacing the launcher
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -49,60 +34,66 @@ jobs:
           $release = 'https://github.com/Duw0ng/DreamcastRecompiled/releases/download/portable-sggg-direct-v1.2/SGGG_portable_latest.zip'
           $original = Join-Path $env:RUNNER_TEMP 'SGGG_portable_latest.zip'
           Invoke-WebRequest -Uri $release -OutFile $original
-          $expectedHash = 'cff571dce69468a62adff870242253de998b53e169b930f49a7810ec7ed5dca9'
-          if ((Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash.ToLower() -ne $expectedHash) {
-            throw 'Official SGGG portable SHA256 mismatch'
+          $expectedSource = 'cff571dce69468a62adff870242253de998b53e169b930f49a7810ec7ed5dca9'
+          if ((Get-FileHash $original -Algorithm SHA256).Hash.ToLower() -ne $expectedSource) {
+            throw 'Original SGGG portable ZIP checksum changed unexpectedly'
           }
-          $stage = Join-Path $env:RUNNER_TEMP 'dcr-rev1-sggg-fixed'
+          $stage = Join-Path $env:RUNNER_TEMP 'dcr-rev1-sggg-original-launcher'
           Expand-Archive -LiteralPath $original -DestinationPath $stage -Force
-          $native = Join-Path $PWD 'build-rev1-win/Release/DreamcastRuntime.dll'
-          $destinations = @(Get-ChildItem -LiteralPath $stage -Recurse -File -Filter 'DreamcastRuntime.dll')
-          if ($destinations.Count -ne 1) { throw 'Unexpected DreamcastRuntime.dll layout' }
-          Copy-Item -LiteralPath $native -Destination $destinations[0].FullName -Force
-          if ((Get-FileHash $native -Algorithm SHA256).Hash -ne (Get-FileHash $destinations[0].FullName -Algorithm SHA256).Hash) {
-            throw 'Runtime DLL replacement SHA256 mismatch'
-          }
+
+          # Leave the original interactive Go launcher completely untouched.
           $launcher = Join-Path $stage 'DreamcastRecompiled.exe'
-          if (-not (Test-Path $launcher)) { throw 'Original SGGG launcher missing' }
-          Copy-Item -LiteralPath (Join-Path $PWD 'SGGG_Rev1_Launcher.exe') -Destination $launcher -Force
+          $expectedLauncher = 'bc99c08192a8633686494b9576008f9c71c7a8c98c133476949c523a4bf07441'
+          if ((Get-FileHash $launcher -Algorithm SHA256).Hash.ToLower() -ne $expectedLauncher) {
+            throw 'Original portable launcher SHA256 mismatch'
+          }
+          $originalGuestHash = (Get-FileHash (Join-Path $stage 'bin/dcr_game_module.dll') -Algorithm SHA256).Hash
+          $newRuntime = Join-Path $PWD 'build-rev1-win/Release/DreamcastRuntime.dll'
+          $oldRuntime = Join-Path $stage 'bin/DreamcastRuntime.dll'
+          if (-not (Test-Path $oldRuntime)) { throw 'Runtime DLL missing' }
+          Copy-Item -LiteralPath $newRuntime -Destination $oldRuntime -Force
+          if ((Get-FileHash $newRuntime -Algorithm SHA256).Hash -ne (Get-FileHash $oldRuntime -Algorithm SHA256).Hash) {
+            throw 'Runtime DLL copy verification failed'
+          }
+          if ((Get-FileHash (Join-Path $stage 'bin/dcr_game_module.dll') -Algorithm SHA256).Hash -ne $originalGuestHash) {
+            throw 'Precompiled SGGG SH-4 guest changed'
+          }
+          if ((Get-FileHash $launcher -Algorithm SHA256).Hash.ToLower() -ne $expectedLauncher) {
+            throw 'Launcher altered during packaging'
+          }
+
           @'
-          DreamcastRecompiled v1.2 Rev 1 - SGGG FIXED BOOT (Windows x64)
+          DreamcastRecompiled v1.2 Rev 1 - SGGG ORIGINAL LAUNCHER RESTORED
 
-          1. Extract ALL files to a new folder.
-          2. Launch DreamcastRecompiled.exe and select your SGGG.cdi image.
-          3. Logs are saved in SGGG_LOGS/<timestamp>/session.log.
+          This ZIP includes EXACTLY the same DreamcastRecompiled.exe (GUI and
+          features) as the published SGGG v1.2 portable.
+          Do not use the replacement Go frontend from an earlier test ZIP.
 
-          Verified user boot combination:
-              dc_boot_prepare.exe --mode=auto
-              dreamcast_program.exe --commercial-boot-stage=auto
-          This lets the runtime select scrambled from the image's real track geometry.
-          It does not scramble the 32768-byte IP.BIN header.
+          Fixed in bin/DreamcastRuntime.dll:
+          On a portable combined IP.BIN + executable, when the original launcher
+          requests plain and the boot track uses raw-sector geometry, stage the
+          executable scrambled instead; NEVER scramble the 32768-byte IP.BIN.
+          This matches the proven auto/auto diagnostic boot mode.
+          No unsupported --gdrom-trace option is injected.
 
-          The SH-4 game module and other plugins are the original precompiled
-          SGGG v1.2 files. Only the frontend and AICA Rev 1 runtime DLL differ.
-          Native ARM7 JIT is NOT implemented; audio regression testing is pending.
-          No SGGG disc image or console firmware is included.
-          '@ | Set-Content -LiteralPath (Join-Path $stage 'README_TESTER.txt') -Encoding UTF8
-          'Boot prepare: auto; runtime stage: auto (auto-select scrambled where required)' |
-            Set-Content -LiteralPath (Join-Path $stage 'DCRV1.2_Rev1_SGGG_BOOT_MODE.txt') -Encoding UTF8
+          Keep the original ZIP layout and the usual UI launch process.
+          Experimental AICA Rev 1, not a stable release or an ARM7 native JIT.
+          No game disc image or console firmware included.
+          '@ | Set-Content -LiteralPath (Join-Path $stage 'REV1_SGGG_BOOT_FIX.txt') -Encoding UTF8
+          $out = Join-Path $PWD 'DCRV1.2_Rev1_SGGG_ORIGINAL_LAUNCHER_FIXED_WIN64.zip'
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $out -CompressionLevel Optimal
+          $hash = (Get-FileHash $out -Algorithm SHA256).Hash
+          "$hash  DCRV1.2_Rev1_SGGG_ORIGINAL_LAUNCHER_FIXED_WIN64.zip" |
+            Set-Content -LiteralPath "$out.sha256" -Encoding ascii
+          Write-Host ('Original launcher restored: SHA256=' + $expectedLauncher)
+          Write-Host ('Final portable checksum: SHA256=' + $hash)
 
-          $check = Start-Process -FilePath $launcher -ArgumentList '--self-check' -PassThru -Wait
-          if ($check.ExitCode -ne 0) { throw ('Standalone ZIP self-check failed: ' + $check.ExitCode) }
-
-          $output = Join-Path $PWD 'DCRV1.2_Rev1_SGGG_FIXED_BOOT_WIN64.zip'
-          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $output -CompressionLevel Optimal
-          if (-not (Test-Path $output)) { throw 'ZIP missing' }
-          $sha = (Get-FileHash $output -Algorithm SHA256).Hash
-          "$sha  DCRV1.2_Rev1_SGGG_FIXED_BOOT_WIN64.zip" |
-            Set-Content -LiteralPath "$output.sha256" -Encoding ascii
-          Write-Host ('Built ZIP SHA256=' + $sha)
-
-      - name: Upload SGGG Rev 1 corrected portable
+      - name: Upload original-launcher SGGG Rev 1 ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: DCRV1.2_Rev1_SGGG_FIXED_BOOT_WIN64
+          name: DCRV1.2_Rev1_SGGG_ORIGINAL_LAUNCHER_FIXED_WIN64
           path: |
-            DCRV1.2_Rev1_SGGG_FIXED_BOOT_WIN64.zip
-            DCRV1.2_Rev1_SGGG_FIXED_BOOT_WIN64.zip.sha256
+            DCRV1.2_Rev1_SGGG_ORIGINAL_LAUNCHER_FIXED_WIN64.zip
+            DCRV1.2_Rev1_SGGG_ORIGINAL_LAUNCHER_FIXED_WIN64.zip.sha256
           if-no-files-found: error
           retention-days: 14
