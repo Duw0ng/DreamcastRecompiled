@@ -15,7 +15,7 @@ namespace {
 void check(bool pass, const char* what) {
     if (!pass) throw std::runtime_error(what);
 }
-void run_case(bool combined, bool scramble) {
+void run_case(bool combined, bool scramble, bool raw_track = false) {
     constexpr std::size_t kIpbin = 0x8000u;
     constexpr std::size_t kExe = 16384u;
     const auto base = combined ? 0x8C008000u : 0x8C010000u;
@@ -39,6 +39,14 @@ void run_case(bool combined, bool scramble) {
     DCRuntime runtime;
     runtime.commercial_boot_active = true;
     runtime.commercial_boot_stage_mode = scramble ? 2u : 1u;
+    if (raw_track) {
+        GDDiscTrack track{};
+        track.sector_size = 2336u;
+        track.user_offset = 8u;
+        runtime.gd_tracks.push_back(track);
+        runtime.gd_boot_track = 0u;
+        runtime.gd_disc_ready = true;
+    }
     SH4Context ctx{};
     dc_setup_commercial_boot(ctx, runtime);
     const std::size_t stage_off = (base & 0x1FFFFFFFu) - DCRuntime::kMainRamPhysicalBase;
@@ -51,10 +59,13 @@ void run_case(bool combined, bool scramble) {
     }
     const auto exe_same = std::equal(boot.begin() + (combined ? kIpbin : 0u),
                                      boot.end(), runtime.main_ram.begin() + exe_off);
-    check(scramble ? !exe_same : exe_same, "executable scrambling/plain condition mismatch");
+    const bool expect_scrambled = scramble || (combined && raw_track);
+    check(expect_scrambled ? !exe_same : exe_same,
+          "executable scrambling/plain portable correction mismatch");
     std::filesystem::remove(path);
     std::cout << "[PASS] combined=" << combined << " scrambled=" << scramble
               << " IP.BIN=" << (combined ? "preserved" : "not present")
+              << " raw-track=" << raw_track
               << " exe-size=" << runtime.commercial_boot_image_size << "\n";
 }
 }
@@ -64,7 +75,12 @@ int main() {
         run_case(true, false);
         run_case(false, true);
         run_case(false, false);
-        std::cout << "[PASS] portable retail IP.BIN split staging: 4/4\n";
+        // Original Go portable forces plain; a raw CDI track with combined
+        // IP.BIN must instead apply scrambled to executable bytes only.
+        run_case(true, false, true);
+        // The override must NOT trigger on an executable-only image.
+        run_case(false, false, true);
+        std::cout << "[PASS] portable retail IP.BIN split staging: 6/6\n";
     } catch (const std::exception& e) {
         std::cerr << "[FAIL] " << e.what() << '\n';
         return 1;
