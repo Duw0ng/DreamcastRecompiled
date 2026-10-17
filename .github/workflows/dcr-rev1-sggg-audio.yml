@@ -1,0 +1,78 @@
+name: DCR v1.2 Rev 1 SGGG Windows audio test
+on:
+  workflow_dispatch:
+  push:
+    branches: [dcr-v1.2-rev1-aica-foundation]
+    paths:
+      - 'runtime/**'
+      - 'include/dcrecomp/cpp_emitter.hpp'
+      - '.github/workflows/dcr-rev1-sggg-audio.yml'
+
+jobs:
+  sggg-portable:
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build DCR runtime and AICA bus regression test (Win64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S runtime -B build-rev1-win -A x64 -DDCR_HOST_AVX2=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+          cmake --build build-rev1-win --config Release --target DreamcastRuntime dcr_aica_arm_bus_tests --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Windows runtime compilation failed' }
+          ctest --test-dir build-rev1-win -C Release --output-on-failure -R dcr_aica_arm_bus_tests
+          if ($LASTEXITCODE -ne 0) { throw 'AICA ARM7 bus test failed' }
+
+      - name: Repack official SGGG portable with Rev 1 runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $release = 'https://github.com/Duw0ng/DreamcastRecompiled/releases/download/portable-sggg-direct-v1.2/SGGG_portable_latest.zip'
+          $original = Join-Path $env:RUNNER_TEMP 'SGGG_portable_latest.zip'
+          Invoke-WebRequest -Uri $release -OutFile $original
+          $stage = Join-Path $env:RUNNER_TEMP 'dcr-rev1-sggg'
+          Expand-Archive -LiteralPath $original -DestinationPath $stage -Force
+          $native = Join-Path $PWD 'build-rev1-win/Release/DreamcastRuntime.dll'
+          if (-not (Test-Path -LiteralPath $native)) { throw 'Compiled DreamcastRuntime.dll missing' }
+          $destinations = @(Get-ChildItem -LiteralPath $stage -Recurse -File -Filter 'DreamcastRuntime.dll')
+          if ($destinations.Count -lt 1) { throw 'Official SGGG portable does not contain a compatible runtime DLL' }
+          foreach ($entry in $destinations) {
+            Write-Host ('Replacing runtime: ' + $entry.FullName)
+            Copy-Item -LiteralPath $native -Destination $entry.FullName -Force
+            if ((Get-FileHash -LiteralPath $entry.FullName -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash) {
+              throw 'DLL replacement SHA256 mismatch'
+            }
+          }
+          $launcher = @(Get-ChildItem -LiteralPath $stage -File -Recurse -Filter 'DreamcastRecompiled.exe')
+          if ($launcher.Count -lt 1) { throw 'DreamcastRecompiled.exe not found in the portable' }
+          @'
+          DreamcastRecompiled v1.2 Rev 1 — SGGG AICA diagnostic
+          Experimental package, NOT a stable update.
+          Based on the official SGGG portable v1.2, with only DreamcastRuntime.dll replaced.
+          ARM7 still runs interpreted (native ARM7 recompiler is NOT implemented yet).
+          Changes: AICA ARM7 2 MiB RAM mirrors and mirrored MMIO mapping.
+          Please test repeated/missing audio, exact scene, number of repetitions, log and reproducibility.
+          No CDI/GDI or console firmware is included; select your own compatible game.
+          '@ | Set-Content -LiteralPath (Join-Path $stage 'DCRV1.2_Rev1_SGGG_AUDIO_TEST.txt') -Encoding UTF8
+          $output = Join-Path $PWD 'DCRV1.2_Rev1_SGGG_AICA_TEST_WIN64.zip'
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $output -CompressionLevel Optimal
+          if (-not (Test-Path $output)) { throw 'Audio test ZIP missing' }
+          $hash = (Get-FileHash -LiteralPath $output -Algorithm SHA256).Hash
+          "$hash *DCRV1.2_Rev1_SGGG_AICA_TEST_WIN64.zip" | Set-Content -LiteralPath "$output.sha256" -Encoding ascii
+          Write-Host ('ZIP: ' + $output)
+          Write-Host ('SHA256: ' + $hash)
+
+      - name: Upload Win64 SGGG experimental ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: DCRV1.2_Rev1_SGGG_AICA_TEST_WIN64
+          path: |
+            DCRV1.2_Rev1_SGGG_AICA_TEST_WIN64.zip
+            DCRV1.2_Rev1_SGGG_AICA_TEST_WIN64.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
