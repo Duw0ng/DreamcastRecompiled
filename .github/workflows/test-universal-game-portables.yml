@@ -1,0 +1,98 @@
+name: Universal game-portable boot and title validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dcr-v1.2-universal-game-portable-boot]
+    paths:
+      - 'runtime/**'
+      - 'game-portables/tools/repack_universal_boot.py'
+      - '.github/workflows/test-universal-game-portables.yml'
+
+jobs:
+  universal-runtime:
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build runtime and regressions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S runtime -B build-portable -A x64 -DDCR_HOST_AVX2=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime configure failed' }
+          cmake --build build-portable --config Release --target DreamcastRuntime dcr_portable_ipbin_stage_tests dcr_aica_arm_bus_tests dcr_aica_one_shot_keyon_tests --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime compile failed' }
+          ctest --test-dir build-portable -C Release --output-on-failure -R 'dcr_portable_ipbin_stage_tests|dcr_aica_arm_bus_tests|dcr_aica_one_shot_keyon_tests'
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime regression tests failed' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dcr-v1.2-universal-runtime-win64
+          path: build-portable/Release/DreamcastRuntime.dll
+          if-no-files-found: error
+          retention-days: 14
+
+  repack:
+    needs: universal-runtime
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - game: CHUCHU_ROCKET
+            tag: portable-chuchu-rocket-direct-v1.2-initial-archive
+            asset: CHUCHU_ROCKET_portable_latest.zip
+          - game: SGGG
+            tag: portable-sggg-direct-v1.2-initial-archive
+            asset: SGGG_portable_latest.zip
+          - game: SEGA_TETRIS
+            tag: portable-sega-tetris-direct-v1.2-initial-archive
+            asset: SEGA_TETRIS_portable_latest.zip
+          - game: MR_DRILLER
+            tag: portable-mr-driller-direct-v1.2-initial-archive
+            asset: MR_DRILLER_portable_latest.zip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dcr-v1.2-universal-runtime-win64
+          path: runtime-bin
+      - name: Download pinned published direct portable
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ matrix.tag }}
+          RELEASE_ASSET: ${{ matrix.asset }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $url = "https://github.com/Duw0ng/DreamcastRecompiled/releases/download/$env:RELEASE_TAG/$env:RELEASE_ASSET"
+          Invoke-WebRequest -Uri $url -OutFile "source-$env:RELEASE_ASSET"
+          if (-not (Test-Path "source-$env:RELEASE_ASSET")) { throw 'Pinned portable not downloaded' }
+      - name: Fix universal boot and per-game display text
+        shell: pwsh
+        env:
+          GAME: ${{ matrix.game }}
+          RELEASE_ASSET: ${{ matrix.asset }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python game-portables/tools/repack_universal_boot.py --game "$env:GAME" --source "source-$env:RELEASE_ASSET" --runtime "runtime-bin/DreamcastRuntime.dll" --output "dist"
+          if ($LASTEXITCODE -ne 0) { throw 'Portable validation or packaging failed' }
+          $zip = "dist/DCRV1.2_${env:GAME}_UNIVERSAL_BOOT_TEST_WIN64.zip"
+          if (-not (Test-Path $zip)) { throw 'ZIP missing' }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          if ((Get-Content "$zip.sha256" -Raw) -notmatch [regex]::Escape($hash)) {
+            throw 'Checksum mismatch after packaging'
+          }
+          Write-Host "Verified $env:GAME universal portable: $hash"
+      - name: Upload title-specific experimental ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: DCRV1.2_${{ matrix.game }}_UNIVERSAL_BOOT_TEST_WIN64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
