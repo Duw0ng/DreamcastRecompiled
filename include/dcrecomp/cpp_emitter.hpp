@@ -17,6 +17,8 @@ struct CppEmitOptions {
     bool emit_runtime{true};
     bool emit_build_files{true};
     bool emit_native_runner{true};
+    // Keep the historical embedded image by default. Required by emit_image_cpp.
+    bool embed_raw_image{true};
 };
 
 struct CppEmitResult {
