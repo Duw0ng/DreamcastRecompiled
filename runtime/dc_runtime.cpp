@@ -1,4 +1,5 @@
 #include "dc_runtime.hpp"
+#include "dcr_aica_arm_memory.hpp"
 #include "dc_sh4_interp.hpp"
 #include "dcr_plugin_api_v2.hpp"
 #include "dcr_plugin_api.hpp"
@@ -2425,61 +2426,76 @@ public:
     explicit AICAARM7Bus(DCRuntime& runtime) : runtime_(runtime) {}
 
     std::uint8_t read8(std::uint32_t address) override {
-        if (address < runtime_.aica_ram.size()) return runtime_.aica_ram[address];
+        std::uint8_t value = 0u;
+        if (ram_view().read8(address, value)) return value;
         const auto word = read_reg_word(address);
         return static_cast<std::uint8_t>(word >> ((address & 3u) * 8u));
     }
 
     std::uint16_t read16(std::uint32_t address) override {
-        if (address + 2u <= runtime_.aica_ram.size())
-            return static_cast<std::uint16_t>(runtime_.aica_ram[address]) |
-                   static_cast<std::uint16_t>(static_cast<std::uint16_t>(runtime_.aica_ram[address + 1u]) << 8);
-        if ((address & 3u) == 3u) return static_cast<std::uint16_t>(read8(address)) | static_cast<std::uint16_t>(read8(address + 1u) << 8);
+        std::uint16_t value = 0u;
+        if (ram_view().read16(address, value)) return value;
+        if ((address & 3u) == 3u)
+            return static_cast<std::uint16_t>(read8(address)) |
+                   static_cast<std::uint16_t>(read8(address + 1u) << 8u);
         return static_cast<std::uint16_t>(read_reg_word(address) >> ((address & 2u) * 8u));
     }
 
     std::uint32_t read32(std::uint32_t address) override {
-        if (address + 4u <= runtime_.aica_ram.size()) return load_le32(runtime_.aica_ram.data() + address);
+        std::uint32_t value = 0u;
+        if (ram_view().read32(address, value)) return value;
         if ((address & 3u) != 0u)
             return static_cast<std::uint32_t>(read8(address)) |
-                   (static_cast<std::uint32_t>(read8(address + 1u)) << 8) |
-                   (static_cast<std::uint32_t>(read8(address + 2u)) << 16) |
-                   (static_cast<std::uint32_t>(read8(address + 3u)) << 24);
+                   (static_cast<std::uint32_t>(read8(address + 1u)) << 8u) |
+                   (static_cast<std::uint32_t>(read8(address + 2u)) << 16u) |
+                   (static_cast<std::uint32_t>(read8(address + 3u)) << 24u);
         return read_reg_word(address);
     }
 
     void write8(std::uint32_t address, std::uint8_t value) override {
-        if (address < runtime_.aica_ram.size()) { runtime_.aica_ram[address] = value; return; }
+        if (ram_view().write8(address, value)) return;
         const std::uint32_t shift = (address & 3u) * 8u;
         const std::uint32_t mask = 0xFFu << shift;
-        write_reg_word(address, (read_reg_word(address) & ~mask) | (static_cast<std::uint32_t>(value) << shift));
+        write_reg_word(address, (read_reg_word(address) & ~mask) |
+                                    (static_cast<std::uint32_t>(value) << shift));
     }
 
     void write16(std::uint32_t address, std::uint16_t value) override {
-        if (address + 2u <= runtime_.aica_ram.size()) { store_le16(runtime_.aica_ram.data() + address, value); return; }
-        if ((address & 3u) == 3u) { write8(address, static_cast<std::uint8_t>(value)); write8(address + 1u, static_cast<std::uint8_t>(value >> 8)); return; }
+        if (ram_view().write16(address, value)) return;
+        if ((address & 3u) == 3u) {
+            write8(address, static_cast<std::uint8_t>(value));
+            write8(address + 1u, static_cast<std::uint8_t>(value >> 8u));
+            return;
+        }
         const std::uint32_t shift = (address & 2u) * 8u;
         const std::uint32_t mask = 0xFFFFu << shift;
-        write_reg_word(address, (read_reg_word(address) & ~mask) | (static_cast<std::uint32_t>(value) << shift));
+        write_reg_word(address, (read_reg_word(address) & ~mask) |
+                                    (static_cast<std::uint32_t>(value) << shift));
     }
 
     void write32(std::uint32_t address, std::uint32_t value) override {
-        if (address + 4u <= runtime_.aica_ram.size()) { store_le32(runtime_.aica_ram.data() + address, value); return; }
+        if (ram_view().write32(address, value)) return;
         if ((address & 3u) != 0u) {
-            for (unsigned i = 0; i < 4; ++i) write8(address + i, static_cast<std::uint8_t>(value >> (i * 8u)));
+            for (unsigned i = 0; i < 4; ++i)
+                write8(address + i, static_cast<std::uint8_t>(value >> (i * 8u)));
             return;
         }
         write_reg_word(address, value);
     }
 
 private:
+    AICAArmRamView ram_view() noexcept {
+        return AICAArmRamView(runtime_.aica_ram.data(), runtime_.aica_ram.size());
+    }
+
     std::uint32_t reg_offset(std::uint32_t address) const {
-        if (address < kAicaArmRegsBase || address >= kAicaArmRegsEnd) {
+        std::uint32_t offset = 0u;
+        if (!aica_arm_register_offset(address, offset)) {
             std::ostringstream out;
             out << "AICA ARM7 unmapped access @ 0x" << std::hex << std::uppercase << address;
             throw std::runtime_error(out.str());
         }
-        return (address - kAicaArmRegsBase) & ~3u;
+        return offset & ~3u;
     }
 
     std::uint32_t read_reg_word(std::uint32_t address) const {
