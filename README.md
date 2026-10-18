@@ -26,7 +26,7 @@ User-provided Dreamcast disc image
 ## V1.2 highlights
 
 - **Aqua graphical launcher:** library, settings, controllers, diagnostics, and multiple interface themes.
-- **Language support:** configurable English and Spanish UI; public project documentation is in English.
+- **Language support:** configurable English and Spanish UI. Public GitHub release descriptions and current documentation are in English; the Spanish in-app translation resources remain available.
 - **Portable Windows x64 launcher:** bundled Python 3.12 / Tk dependencies; no separately installed Python needed for the GUI.
 - **Native SH-4 game-module reuse:** supported precompiled game code can run without recompiling every launch; incremental generation and interpreter fallback remain available.
 - **Standalone VMU / AquaPet:** independent VMU window, foreground recovery and always-on-top handling. Includes the `ctypes.wintypes` packaging fix tested by the project maintainer.
@@ -59,14 +59,14 @@ These values come from the disc probe of the project's reference copy; a differe
 ## Getting started on Windows
 
 1. Obtain an authorized Windows x64 release/tester archive and extract it completely.
-2. Launch `DreamcastRecompiled.exe` (or `ABRIR_LAUNCHER.bat`). Keep `launcher/` and `_internal/` beside the executable.
+2. Launch `DreamcastRecompiled.exe`. From the source checkout, you can also use the English `OPEN_LAUNCHER.bat` entry point (which forwards to the original `ABRIR_LAUNCHER.bat`). Keep `launcher/` and `_internal/` beside the executable.
 3. In **Games**, select your own supported CDI disc image.
 4. For the validated ChuChu Rocket! native path, select the compatible `MK-51049 V1.007` disc. Its prepared SH-4 module avoids a new native compilation; the **CDI is still required**.
 5. Configure controller/audio/video options and launch. Capture a session log if the game fails.
 
 No Python installation is required for the packaged Aqua launcher. **Other games may require Visual Studio C++ Build Tools, CMake, and Windows SDK** for native code generation. Do not assume all games use the ChuChu fast path.
 
-**Standalone VMU:** open it from Aqua or with `ABRIR_LAUNCHER.bat --vmu`. Use **Open / Show VMU** if it is hidden behind another window.
+**Standalone VMU:** open it from Aqua or use `OPEN_LAUNCHER.bat --vmu` in the source checkout; the original `ABRIR_LAUNCHER.bat --vmu` remains supported. Use **Open / Show VMU** if it is hidden behind another window.
 
 **Advanced developer runner:** `scripts\windows\run_game.bat "C:\Games\example.cdi"`.
 
