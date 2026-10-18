@@ -4,6 +4,7 @@ on:
     branches: [english-first-github-content-v1.2]
     paths:
       - '.github/workflows/translate-english-docs.yml'
+      - 'tools/translate_github_docs.py'
   workflow_dispatch:
 jobs:
   translate:
