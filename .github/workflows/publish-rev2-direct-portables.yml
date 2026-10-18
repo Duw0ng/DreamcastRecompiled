@@ -139,53 +139,13 @@ jobs:
           gh release upload "$tag" "$newAsset" "$newChecksum" --repo "$repo" --clobber
           if ($LASTEXITCODE -ne 0) { throw "Could not upload Rev 2 ZIP to $tag" }
 
+          # Regenerate the same English release notes used by the current
+          # public v1.2 Rev 2 listings; never republish Spanish text.
           $notes = Join-Path $root 'rev2-notes.md'
-          @"
-          # $env:TITLE — DreamcastRecompiled v1.2 Rev 2
-
-          **Windows x64 | Portable recompilado | Actualizado: 17 octubre 2026**
-
-          El responsable del proyecto probó los cuatro portables nuevos y confirmó que funcionan con sus imágenes compatibles. La interfaz original y los módulos SH-4 específicos de cada juego permanecen; el inicio no necesita recompilación por cada ejecución.
-
-          ## Novedades de esta versión
-          - **Compatibilidad plain/scrambled universal:** los CDI con pistas físicas raw que requieren scrambled ya no quedan forzados al modo plain por launchers antiguos. La selección se hace en el runtime.
-          - **IP.BIN conservado:** los primeros 32 KiB se preservan exactamente.
-          - **Launcher original:** misma interfaz, funciones, mandos y VMU. Las etiquetas visuales que decían ChuChu Rocket! en otros portables fueron adaptadas a cada título. Los identificadores internos relevantes permanecen.
-          - **AICA Rev 2 incluida:** manejo corregido del fin de reproducción de sonidos no repetitivos para evitar reactivaciones erróneas al iniciar otro efecto.
-          - Binario SH-4 de cada juego y plugins originales conservados.
-
-          ## Estado de $env:TITLE
-          "@ | Set-Content -LiteralPath "$notes" -Encoding UTF8
-          if ($env:GAME -eq 'SGGG') {
-            @'
-
-          ### Corrección de audio comprobada en Segagaga
-          Se corrigió la repetición involuntaria de determinados efectos al moverse entre las opciones del menú. Una voz AICA one-shot ahora libera correctamente su bit KYONB al terminar, de modo que un KYONEX global para otro efecto no la reinicie por accidente.
-
-          **Validación:** el responsable del proyecto confirmó que la repetición desapareció y que esto mejora la jugabilidad de SGGG. Pueden subsistir otros problemas de audio, gráficos o compatibilidad.
-          '@ | Add-Content -LiteralPath "$notes" -Encoding UTF8
-          } elseif ($env:GAME -eq 'SEGA_TETRIS') {
-            "Gameplay, audio y gráficos probados; pueden persistir cierres ocasionales. La corrección AICA Rev 2 se incluye, pero su beneficio concreto se comprobó en SGGG." | Add-Content -LiteralPath "$notes" -Encoding UTF8
-          } elseif ($env:GAME -eq 'MR_DRILLER') {
-            "Gameplay probado; todavía pueden persistir errores gráficos en menús u otros problemas de compatibilidad. La corrección AICA Rev 2 se incluye, validada específicamente en SGGG." | Add-Content -LiteralPath "$notes" -Encoding UTF8
-          } else {
-            "Gameplay offline validado; la conectividad online/DCNet continúa siendo experimental. Incluye el nuevo runtime AICA; corrección de repetición comprobada específicamente en SGGG." | Add-Content -LiteralPath "$notes" -Encoding UTF8
-          }
-          @"
-
-          ## Uso
-          1. Extraer por completo $env:ASSET.
-          2. Ejecutar DreamcastRecompiled.exe: **se conserva el launcher original**.
-          3. Seleccionar su propia imagen CDI/GDI compatible de $env:TITLE.
-
-          No se incluyen archivos de juegos, discos ni BIOS. Compatibilidad limitada a las revisiones probadas.
-
-          **Versión inicial archivada:** https://github.com/$repo/releases/tag/$archiveTag
-
-          La release general DreamcastRecompiled v1.2 Stable permanece sin cambios.
-          "@ | Add-Content -LiteralPath "$notes" -Encoding UTF8
+          python game-portables/tools/english_release_notes.py --game "$env:GAME" --output "$notes"
+          if ($LASTEXITCODE -ne 0) { throw "English release notes generation failed" }
           gh release edit "$tag" --repo "$repo" --title "DreamcastRecompiled — $env:TITLE Direct Portable v1.2 Rev 2" --notes-file "$notes"
-          if ($LASTEXITCODE -ne 0) { throw "Could not update release notes for $tag" }
+          if ($LASTEXITCODE -ne 0) { throw "Could not update English release notes for $tag" }
 
           # Final public API round-trip: verify the original download URL now
           # serves exactly the tested Rev 2 bytes.
