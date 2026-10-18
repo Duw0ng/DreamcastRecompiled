@@ -1,9 +1,10 @@
 name: Publish English GitHub release descriptions
 on:
   push:
-    branches: [english-first-github-content-v1.2]
+    branches: [main]
     paths:
       - 'game-portables/tools/english_release_notes.py'
+      - 'RELEASE_NOTES_V1.2.md'
       - '.github/workflows/english-release-descriptions.yml'
   workflow_dispatch:
 
