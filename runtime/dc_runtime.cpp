@@ -283,6 +283,13 @@ struct Cpp38dHotPcState {
     std::uint32_t warmup_heartbeats{5u};
     std::uint32_t report_heartbeats{5u};
     std::uint64_t samples{};
+    // CT2-only opt-in snapshots, never part of the ABI1 guest-visible context.
+    bool ct2_callback_probe{};
+    std::uint64_t ct2_callback_samples{};
+    std::uint64_t ct2_callback_return_samples{};
+    std::uint64_t ct2_callback_flag_active{};
+    std::uint64_t ct2_callback_above_gate{};
+    std::unordered_map<std::uint32_t, std::uint64_t> ct2_callback_ptr{};
     std::unordered_map<std::uint32_t, std::uint64_t> ctx_pc{};
     std::unordered_map<std::uint32_t, std::uint64_t> current_pc{};
     std::unordered_map<std::uint32_t, std::uint64_t> pr{};
@@ -306,6 +313,8 @@ void cpp38d_hotpc_reset(DCRuntime& runtime) {
     const char* value = std::getenv("DCR_CPP38D_HOTPC");
     g_cpp38d_hotpc.enabled = value && !(value[0] == '0' || value[0] == 'n' || value[0] == 'N' ||
                                         value[0] == 'f' || value[0] == 'F');
+    const char* ct2_probe = std::getenv("DCR_CT2_CALLBACK_PROBE");
+    g_cpp38d_hotpc.ct2_callback_probe = ct2_probe && ct2_probe[0] == '1';
     g_cpp38d_hotpc.stride = cpp38d_env_u32("DCR_CPP38D_HOTPC_STRIDE", 2048u, 128u, 65536u);
     g_cpp38d_hotpc.countdown = g_cpp38d_hotpc.stride;
     g_cpp38d_hotpc.warmup_heartbeats = cpp38d_env_u32("DCR_CPP38D_HOTPC_WARMUP", 5u, 0u, 120u);
@@ -329,6 +338,31 @@ void cpp38d_hotpc_sample(SH4Context& ctx, DCRuntime& runtime) {
     ++state.ctx_pc[ctx.pc];
     ++state.current_pc[runtime.current_pc];
     ++state.pr[ctx.pr];
+
+    // Crazy Taxi 2 BOOT.DISC.BIN: the hot PC 0x8C157880 is the return site
+    // of the mutable indirect callback from sub_8C157720 (JSR @R2 at
+    // 0x8C15787C). The live callback is stored at 0x0C300B38 and its
+    // argument at +4. Snapshot the target and loop gates only when explicitly
+    // requested and only on the existing low-frequency HOTPC samples.
+    // NOTE: pointer is sampled AFTER a return, so it may have changed while
+    // the callback executed. This is not a callback invocation trace.
+    if (state.ct2_callback_probe &&
+        (ctx.pc == 0x8C157880u || ctx.pr == 0x8C157880u) &&
+        runtime.main_ram.size() >= 0x300C48u) {
+        const auto read32 = [&runtime](std::size_t offset) {
+            const auto* p = runtime.main_ram.data() + offset;
+            return static_cast<std::uint32_t>(p[0]) |
+                   (static_cast<std::uint32_t>(p[1]) << 8u) |
+                   (static_cast<std::uint32_t>(p[2]) << 16u) |
+                   (static_cast<std::uint32_t>(p[3]) << 24u);
+        };
+        ++state.ct2_callback_samples;
+        if (ctx.pc == 0x8C157880u) ++state.ct2_callback_return_samples;
+        ++state.ct2_callback_ptr[read32(0x300B38u)];
+        if (read32(0x300C44u) != 0u) ++state.ct2_callback_flag_active;
+        const std::uint32_t threshold = read32(0x300AF4u) + read32(0x300AF8u) + 1u;
+        if (read32(0x300C40u) > threshold) ++state.ct2_callback_above_gate;
+    }
 }
 
 static void cpp38d_print_hot_map(const char* label,
@@ -363,6 +397,15 @@ void cpp38d_hotpc_report(DCRuntime& runtime) {
     cpp38d_print_hot_map("func", state.current_pc, state.samples);
     cpp38d_print_hot_map("pr", state.pr, state.samples);
     std::cerr << "\n";
+    if (state.ct2_callback_probe) {
+        std::cerr << "[DCR CT2 CALLBACK] sampled=" << state.ct2_callback_samples
+                  << " return-pc=" << state.ct2_callback_return_samples
+                  << " flag-active=" << state.ct2_callback_flag_active
+                  << " above-gate=" << state.ct2_callback_above_gate
+                  << " (snapshot-after-call; callback may change during execution)";
+        cpp38d_print_hot_map("callback-ptr", state.ct2_callback_ptr, state.ct2_callback_samples);
+        std::cerr << "\n";
+    }
 }
 
 void spg_wait_ff_reset(DCRuntime& runtime) {
