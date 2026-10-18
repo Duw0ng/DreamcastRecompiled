@@ -1,0 +1,24 @@
+name: Check offline English translation model
+on:
+  push:
+    branches: [english-first-github-content-v1.2]
+    paths:
+      - '.github/workflows/offline-translation-check.yml'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test an isolated, local inference model for archived docs
+        run: |
+          python -m pip install -q 'transformers==4.44.2' sentencepiece sacremoses
+          python - <<'PY'
+          from transformers import MarianTokenizer, MarianMTModel
+          model='Helsinki-NLP/opus-mt-es-en'
+          t=MarianTokenizer.from_pretrained(model)
+          m=MarianMTModel.from_pretrained(model)
+          txt='La corrección evita repetir sonidos al cambiar opciones del menú. Se conservan los 32 KiB de IP.BIN.'
+          z=t([txt], return_tensors='pt', padding=True, truncation=True)
+          print('ENGLISH:',t.batch_decode(m.generate(**z, max_new_tokens=180), skip_special_tokens=True)[0])
+          PY
