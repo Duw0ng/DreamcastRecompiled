@@ -137,27 +137,27 @@ jobs:
           content = manifest.read_text(encoding='utf-8')
           anchor = '    private val COMMON_REQUIRED = setOf('
           addition = '''    // Normalize a TAR directory's one trailing separator; never weaken file validation.
-    fun archiveEntryPath(value: String, isDirectory: Boolean): String =
-        path(if (isDirectory && value.endsWith('/')) value.dropLast(1) else value)
-
-'''
+              fun archiveEntryPath(value: String, isDirectory: Boolean): String =
+                  path(if (isDirectory && value.endsWith('/')) value.dropLast(1) else value)
+          
+          '''
           assert content.count(anchor) == 1 and 'fun archiveEntryPath(' not in content, 'unexpected manifest layout'
           manifest.write_text(content.replace(anchor, addition + anchor), encoding='utf-8')
           tests = Path('app/src/test/java/com/droiddeck/launcher/gpu/SystemVulkanManifestTest.kt')
           content = tests.read_text(encoding='utf-8')
           anchor = '    @Test fun sidecarBindsProducerArtifactAndRequirements() {'
           addition = '''    @Test fun tarDirectoryNamesAreNormalizedWithoutWeakeningFilePaths() {
-        assertEquals("lib", SystemVulkanManifest.archiveEntryPath("lib/", true))
-        assertEquals("lib", SystemVulkanManifest.archiveEntryPath("lib", true))
-        assertEquals("lib/libhybris", SystemVulkanManifest.archiveEntryPath("lib/libhybris/", true))
-        assertEquals("lib/a.so", SystemVulkanManifest.archiveEntryPath("lib/a.so", false))
-        for (unsafe in listOf("../", "/tmp/", "lib//", "lib/./", "lib/../", "/")) {
-            assertTrue("reject $unsafe", runCatching { SystemVulkanManifest.archiveEntryPath(unsafe, true) }.isFailure)
-        }
-        assertTrue(runCatching { SystemVulkanManifest.archiveEntryPath("lib/", false) }.isFailure)
-    }
-
-'''
+                  assertEquals("lib", SystemVulkanManifest.archiveEntryPath("lib/", true))
+                  assertEquals("lib", SystemVulkanManifest.archiveEntryPath("lib", true))
+                  assertEquals("lib/libhybris", SystemVulkanManifest.archiveEntryPath("lib/libhybris/", true))
+                  assertEquals("lib/a.so", SystemVulkanManifest.archiveEntryPath("lib/a.so", false))
+                  for (unsafe in listOf("../", "/tmp/", "lib//", "lib/./", "lib/../", "/")) {
+                      assertTrue("reject $unsafe", runCatching { SystemVulkanManifest.archiveEntryPath(unsafe, true) }.isFailure)
+                  }
+                  assertTrue(runCatching { SystemVulkanManifest.archiveEntryPath("lib/", false) }.isFailure)
+              }
+          
+          '''
           assert content.count(anchor) == 1 and 'tarDirectoryNamesAreNormalizedWithoutWeakeningFilePaths' not in content
           tests.write_text(content.replace(anchor, addition + anchor), encoding='utf-8')
           print('Xclipse TAR directory fix applied')
