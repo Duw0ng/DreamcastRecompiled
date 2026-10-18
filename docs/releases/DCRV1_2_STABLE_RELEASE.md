@@ -1,18 +1,18 @@
 # DreamcastRecompiled V1.2 Stable Release — DCRV1.2
 
-Base: AQUA RC8 validada por el usuario (ChuChu Rocket! portable precompilado).
+Baseline: user-validated AQUA RC8, including the precompiled ChuChu Rocket! portable.
 
-- La marca pública, ventanas, títulos y empaquetado son DCRV1.2.
-- `games/CHUCHU_ROCKET/` conserva sus ejecutables, DLLs y checksums SHA-256.
-- `safe_guests/` sigue siendo el respaldo sin alteraciones.
-- No se recompila SH-4 en la ruta precompilada verificada.
-- VMU independiente: icono seleccionable desde barra de tareas en Windows (API Win32), opción siempre visible activada por defecto, y botón **Abrir / mostrar VMU** para recuperar su ventana.
-- El modo sin bordes conserva su carcasa original y las preferencias de VMU.
+- The public branding, window titles, and packaging use the DCRV1.2 identity.
+- `games/CHUCHU_ROCKET/` retains its original executables, DLLs, and SHA-256 checksums.
+- `safe_guests/` remains the unmodified fallback.
+- The validated precompiled path does not recompile SH-4 on each launch.
+- The independent VMU provides a selectable Windows taskbar icon (Win32 API), an always-on-top setting enabled by default, and an **Open / Show VMU** button to recover its window.
+- Borderless mode preserves the original window shell and VMU preferences.
 
-## Identificadores técnicos
+## Technical identifiers
 
-Las cadenas `cpp38e`, `cpp35b1`, `DCR_CPP38E_*`, los sellos `RUNTIME=...`, `DCR_GUEST_IMPL_REV` y nombres de funciones/rutas internas **no se renombraron**: son parte de la identidad de compilación, los hashes o de la compatibilidad de cachés. Modificarlos podría provocar recompilación o romper ABI1. Los documentos históricos mantienen sus nombres de desarrollo por trazabilidad.
+`cpp38e`, `cpp35b1`, `DCR_CPP38E_*`, `RUNTIME=...`, `DCR_GUEST_IMPL_REV`, and internal functions and paths **were not renamed**. These values are part of build identities, hashes, and cache compatibility. Altering them might force recompilation or break ABI1. Historical documentation retains its original development filenames for traceability.
 
-## Validación
+## Original validation scope
 
-El ZIP se construye reutilizando exactamente el host Python offline, el runtime y el binario del portable ChuChu de RC8. El renderizado nativo, el comportamiento de la barra de tareas de Windows y el juego requieren prueba en Windows.
+The ZIP was assembled by reusing the exact offline Python host, runtime, and RC8 ChuChu portable binaries. Real Windows rendering, taskbar behavior, and gameplay required separate verification at the time of this original report.

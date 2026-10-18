@@ -4,9 +4,9 @@
 
 [![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) ![Windows](https://img.shields.io/badge/Windows-x64-blue) ![Compatibility](https://img.shields.io/badge/Compatibility-in%20development-orange)
 
-**[Portable game catalog](game-portables/README.md) · [Releases](https://github.com/Duw0ng/DreamcastRecompiled/releases) · [Español](docs/README.es.md) · [ChuChu Rocket! tester guide](docs/CHUCHU_ROCKET_TESTER_V1.2.md) · [Report issues](https://github.com/Duw0ng/DreamcastRecompiled/issues)**
+**[Portable game catalog](game-portables/README.md) · [Releases](https://github.com/Duw0ng/DreamcastRecompiled/releases) · [Language support](docs/README.es.md) · [ChuChu Rocket! tester guide](docs/CHUCHU_ROCKET_TESTER_V1.2.md) · [Report issues](https://github.com/Duw0ng/DreamcastRecompiled/issues)**
 
-> **Release status:** V1.2 is the stable baseline for validated paths, **not** a claim of universal Dreamcast compatibility. The public V1.2 GitHub release and downloadable asset have not yet been published.
+> **Release status:** V1.2 is the stable baseline for validated paths, **not** a claim of universal Dreamcast compatibility. The V1.2 Stable release is published, alongside four individually maintained v1.2 Rev 2 game portables.
 
 ## What is DreamcastRecompiled?
 
@@ -26,7 +26,7 @@ User-provided Dreamcast disc image
 ## V1.2 highlights
 
 - **Aqua graphical launcher:** library, settings, controllers, diagnostics, and multiple interface themes.
-- **Español / English:** configurable bilingual UI.
+- **Language support:** configurable English and Spanish UI. Public GitHub release descriptions and current documentation are in English; the Spanish in-app translation resources remain available.
 - **Portable Windows x64 launcher:** bundled Python 3.12 / Tk dependencies; no separately installed Python needed for the GUI.
 - **Native SH-4 game-module reuse:** supported precompiled game code can run without recompiling every launch; incremental generation and interpreter fallback remain available.
 - **Standalone VMU / AquaPet:** independent VMU window, foreground recovery and always-on-top handling. Includes the `ctypes.wintypes` packaging fix tested by the project maintainer.
@@ -36,7 +36,7 @@ User-provided Dreamcast disc image
 
 ## ChuChu Rocket! — primary tester game
 
-**Direct portable download:** [ChuChu Rocket! V1.2 — 11-file, 13.6 MiB standalone ZIP](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-direct-v1.2). This lightweight EXE + game-module package starts directly and is distinct from the full Aqua launcher distribution.
+**Direct portable download:** [ChuChu Rocket! V1.2 Rev 2 standalone ZIP](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-chuchu-rocket-direct-v1.2). This lightweight EXE + game-module package starts directly and is distinct from the full Aqua launcher distribution.
 
 
 **The V1.2 Windows tester build contains an SH-4 native game module compiled from ChuChu Rocket! code.** On the validated disc path the launcher checks the disc title and the bundle integrity and runs the native module without rebuilding SH-4 locally. This lets testers exercise the recompilation pipeline and measure performance.
@@ -59,18 +59,18 @@ These values come from the disc probe of the project's reference copy; a differe
 ## Getting started on Windows
 
 1. Obtain an authorized Windows x64 release/tester archive and extract it completely.
-2. Launch `DreamcastRecompiled.exe` (or `ABRIR_LAUNCHER.bat`). Keep `launcher/` and `_internal/` beside the executable.
-3. In **Games / Juegos**, select your own supported CDI disc image.
+2. Launch `DreamcastRecompiled.exe`. From the source checkout, you can also use the English `OPEN_LAUNCHER.bat` entry point (which forwards to the original `ABRIR_LAUNCHER.bat`). Keep `launcher/` and `_internal/` beside the executable.
+3. In **Games**, select your own supported CDI disc image.
 4. For the validated ChuChu Rocket! native path, select the compatible `MK-51049 V1.007` disc. Its prepared SH-4 module avoids a new native compilation; the **CDI is still required**.
 5. Configure controller/audio/video options and launch. Capture a session log if the game fails.
 
 No Python installation is required for the packaged Aqua launcher. **Other games may require Visual Studio C++ Build Tools, CMake, and Windows SDK** for native code generation. Do not assume all games use the ChuChu fast path.
 
-**Standalone VMU:** open it from Aqua or with `ABRIR_LAUNCHER.bat --vmu`. Use **Open / Show VMU** if it is hidden behind another window.
+**Standalone VMU:** open it from Aqua or use `OPEN_LAUNCHER.bat --vmu` in the source checkout; the original `ABRIR_LAUNCHER.bat --vmu` remains supported. Use **Open / Show VMU** if it is hidden behind another window.
 
 **Advanced developer runner:** `scripts\windows\run_game.bat "C:\Games\example.cdi"`.
 
-**Additional portable testers:** [Sega Tetris](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sega-tetris-direct-v1.2) (gameplay observed; occasional crash) and [Segagaga](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sggg-direct-v1.2) (experimental; known audio issues). See the [multi-game release guide](game-portables/MULTI_GAME_PORTABLES.md).
+**Additional v1.2 Rev 2 portables:** [Sega Tetris](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sega-tetris-direct-v1.2), [Segagaga (SGGG)](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-sggg-direct-v1.2), and [Mr. Driller](https://github.com/Duw0ng/DreamcastRecompiled/releases/tag/portable-mr-driller-direct-v1.2). All four game portables include the universal raw CDI plain/scrambled boot correction and the AICA Rev 2 runtime. See the [multi-game release guide](game-portables/MULTI_GAME_PORTABLES.md).
 
 ## Compatibility snapshot
 
@@ -79,7 +79,7 @@ No Python installation is required for the packaged Aqua launcher. **Other games
 | **ChuChu Rocket!** | ✅ Offline gameplay | Main SH-4 native test; online experimental; matching CDI needed. |
 | **Sega Tetris** (Japan, community-patched build) | ✅ Gameplay observed | Graphics/audio worked in a test; intermittent crash reported. |
 | **Mr. Driller** | 🟡 Gameplay observed | Significant menu graphics issues, plus audio defects. |
-| **Segagaga (SGGG)** | 🟡 Partial | Audio and compatibility issues remain. |
+| **Segagaga (SGGG)** | 🟡 Menu/audio tested | Repeating menu navigation SFX fixed in v1.2 Rev 2; other compatibility limitations remain. |
 | **Daytona USA 2001** | 🟡 Partial | Menus / demo path observed, not proven fully playable. |
 | **Crazy Taxi 2** | 🟡 Partial | Startup/menus reached; gameplay issues. |
 

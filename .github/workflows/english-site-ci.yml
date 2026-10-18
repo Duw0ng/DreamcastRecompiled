@@ -1,0 +1,25 @@
+name: Validate English GitHub website and release documentation
+on:
+  push:
+    branches: [english-first-github-content-v1.2, main]
+    paths:
+      - 'README.md'
+      - 'RELEASE_NOTES_V1.2.md'
+      - 'web/**'
+      - 'game-portables/tools/english_release_notes.py'
+      - 'tests/test_github_english_content.py'
+      - '.github/workflows/english-site-ci.yml'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'RELEASE_NOTES_V1.2.md'
+      - 'web/**'
+      - 'game-portables/tools/english_release_notes.py'
+      - 'tests/test_github_english_content.py'
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate English release texts, site data and filter compatibility
+        run: python -m unittest discover -s tests -p 'test_github_english_content.py' -v

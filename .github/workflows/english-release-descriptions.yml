@@ -1,0 +1,66 @@
+name: Publish English GitHub release descriptions
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'game-portables/tools/english_release_notes.py'
+      - 'RELEASE_NOTES_V1.2.md'
+      - '.github/workflows/english-release-descriptions.yml'
+  workflow_dispatch:
+
+jobs:
+  language:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - game: CHUCHU_ROCKET
+            tag: portable-chuchu-rocket-direct-v1.2
+            title: DreamcastRecompiled — ChuChu Rocket! Direct Portable v1.2 Rev 2
+          - game: SGGG
+            tag: portable-sggg-direct-v1.2
+            title: DreamcastRecompiled — Segagaga (SGGG) Direct Portable v1.2 Rev 2
+          - game: SEGA_TETRIS
+            tag: portable-sega-tetris-direct-v1.2
+            title: DreamcastRecompiled — Sega Tetris Direct Portable v1.2 Rev 2
+          - game: MR_DRILLER
+            tag: portable-mr-driller-direct-v1.2
+            title: DreamcastRecompiled — Mr. Driller Direct Portable v1.2 Rev 2
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish English description without modifying game ZIP assets
+        env:
+          GAME: ${{ matrix.game }}
+          TAG: ${{ matrix.tag }}
+          TITLE: ${{ matrix.title }}
+        run: |
+          python game-portables/tools/english_release_notes.py --game "$GAME" --output "$RUNNER_TEMP/release_notes.md"
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TITLE" --notes-file "$RUNNER_TEMP/release_notes.md"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/actual.md"
+          cmp "$RUNNER_TEMP/release_notes.md" "$RUNNER_TEMP/actual.md" || {
+            # gh view normalizes trailing newlines; verify the distinctive English body.
+            grep -q 'Changes in this release' "$RUNNER_TEMP/actual.md"
+            if [ "$GAME" = SGGG ]; then grep -q 'Confirmed Segagaga audio fix' "$RUNNER_TEMP/actual.md"; fi
+          }
+          echo "Verified public English release notes for $GAME"
+
+  stable:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Align Stable v1.2 release title with English README
+        run: |
+          gh release edit v1.2 --repo "$GITHUB_REPOSITORY" \
+            --title "DreamcastRecompiled V1.2 Stable Release" \
+            --notes-file RELEASE_NOTES_V1.2.md
+          gh release view v1.2 --repo "$GITHUB_REPOSITORY" --json body --jq .body |
+            grep -q 'English/Spanish UI and VMU Fix'

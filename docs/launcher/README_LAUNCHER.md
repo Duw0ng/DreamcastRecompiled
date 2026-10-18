@@ -1,71 +1,60 @@
 # Dreamcast Recompiled v1.2 — Classic Original Launcher V5
 
-**Interfaz funcional**, no un mockup ni una imagen utilizada como botón. Está implementada con Tkinter (incluido con Python estándar), con el arte separado en recursos PNG transparentes. Los botones, estados visuales, detección de clics, teclado, idioma, reloj y plegado del panel avanzado se dibujan y controlan en tiempo real.
+This is a **fully functional interface**, not a mockup or an image used as a button. It uses Tkinter (included in standard Python) with separate transparent PNG artwork. Buttons, visual states, click detection, keyboard input, language, clock, and expandable advanced panel are all rendered and controlled in real time.
 
-## Corrección V5
+## V5 corrections
 
-El arte y los colores regresan al primer launcher. Ahora el mouse tiene un foco
-exclusivo: el recorrido por espacios vacíos **no** reactiva la selección anterior.
-Los botones tienen recursos «normal» e «iluminado» del mismo tamaño y se cambia
-únicamente esa imagen, sin redibujar toda la ventana. También se eliminó la
-superposición entre filas y los anillos avanzados se restablecen antes de cerrar
-el panel. El reloj y todas las ventanas siguen siendo controles reales.
+The original launcher's artwork and colors were restored. Moving the mouse across empty space no longer reactivates the previously selected button. Buttons have matching normal/highlighted assets; only the corresponding image changes rather than redrawing the whole window. Row overlap was removed, and advanced selection rings reset when the panel closes. The clock and every window remain genuine controls.
 
-Ver `RELEASE_NOTES_CLASSIC_ORIGINAL_V5.md` para pruebas y límites.
+See `RELEASE_NOTES_CLASSIC_ORIGINAL_V5.md` for tests and limitations.
 
-## Pantalla principal
+## Main screen
 
-- Los **ocho botones grandes** funcionan: Jugar, Juegos, VMU/Archivos, Música, Ajustes, Mandos, Pantalla y Red.
-- **Nueve botones avanzados**: Audio, Vídeo, Rendimiento, Guardados, BIOS/Sistema, Perfiles por juego, Diagnóstico, Idioma y Temas.
-- **Brillo suave y centrado** cuando se pasa el mouse o selecciona un botón; ya no existe el rectángulo blanco descentrado.
-- **Fecha/hora del PC**, actualizada cada segundo. El año 1998 no está incorporado en la pantalla actual.
-- **Opciones avanzadas plegables**: se ocultan los nueve iconos y se reduce la altura física de la ventana. El estado se recuerda entre aperturas.
-- Eliminada la barra inferior duplicada que tenía "Games" y "Play".
-- Menús nativos en español e inglés y navegación con flechas, Tab, Enter o mouse.
-- Tamaños pre-renderizados **1152, 960 y 800 px** según el escritorio, sin requerir Pillow en Windows.
+- **Eight functional primary buttons:** Play, Games, VMU/Files, Music, Settings, Controllers, Display, and Network.
+- **Nine advanced buttons:** Audio, Video, Performance, Saves, BIOS/System, Per-game Profiles, Debug, Language, and Themes.
+- **Subtle centered glow** on hover or selection; the former misaligned white rectangle was removed.
+- **PC date and time**, refreshed every second; the current screen does not force the year 1998.
+- **Collapsible advanced controls:** nine icons are hidden, the window physically shrinks, and this preference persists across launches.
+- Duplicate bottom buttons for Games and Play were removed.
+- English and Spanish native menus support arrow keys, Tab, Enter, and mouse navigation.
+- Artwork is pre-rendered for **1152, 960, and 800 px** desktop widths without requiring Pillow on Windows.
 
-## Funciones reales y límites
+## Implemented features and limits
 
-| Opción | Qué hace |
+| Feature | Behavior |
 | --- | --- |
-| Jugar | Inicia `scripts/stable/TEST_CPP38E_FAST.bat` reutilizando la caché del guest SH-4 |
-| Juegos | Biblioteca CDI/ISO, agregar, elegir, quitar, jugar, perfiles y preparación SH-4 explícita |
-| VMU / Guardados | Explora la carpeta persistente del sistema y hace copias de seguridad |
-| Música | Reproduce WAV locales con WinMM en Windows; no altera audio CDDA de los juegos |
-| Ajustes / Audio / Vídeo / Rendimiento | Cambia exclusivamente las opciones que el runner estable soporta |
-| Mandos | Abre `Configurar_Mando.bat` de la versión estable y perfiles |
-| Pantalla | Abre configuración de renderizador DX11/software sin inventar opciones de VSync/fullscreen |
-| Red | Acceso a perfiles y registros; no promete conexión online funcional |
-| Diagnóstico | Visor de logs y opciones de trazas |
-| Perfiles por juego | Abre el `game.cfg` real en el editor del sistema |
-| Idioma y temas | Persisten en la configuración del launcher |
+| Play | Runs `scripts/stable/TEST_CPP38E_FAST.bat` and reuses the SH-4 guest cache |
+| Games | CDI/ISO library: add, select, remove, play, access profiles, and explicitly prepare SH-4 |
+| VMU / Saves | Opens persistent system files and provides backup options |
+| Music | Plays local WAV files with WinMM on Windows; does not modify in-game CDDA audio |
+| Settings / Audio / Video / Performance | Changes only options supported by the stable runtime |
+| Controllers | Opens the stable `Configurar_Mando.bat` and game profiles |
+| Display | Opens DX11/software rendering settings; does not invent VSync/fullscreen support |
+| Network | Opens profiles and logs; does not claim operational online connectivity |
+| Debug | Log viewer and trace options |
+| Per-game Profiles | Opens the real `game.cfg` in the system's editor |
+| Language and Themes | Persists selections in launcher settings |
 
-La configuración se guarda en `%LOCALAPPDATA%\DreamcastRecompiled\launcher_v1_2\settings.json`. **No se modifica** el runtime cpp38e, el guest SH-4 ABI1, la caché ni los binarios.
+Settings are stored in `%LOCALAPPDATA%\DreamcastRecompiled\launcher_v1_2\settings.json`. **This launcher change does not modify** the cpp38e runtime, the ABI1 SH-4 guest, its cache, or binary modules.
 
-## Abrir en Windows
+## Launch on Windows
 
-Doble clic en `INICIAR_DREAMCAST_RECOMPILED_V1_2.bat` (o `ABRIR_LAUNCHER.bat`). Requiere Python 3 con Tkinter. No se requieren paquetes PyPI. Si preferís consola, existe `INICIAR_DREAMCAST_RECOMPILED_V1_2_CLASICO.bat`.
+Double-click `INICIAR_DREAMCAST_RECOMPILED_V1_2.bat` or `ABRIR_LAUNCHER.bat` (the source checkout also provides the English alias `OPEN_LAUNCHER.bat`). This original Python/Tkinter interface requires Python 3 with Tkinter but no additional PyPI packages. An alternative console runner is `INICIAR_DREAMCAST_RECOMPILED_V1_2_CLASICO.bat`.
 
-El paquete incluye el proyecto original completo, no solo los archivos gráficos. Este front-end se verificó en Linux/Xvfb; falta la prueba de integración con juegos en el Windows del usuario.
+The package contains the complete original project, not just the artwork. The front-end was tested under Linux/Xvfb; at the time of this historical report, integration testing with retail games on the user's Windows system was still pending.
 
-## V7 — Ajustes extendidos
+## V7 — Extended settings
 
-Abrí «Ajustes», «Pantalla», «Audio» o «Rendimiento» para ver los nuevos paneles nativos. Los cambios compatibles con cpp38e se aplican al lanzamiento siguiente; los ajustes futuros aparecen etiquetados «Pendiente de motor» y se guardan sin activar capacidades inexistentes. Las preferencias de **tamaño del launcher** son reales y necesitan reiniciar la interfaz para aplicarse. Encontrarás restauración del perfil estable y exportación/importación JSON en la pantalla de ajustes.
+Open **Settings**, **Display**, **Audio**, or **Performance** for the native panels. Changes compatible with cpp38e apply on the next launch. Future options are labeled **Engine pending** and stored without enabling unavailable runtime features. **Launcher window size** is a functioning option and requires restarting the interface. Stable-profile restoration and JSON import/export are available in Settings.
 
-Documentación técnica: `TECHNICAL_VIDEO_INTEGRATION_V7.md`.
+Technical reference: `TECHNICAL_VIDEO_INTEGRATION_V7.md`.
 
-## Vídeo experimental V8 (sin VSync)
+## V8 experimental video (no VSync)
 
-El panel `Configuración → Vídeo` permite seleccionar resolución de **salida**
-(nativa, 960p, 1080p, 1440p, escritorio) y presentación 4:3 o 16:9.
-El launcher transmite estas preferencias al runtime mediante variables
-`DCR_VIDEO_RESOLUTION` y `DCR_VIDEO_ASPECT` **solo para el juego lanzado**.
+Under **Settings → Video**, select an **output resolution** (native, 960p, 1080p, 1440p, desktop) and an aspect ratio of 4:3 or 16:9. The launcher passes `DCR_VIDEO_RESOLUTION` and `DCR_VIDEO_ASPECT` to the runtime **only for the launched game**.
 
-No es resolución interna nueva del PVR ni widescreen real: 16:9 **estira**
-la imagen Dreamcast 4:3. DX11 usa un pase de presentación GPU y software
-utiliza StretchDIBits. En modo nativo 4:3 no activa el pase nuevo.
-No se añadió VSync; `Present(0, 0)` permanece intacto.
+These controls do **not** change PVR's internal resolution or provide genuine widescreen rendering: 16:9 **stretches** the Dreamcast's 4:3 image. DX11 uses a GPU presentation pass; the software backend uses StretchDIBits. Native 4:3 mode bypasses the new pass. VSync was not introduced; `Present(0, 0)` remains unchanged.
 
-El backend V8 aún requiere pruebas de compilación y gameplay real en Windows.
-Si hay regresiones, restaurar `native / 4:3` sin modificar la caché SH-4.
-Detalles: `RELEASE_NOTES_PRESENTATION_V8.md`.
+The original V8 backend still required additional Windows build and gameplay tests. In case of regression, restore `native / 4:3` without modifying the SH-4 cache.
+
+See `RELEASE_NOTES_PRESENTATION_V8.md`.

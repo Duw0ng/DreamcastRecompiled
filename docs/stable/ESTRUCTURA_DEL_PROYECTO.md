@@ -1,22 +1,22 @@
-# Organización de Dreamcast Recompiled v1.2
+# Dreamcast Recompiled v1.2 — Project Layout
 
-Se conservan los archivos críticos (`run_game.bat`, `CMakeLists.txt`, `runtime/`, `src/`, `include/`, `safe_guests/` y `portable/`) en sus ubicaciones originales. Los scripts históricos trasladados ajustan su directorio de trabajo y llamadas a otros BAT para que sigan apuntando a la raíz del proyecto.
+Critical files and directories (`run_game.bat`, `CMakeLists.txt`, `runtime/`, `src/`, `include/`, `safe_guests/`, and `portable/`) remain at their established locations. Historical scripts were relocated with their working directories and batch-file calls adjusted so they still resolve against the project root.
 
 ## Scripts
 
-- `scripts/stable/TEST_CPP38E_FAST.bat`: launcher rápido de la estable. El acceso recomendado es `INICIAR_DREAMCAST_RECOMPILED_V1_2.bat` en raíz.
-- `scripts/stable/TEST_CPP38E_HOTPC_DIAG.bat`: diagnóstico de hotspots (puede disminuir FPS durante medición).
-- `scripts/stable/APPLY_CPP38E_HOT_BLOCK_RECOVERY.bat`: especialización puntual de guest al primer uso, invocado internamente por `run_game.bat`.
-- `scripts/tests/`: pruebas históricas de versiones cpp34–cpp38, conservadas con sus opciones originales.
-- `scripts/patches/`: parches antiguos; no ejecutes sobre una caché estable salvo que sepas lo que hacen.
-- `scripts/maintenance/`: reparaciones y restauraciones de uso excepcional (algunas eliminan caché runtime, no el guest).
-- `scripts/controller/`: prueba de mandos.
-- `scripts/portable/`: inicio de portable ChuChu.
+- `scripts/stable/TEST_CPP38E_FAST.bat` — fast stable runner. The recommended original root entry point is `INICIAR_DREAMCAST_RECOMPILED_V1_2.bat`.
+- `scripts/stable/TEST_CPP38E_HOTPC_DIAG.bat` — hotspot diagnostics; profiling can reduce FPS.
+- `scripts/stable/APPLY_CPP38E_HOT_BLOCK_RECOVERY.bat` — first-use guest specialization, invoked internally by `run_game.bat`.
+- `scripts/tests/` — historical cpp34–cpp38 tests, retained with their original options.
+- `scripts/patches/` — legacy patches; avoid applying them to a stable cache unless you understand their effects.
+- `scripts/maintenance/` — exceptional repair/restore utilities. Some clear runtime caches but not guest modules.
+- `scripts/controller/` — controller tests.
+- `scripts/portable/` — ChuChu portable startup.
 
-## Verificadores
+## Verification tools
 
-Ejecutá `python tools/verification/legacy/VERIFY_CPP38E.py` desde cualquier directorio: verifica el código e invariantes de cpp38e. Usá `python tools/verification/check_layout.py` para verificar las rutas de los BAT de esta distribución.
+Run `python tools/verification/legacy/VERIFY_CPP38E.py` from any directory to check cpp38e code and invariants. Run `python tools/verification/check_layout.py` to verify this distribution's batch-file paths.
 
-## Compatibilidad
+## Compatibility
 
-Ningún script histórico se ejecuta automáticamente desde el iniciador de la estable. No se cambian ubicaciones internas de `tools/`, los perfiles de juego, el guest ABI1, `runtime/`, `CMakeLists.txt` ni el directorio de caché del usuario.
+No historical test script is launched automatically by the stable launcher. The internal `tools/` locations, game profiles, ABI1 guest layout, runtime, build configuration, and per-user cache location are unchanged.

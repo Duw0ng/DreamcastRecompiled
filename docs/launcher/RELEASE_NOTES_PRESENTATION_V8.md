@@ -1,35 +1,25 @@
-# Dreamcast Recompiled v1.2 — V8: salida 16:9 / 1080p (experimental)
+# Dreamcast Recompiled v1.2 — V8: 16:9 / 1080p output (experimental)
 
-Base: cpp38e HOT_BLOCK_RECOVERY. El guest ABI1, el módulo recompilado y la
-emulación de dispositivos permanecen intactos. VSync sin modificaciones.
+Baseline: cpp38e HOT_BLOCK_RECOVERY. The ABI1 guest, recompilation module, and device emulation remain unchanged. VSync is unchanged.
 
-## Qué funciona en Windows
+## Available Windows output modes
 
-* `Resolución de salida`: nativa, 960p, 1080p, 1440p y escritorio.
-* `Aspecto`: 4:3 conserva proporciones y agrega bandas; 16:9 usa una región de salida ancha
-  estirando la imagen existente (con barras si la ventana tiene otro aspecto). **No es widescreen real ni aumenta el FOV**.
-* DX11: pase final de triángulo completo con muestreo bilineal en la GPU;
-  salida 640×480 intacta. En modo nativo sigue el `CopyResource` de cpp38e.
-* Software/GDI: `StretchDIBits` hacia un rectángulo 4:3 o hacia la ventana entera.
-* Por juego: los ajustes se heredan de la configuración global o del perfil
-  del juego, sin alterar el archivo `dcr_game_module.dll` ni su caché.
+- **Output resolution:** native, 960p, 1080p, 1440p, or desktop.
+- **Aspect ratio:** 4:3 preserves proportions with letterboxing/pillarboxing when required; 16:9 stretches the existing image across a widescreen output area (with bars if the window has a different aspect). **This is not genuine widescreen and does not increase field of view.**
+- **DX11:** a full-screen triangle presentation pass uses bilinear GPU sampling without changing the original 640×480 render output. Native mode retains cpp38e's `CopyResource` path.
+- **Software/GDI:** `StretchDIBits` outputs either to a 4:3 rectangle or the full window.
+- **Per-game settings:** output settings inherit from global configuration or the game profile; the native `dcr_game_module.dll` and its cache are unaffected.
 
-## Qué NO incluye
+## Not included
 
-* Renderizado PVR real a 1080p o nueva resolución de geometría/texturas.
-* Cámara ampliada horizontalmente / parche widescreen por juego.
-* VSync, fullscreen, cambiar el refresco o filtros alternativos.
+- Real 1080p PVR rendering or higher-resolution geometry/textures.
+- Wider horizontal camera view or per-game widescreen patches.
+- VSync, fullscreen support, refresh-rate switching, or alternate output filters.
 
-La integración es optativa. La configuración por defecto no introduce nuevas
-variables de entorno y conserva el trayecto original de cpp38e. Esta rama de
-presentación necesita probarse en Windows y medir FPS/audio/cargas antes de
-considerarse estable. No sustituye la v1.2 oficial congelada.
+The integration is optional. Defaults add no new environment variables and preserve the original cpp38e presentation. This experimental presentation branch required Windows testing and FPS/audio/loading measurements before being considered stable. It did not replace the frozen official v1.2 release.
 
-## Probar
+## How to test
 
-Desde el launcher V8, seleccioná `Configuración → Vídeo → 1080p / 16:9`.
-Probá primero `960p / 4:3`, luego `1080p / 4:3`, luego `1080p / 16:9`.
-Si aparece un problema, volvé a `native / 4:3` y compartí el log.
+In the V8 launcher, choose **Settings → Video → 1080p / 16:9**. Start with `960p / 4:3`, then `1080p / 4:3`, and finally `1080p / 16:9`. If a regression occurs, restore `native / 4:3` and attach the session log.
 
-Nota: Windows puede mostrar una ventana de 1080p demasiado grande si tu
-monitor tiene una resolución inferior; la ventana se puede redimensionar.
+Note: a 1080p output window may be larger than the display on lower-resolution monitors. The window is resizable.
