@@ -182,7 +182,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument("--out",default="english-translation-output")
     args=parser.parse_args()
-    root=pathlib.Path(__file__).resolve().parents[2]
+    root=pathlib.Path(__file__).resolve().parents[1]
     jobs, segments=read_jobs(root)
     print("Detected Spanish prose spans:",len(segments),flush=True)
     from transformers import MarianTokenizer, MarianMTModel
