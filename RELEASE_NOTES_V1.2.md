@@ -1,4 +1,4 @@
-# DCRV1.2 Stable — Español/Inglés + VMU Fix
+# DCRV1.2 Stable — English/Spanish UI and VMU Fix
 
 DreamcastRecompiled V1.2 Stable Release for Windows x64.
 
