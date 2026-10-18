@@ -12,7 +12,6 @@ env:
 jobs:
   build:
     name: Build APK
-    if: ${{ (github.event_name != 'workflow_dispatch' || inputs.component == 'apk') && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     outputs:
