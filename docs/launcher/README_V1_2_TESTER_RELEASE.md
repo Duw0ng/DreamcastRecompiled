@@ -1,52 +1,31 @@
 # Dreamcast Recompiled v1.2 — Tester Release
 
-Launcher Classic Aqua con biblioteca, vídeo DX11 1080p/16:9 y panel de mandos integrado.
-La base de ejecución continúa en **cpp38e HOT_BLOCK_RECOVERY**. No se modificaron ni el
-recompilador SH-4 ni la presentación DX11 que el usuario ya había comprobado.
+Classic Aqua launcher with a game library, 1080p/16:9 DX11 presentation, and an integrated controller panel. The runtime is still based on **cpp38e HOT_BLOCK_RECOVERY**. This UI release did not change the SH-4 recompiler or the previously validated DX11 presentation.
 
-## Mandos (sin abrir nuevas ventanas)
+## Controllers (no additional windows required)
 
-1. Abrí **Mandos** y elegí **Jugador P1–P4**.
-2. En **Dispositivo**, elegí Auto, XInput 1–4 o DirectInput/WinMM 0–15. **Actualizar**
-   vuelve a consultar qué dispositivos tienen señal. Se pueden escoger manualmente puertos
-   sin señal, para diagnosticar controladores no identificados.
-3. Pulsá **Iniciar** con los sticks centrados y los gatillos sueltos.
-4. Seleccioná cada control, movelo hasta su extremo y pulsá **Capturar**. El proceso
-   empieza con X/Y de los sticks y continúa con L y R; después podés aprender
-   botones A/B/X/Y, START y cruceta desde el mismo selector. **Omitir** salta un paso.
-5. Ajustá **Zona muerta** para corregir deriva. Pulsá **Guardar jugador** para guardar
-   esa calibración en la configuración del launcher.
-6. **Aplicar al juego** actualiza el archivo real
-   `profiles/controller_profile.ini`, con copia de seguridad automática
-   `profiles/controller_profile.ini.bak`.
+1. Open **Controllers** and choose **Player P1–P4**.
+2. Under **Device**, choose Auto, XInput 1–4, or DirectInput/WinMM 0–15. **Refresh** checks which devices currently report input. You may deliberately select a silent/unidentified port for diagnostics.
+3. Press **Start** with sticks centered and triggers released.
+4. Select each control, move it to its limit, and press **Capture**. Calibration begins with stick X/Y and continues with L/R. You can then learn A/B/X/Y, Start, and D-pad mappings in the same selector. **Skip** bypasses an individual step.
+5. Adjust **Dead zone** to correct drift. Select **Save player** to store calibration in launcher settings.
+6. **Apply to game** updates the real `profiles/controller_profile.ini` and creates `profiles/controller_profile.ini.bak` automatically.
 
-Los dos indicadores de stick muestran X/Y en un mismo círculo, con ARRIBA como Y positivo
-solo en la visualización. Las asignaciones se transforman a la convención original de Maple.
-El tester usa el dispositivo seleccionado para ese jugador, sin sustituirlo de forma oculta.
-Una calibración guardada para otro dispositivo no se reutiliza en el nuevo.
+Both stick indicators display X/Y in one circle. UP is shown as positive Y for visualization only; mappings are converted to Maple's native convention. The tester uses the device explicitly selected for that player and does not silently substitute another. Calibration from a different device is not reused.
 
-**Alcance real:** el runtime estable solo dispone de UN perfil activo de `controller_profile.ini`.
-El launcher permite configurar y probar dispositivos independientes para P1–P4, pero
-**Aplicar al juego** cambia el único perfil activo del motor; esta versión no habilita
-cuatro asignaciones Maple simultáneas por arte de magia.
+**Actual limitation:** the stable runtime supports only **one active `controller_profile.ini` profile**. The launcher can configure and test devices independently for P1–P4, but **Apply to game** changes the single active engine profile. This revision does not implement four simultaneous Maple assignments.
 
-La calibración traduce movimientos a `axis:...`, botones a `button:...` o `pov:...`, y
-presión de gatillos a `trigger:...` / `range:<eje>:<reposo>:<máximo>`, que ya comprende
-el runtime de cpp38e. No existe soporte universal para cada variante de drivers DualSense;
-cuando WinMM combine gatillos en un solo eje, calibrá L y R por separado.
+Calibration translates movements into `axis:...`, buttons into `button:...` or `pov:...`, and trigger pressure into `trigger:...` / `range:<axis>:<rest>:<maximum>`, all understood by cpp38e. Universal support for every DualSense driver variant is not available; when WinMM maps both triggers to one axis, calibrate L and R separately.
 
-## Para iniciar
+## Launch
 
 `INICIAR_DREAMCAST_RECOMPILED_V1_2.bat`
 
-No es necesario recompilar el guest SH-4 por ajustar la interfaz o los mandos.
-VSync no se modificó. El tester externo avanzado continúa disponible si lo necesitás.
+You do not need to rebuild the SH-4 guest to adjust the interface or controllers. VSync was not changed. The separate advanced Visual Tester remains available.
 
-## Comprobaciones
+## Original validation
 
-- 94 pruebas automatizadas del launcher, controles, perfiles y calibración en entorno virtual.
-- Compilación de sintaxis Python correcta.
-- Comprobación de igualdad byte por byte de todos los archivos externos a `launcher/`
-  respecto al paquete V8.6.1, incluidos runtime, ejecutables y BAT.
-- La detección física de mandos y el guardado con hardware real quedan pendientes de
-  validación en Windows.
+- 94 automated launcher, controller, profile, and calibration tests in a virtual environment.
+- Python syntax compilation passed.
+- Byte-for-byte comparison against V8.6.1 for files outside `launcher/`, including runtime, executables, and batch files.
+- Physical controller detection and saving profiles with real hardware remained pending Windows validation for this historical release.
