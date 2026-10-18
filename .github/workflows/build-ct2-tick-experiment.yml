@@ -9,6 +9,7 @@ on:
       - 'tools/release/repack_full_v12_audio_rev2.py'
       - 'scripts/perf/TEST_CRAZY_TAXI_2_FPS.bat'
       - 'docs/DCRV12_REV2_FULL_AUDIO_CT2_TEST.md'
+      - 'docs/CT2_HOTLOOP_TICK_EXPERIMENT_20261018.md'
       - '.github/workflows/build-ct2-tick-experiment.yml'
 
 jobs:
