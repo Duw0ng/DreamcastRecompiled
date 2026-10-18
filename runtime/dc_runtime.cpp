@@ -13239,9 +13239,20 @@ bool sh4_try_holly_interrupt(SH4Context& ctx, DCRuntime& runtime) {
 bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4_cycles) {
     g_last_sh4_context = &ctx;
     runtime.current_pc = ctx.pc;
-    // cpp34e: observe game execution and restore IP.BIN only after boot-safe arming
-    // executes bootstrap code. This also covers direct/non-call PC redirects.
-    ipbin_observe_game_execution(runtime, ctx.pc, "tick");
+    // CT2 tick-path experiment: after the initial game-PC observation and
+    // IP.BIN reentry guard arming, most scheduler ticks cannot modify this
+    // shadow at all. In that common steady state, avoid calling the observer
+    // and repeating the physical-address classification on every full tick.
+    //
+    // Reenter the existing observer whenever its state can change: before
+    // the first game-PC sighting, before arming, or after a low-RAM reentry
+    // latches the guard. The ordinary observer remains the sole authority.
+    // This intentionally does NOT skip the actual SH-4 callback loop, guest
+    // device ticks, IRQs, or any of the existing IP.BIN restoration checks.
+    if (g_ipbin_shadow.owner == &runtime && g_ipbin_shadow.valid &&
+        (!g_ipbin_shadow.seen_game || !g_ipbin_shadow.armed ||
+         g_ipbin_shadow.reentry_latched))
+        ipbin_observe_game_execution(runtime, ctx.pc, "tick");
     runtime.pvr_spg_sh4_cycles += sh4_cycles;
     dc_modem_tick(runtime);
     if (runtime.pvr_render_done_pending &&
