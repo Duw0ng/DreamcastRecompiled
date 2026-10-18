@@ -18,16 +18,10 @@ import zipfile
 STABLE_SHA = "42d08b83ad718214ef19a597332d690c4b5f446fdb7422dd8455df55cca1c127"
 RUNTIME_SUFFIX = "/bin/DreamcastRuntime.dll"
 SH4_SUFFIX = "/bin/dcr_game_module.dll"
-SOURCE_FILES = [
-    "runtime/dc_runtime.cpp",
-    "runtime/dc_arm7.cpp",
-    "runtime/include/dc_runtime.hpp",
-    "runtime/include/dcr_aica_arm_memory.hpp",
-    "runtime/CMakeLists.txt",
-    "runtime/tests_aica_arm_bus.cpp",
-    "runtime/tests_aica_one_shot_keyon.cpp",
-    "runtime/tests_portable_ipbin_stage.cpp",
-]
+# Ship the *complete* tested runtime tree, including frozen guest ABI1
+# headers and device plugin source. Updating only a few C++ files could make
+# a subsequent per-game runtime rebuild mix incompatible source revisions.
+RUNTIME_SOURCE_EXTENSIONS = {".cpp", ".hpp", ".h", ".md", ".txt"}
 ADD_FILES = {
     "TEST_CRAZY_TAXI_2_FPS.bat": "scripts/perf/TEST_CRAZY_TAXI_2_FPS.bat",
     "REV2_AICA_FULL_TEST_README.md": "docs/DCRV12_REV2_FULL_AUDIO_CT2_TEST.md",
@@ -67,7 +61,12 @@ def main() -> None:
     assert runtime.startswith(b"MZ") and len(runtime)>500000, "Missing compiled Win64 runtime DLL"
     new_hash=sha(runtime)
 
-    source={f:(args.repository/f).read_bytes() for f in SOURCE_FILES}
+    source_paths = sorted(p for p in (args.repository/"runtime").rglob("*")
+                          if p.is_file() and (p.suffix.lower() in RUNTIME_SOURCE_EXTENSIONS
+                                              or p.name=="CMakeLists.txt"))
+    source = {p.relative_to(args.repository).as_posix(): p.read_bytes()
+              for p in source_paths}
+    assert len(source) >= 25, "Expected complete pinned runtime source tree"
     extras={f:(args.repository/local).read_bytes() for f,local in ADD_FILES.items()}
     if any(x in source["runtime/dc_runtime.cpp"] for x in
            [b"One-shot never starts"]):
@@ -131,6 +130,7 @@ def main() -> None:
         assert sha(done.read("DreamcastRecompiled.exe"))==original_launcher
         assert all(sha(done.read(n))==h for n,h in original_guest.items())
         assert all(sha(done.read(n))==new_hash for n in old_runtime_hashes)
+        assert all(sha(done.read(p))==sha(data) for p,data in source.items()), "Runtime source tree mismatch"
         assert b"aica_native_stop_finished_slot" in done.read("runtime/dc_runtime.cpp")
         assert "TEST_CRAZY_TAXI_2_FPS.bat" in done.namelist()
         assert "REV2_AICA_FULL_TEST_README.md" in done.namelist()
