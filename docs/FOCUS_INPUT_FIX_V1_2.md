@@ -1,33 +1,35 @@
 # Dreamcast Recompiled v1.2 — Input Focus Fix (Tester Release)
 
-## Qué se corrigió
+## What was fixed
 
-- El plugin Maple ABI2/V3 ya no procesa teclado, mouse, XInput ni WinMM cuando la ventana Dreamcast no es la ventana activa de Windows.
-- La misma protección existe en la ruta de compatibilidad del runtime.
-- El bloqueo funciona para los puertos Dreamcast A–D, con selector de P1–P4.
-- Los controladores permanecen conectados, pero sus botones, sticks y gatillos devuelven cero al juego mientras éste está en segundo plano.
-- Se descarta la posición anterior del mouse al perder el foco para evitar saltos al volver al juego.
-- La protección comprueba **el PID y la clase real** de la ventana `DreamcastRecompPVRWindow`, en lugar de confiar en un HWND no inicializado dentro del plugin.
+- The Maple ABI2/V3 plugin no longer processes keyboard, mouse, XInput, or WinMM input unless the Dreamcast game window is the active Windows window.
+- The runtime's compatibility path includes the same protection.
+- Focus handling applies to Dreamcast ports A–D, corresponding to player selection P1–P4.
+- Controllers stay connected, but button, stick, and trigger values are neutral (zero) while the game runs in the background.
+- The previous mouse position is discarded on focus loss, preventing accumulated jumps when returning to the game.
+- Focus validation checks the **actual process ID and window class** of `DreamcastRecompPVRWindow` instead of trusting an uninitialized HWND in the plugin.
 
-## Cómo probar
+## How to test
 
-1. Extraer esta distribución en una carpeta nueva.
-2. Abrir el launcher, asignar el dispositivo que se desee en **Mandos** y ejecutar ChuChu Rocket!.
-3. Con la ventana del juego activa, probar teclado, mouse o mando: los botones deben funcionar.
-4. Cambiar a otra aplicación con Alt+Tab o hacer clic en el escritorio. Mientras el juego esté inactivo, las teclas y botones de mando no deben afectar al juego.
-5. Volver a la ventana del juego: debe aceptar entradas de nuevo y el mouse no debe generar un salto acumulado.
-6. Repetir para los puertos B–D si se usan varios dispositivos.
+1. Extract the distribution into a new folder.
+2. Open the launcher, assign a device in **Controllers**, and start ChuChu Rocket!.
+3. With the game window active, verify that keyboard, mouse, and controller input work.
+4. Switch to another application with Alt+Tab, or click the desktop. Inputs must not affect an inactive game.
+5. Return to the game. Input should work again without a delayed mouse-position jump.
+6. Repeat with ports B–D if multiple input devices are connected.
 
-Los logs de la ejecución podrán incluir estas transiciones:
+Session logs may include:
 
-    [MAPLE FOCUS] inactive | input=neutral A-D
-    [MAPLE FOCUS] active | input=enabled
+```text
+[MAPLE FOCUS] inactive | input=neutral A-D
+[MAPLE FOCUS] active | input=enabled
+```
 
-**No se ha modificado el guest SH-4, su caché ABI1, la ruta gráfica DX11, el audio ni VSync.** El primer arranque actualizará las DLL de runtime/Maple, sin generar nuevamente el módulo SH-4 del juego.
+**The SH-4 guest, ABI1 cache, DX11 rendering, audio, and VSync were not modified.** The first launch updates the runtime/Maple DLLs without rebuilding the game's native SH-4 module.
 
-## Verificaciones de esta entrega
+## Release verification
 
-- Compilación Linux Release de DreamcastRuntime y de los plugins actualizados.
-- 53 pruebas CTest aprobadas (se excluyeron dos pruebas largas de generación completa).
-- Test de regresión `maple_input_focus_tests`: foco propio, fondo, ventana ajena y minimizado.
-- Integridad del ZIP. La comprobación visual y de entrada física en Windows sigue pendiente.
+- Linux Release builds of DreamcastRuntime and the updated plugins.
+- 53 passing CTest cases (excluding two lengthy full-generation tests).
+- The `maple_input_focus_tests` regression checks active focus, background state, foreign windows, and minimization.
+- ZIP integrity was checked. Visual validation and testing with physical input hardware on Windows remained pending for this original tester release.
