@@ -25,6 +25,7 @@ RUNTIME_SOURCE_EXTENSIONS = {".cpp", ".hpp", ".h", ".md", ".txt"}
 ADD_FILES = {
     "TEST_CRAZY_TAXI_2_FPS.bat": "scripts/perf/TEST_CRAZY_TAXI_2_FPS.bat",
     "REV2_AICA_FULL_TEST_README.md": "docs/DCRV12_REV2_FULL_AUDIO_CT2_TEST.md",
+    "CT2_TICK_EXPERIMENT_README.md": "docs/CT2_HOTLOOP_TICK_EXPERIMENT_20261018.md",
 }
 GAME_IMAGES = (".cdi", ".gdi", ".chd", ".iso", ".nrg", ".mdf", ".mds")
 
