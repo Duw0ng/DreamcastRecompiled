@@ -1,99 +1,99 @@
-# Intérprete SH-4 de respaldo (interp-fallback-v1)
+# SH-4 Interpreter Fallback (interp-fallback-v1)
 
-Base: v1.2 cpp38e HOT_BLOCK_RECOVERY · Guest ABI1 congelada · runtime `cpp38e-v8.6-sh4-interp-fallback-v1`
+Baseline: v1.2 cpp38e HOT_BLOCK_RECOVERY · Frozen Guest ABI1 · runtime `cpp38e-v8.6-sh4-interp-fallback-v1`
 
-## Qué problema resuelve
+## Problem addressed
 
-El recompilador AOT solo conoce las entradas SH-4 que su closure estática encontró. Hasta ahora, cualquier salto o llamada dinámica a una dirección no compilada (un puntero a función, una tabla de callbacks, código cargado desde el disco, un overlay) terminaba en:
+The AOT recompiler only knows SH-4 entry points discovered during static closure analysis. Previously, any dynamic call or branch to an uncompiled address (function pointers, callback tables, code loaded from disc, or overlays) ended with:
 
-```
+```text
 No recompiled/native target registered for Dreamcast address 0x........
 ```
 
-y el juego se cerraba. Por eso cada título necesitaba semillas manuales (`profiles/*_known_seeds.txt`) y ajustes de límites de closure.
+The game then terminated. Consequently, each title required manual seed lists (`profiles/*_known_seeds.txt`) and tuning of closure limits.
 
-Con el intérprete, esa dirección **se ejecuta igual**, directamente desde la memoria del guest, y queda registrada para que la próxima "Preparar SH-4" la compile de forma nativa.
+The interpreter **executes the missing address directly from guest RAM**, and records it so a later **Prepare SH-4** operation can compile it natively.
 
-## Cómo funciona
+## How it works
 
-1. `call_recompiled()` busca el objetivo como siempre: caché de despacho, alias P1/P2, plantillas de código reubicado.
-2. Si no existe ninguna función compilada para ese objetivo y la dirección está en la RAM principal del guest, en vez de lanzar la excepción usa `dc_sh4_interp_function`. Esa función tiene la misma firma que las funciones recompiladas y queda guardada en la `dispatch_cache` igual que el código AOT.
-3. El intérprete respeta el mismo contrato que el código generado:
-   - `RTS` deja `ctx.pc = PR`; `RTE` deja `ctx.pc = SPC`.
-   - En cada borde de bloque llama a `dc_runtime_tick_fast()`. Las interrupciones y `sh4_async_redirect` desenrollan la pila exactamente como en el AOT.
-   - Si el código interpretado llama o salta a una dirección compilada, **vuelve inmediatamente a código nativo**. El código AOT también puede llamar a código interpretado.
-4. La primera vez que se interpreta una entrada, el runtime compara sus bytes en RAM con el `BOOTSTRAP.BIN` (la imagen exacta que lee el recompilador):
-   - **Coinciden:** se agrega como semilla activa a `interp_seeds.txt`.
-   - **No coinciden o están fuera de la imagen** (overlays, código generado o copiado en tiempo de ejecución): se anota como `# runtime-code`. No se usa como semilla, porque el recompilador leería otros bytes en esa dirección. Ese código sigue interpretado, que es lo correcto.
-   - Las direcciones de reanudación (retorno tras una interrupción, retorno de una llamada hecha desde código interpretado, después de `SLEEP` o `TRAPA`) nunca se guardan como semillas.
+1. `call_recompiled()` resolves the target using the normal dispatch cache, P1/P2 aliases, and relocated-code templates.
+2. If no compiled function exists and the address lies in guest main RAM, it invokes `dc_sh4_interp_function` instead of throwing. The interpreter uses the same signature as generated native functions and is entered into the `dispatch_cache` just like AOT code.
+3. The interpreter honors the generated-code calling contract:
+   - `RTS` sets `ctx.pc = PR`; `RTE` sets `ctx.pc = SPC`.
+   - Every block boundary calls `dc_runtime_tick_fast()`. Interrupts and `sh4_async_redirect` unwind the call stack exactly as they do in AOT.
+   - If interpreted code branches or calls a compiled address, it **returns immediately to native execution**. AOT code may also call interpreted functions.
+4. When an entry is first interpreted, its current RAM bytes are compared with `BOOTSTRAP.BIN` (the exact input used by the recompiler):
+   - **Bytes match:** record it as an active seed in `interp_seeds.txt`.
+   - **Bytes differ or fall outside the image** (runtime overlays or generated/copied code): label the entry `# runtime-code` and do not seed it, because the static recompiler would read different bytes at that address. It remains interpreted.
+   - Resume addresses (after an interrupt, a return from interpreted code, or `SLEEP` / `TRAPA`) are never recorded as seeds.
 
-La Guest ABI1 no cambió: no se tocaron el layout de `DCRuntime` ni el de `SH4Context`, ni los headers de `runtime/guest_abi/v1`. El estado propio del intérprete vive en una tabla lateral del runtime. Los guests ya compilados siguen siendo válidos; alcanza con reconstruir el runtime, y `run_game.bat` lo hace solo al detectar el nuevo `DCR_RUNTIME_BUILD_ID`.
+**Guest ABI1 remains unchanged.** The layouts of `DCRuntime` and `SH4Context` and the headers under `runtime/guest_abi/v1` were not modified for this feature. Interpreter-specific state is stored in a runtime side table. Already-compiled guest modules remain valid; only the runtime must be rebuilt. `run_game.bat` does so when the `DCR_RUNTIME_BUILD_ID` changes.
 
-## Uso
+## Usage
 
-No requiere ninguna acción: viene activo por defecto.
+The interpreter is enabled by default, so no extra action is normally necessary.
 
 ```bat
-rem Normal: las entradas sin AOT se interpretan y se aprenden
-run_game.bat "C:\ruta\juego.cdi" --reuse
+rem Normal: interpret and learn entries without AOT coverage
+run_game.bat "C:\path\game.cdi" --reuse
 
-rem Registrar cada entrada nueva interpretada
-run_game.bat "C:\ruta\juego.cdi" --reuse --interp-trace
+rem Trace each newly interpreted entry
+run_game.bat "C:\path\game.cdi" --reuse --interp-trace
 
-rem Comportamiento anterior (abortar ante un objetivo sin AOT)
-run_game.bat "C:\ruta\juego.cdi" --reuse --no-interp
+rem Previous behavior: abort at an address without an AOT target
+run_game.bat "C:\path\game.cdi" --reuse --no-interp
 ```
 
-En el launcher: **Diagnóstico → Intérprete SH-4 → Intérprete SH-4 de respaldo / Traza del intérprete SH-4**.
+Launcher path: **Diagnostics → SH-4 Interpreter → Fallback SH-4 Interpreter / SH-4 Interpreter Trace**.
 
-Las semillas aprendidas quedan en `%LOCALAPPDATA%\DreamcastRecompiled\games\<JUEGO>\interp_seeds.txt`. Al iniciar, `run_game.bat` muestra cuántas hay pendientes. En la próxima preparación SH-4 (Games → Preparar SH-4, o una ejecución sin `--reuse`) se pasan automáticamente al recompilador como `--seed-file`.
+Learned seeds are stored in `%LOCALAPPDATA%\DreamcastRecompiled\games\<GAME>\interp_seeds.txt`. The runner reports the pending count at startup. During the next SH-4 preparation (Games → Prepare SH-4, or a run without `--reuse`), they are passed to the recompiler as `--seed-file`.
 
-Variables del runtime: `DCR_SH4_INTERP=0|1`, `DCR_SH4_INTERP_SEEDS=<archivo>`, `DCR_SH4_INTERP_TRACE=0|1`.
+Runtime variables: `DCR_SH4_INTERP=0|1`, `DCR_SH4_INTERP_SEEDS=<file>`, and `DCR_SH4_INTERP_TRACE=0|1`.
 
-## Cobertura de instrucciones
+## Instruction coverage
 
-El intérprete implementa el set SH-4 que usa el AOT, con la misma semántica: usa los mismos helpers del runtime para memoria, store queues, bancos FR/XF, `FPSCR.SZ/PR/FR`, `dc_write_sr`, `dc_write_fpscr` y los mismos `dc_unimplemented` para los casos no soportados. Además implementa instrucciones que el decodificador estático **todavía no conoce**:
+The interpreter implements the SH-4 instructions already used by AOT with matching semantics. It shares runtime helpers for memory, store queues, FR/XF banks, `FPSCR.SZ/PR/FR`, `dc_write_sr`, `dc_write_fpscr`, and `dc_unimplemented`. It also handles instructions that the static decoder **does not yet recognize**:
 
-| Instrucción | AOT | Intérprete |
+| Instruction | AOT | Interpreter |
 | --- | --- | --- |
-| `MAC.L @Rm+,@Rn+` / `MAC.W @Rm+,@Rn+` (con saturación por bit S) | no | sí |
-| `MOV.B/W/L R0,@(disp,GBR)`, `MOV.B/W/L @(disp,GBR),R0` | no | sí |
-| `TST.B/AND.B/XOR.B/OR.B #imm,@(R0,GBR)` | no | sí |
-| `SLEEP` (espera la siguiente interrupción) | no | sí |
-| `TRAPA #imm` (TRA/EXPEVT, VBR+0x100) | no | sí |
-| `LDTLB` | no | no (mismo error que el AOT) |
+| `MAC.L @Rm+,@Rn+` / `MAC.W @Rm+,@Rn+` (S-bit saturation) | No | Yes |
+| `MOV.B/W/L R0,@(disp,GBR)`, `MOV.B/W/L @(disp,GBR),R0` | No | Yes |
+| `TST.B/AND.B/XOR.B/OR.B #imm,@(R0,GBR)` | No | Yes |
+| `SLEEP` (wait for next interrupt) | No | Yes |
+| `TRAPA #imm` (TRA/EXPEVT, VBR+0x100) | No | Yes |
+| `LDTLB` | No | No (same limitation as AOT) |
 
-Importante: el recompilador descarta las funciones que contienen instrucciones que no sabe decodificar. Esas funciones ahora se ejecutan interpretadas en vez de cerrar el juego, pero seguirán interpretadas hasta que el decodificador/DCIR aprenda esas instrucciones (siguiente paso natural).
+The recompiler discards functions containing unknown instructions. Those functions can now run through the interpreter instead of terminating the game, but remain interpreted until the decoder/DCIR adds their instruction support.
 
-## Validación
+## Original validation
 
-- `runtime/tests_sh4_interp.cpp` (CTest `dcr_sh4_interp_tests`, 271 comprobaciones):
-  - **Diferencial:** un corpus en C real (`tests/interp/interp_corpus.c`), compilado con GCC para SH-4 (`-ml -m4`), se ejecuta solo con el intérprete y debe dar exactamente lo mismo que el mismo C compilado para el host. Cubre aritmética, división de libgcc, 64 bits, tablas de salto, recursión, punteros a función, bitfields, float y double con cambios de `FPSCR.PR`, y conversiones.
-  - **Modo mixto:** funciones registradas como "AOT" con el contrato del código generado. Se prueban llamadas interpretado→AOT, AOT→interpretado y saltos de cola hacia AOT.
-  - **Sondas en ensamblador** (`tests/interp/interp_asm.S`): delay slots (`BT/S` con T modificado en el slot, `RTS`/`BSR` con slot), formas GBR, `MAC.W`/`MAC.L` con y sin saturación, una interrupción en medio de una función (desenrollado y reanudación), `SLEEP` y `TRAPA`.
-  - Archivo de semillas: entradas verificadas, `runtime-code`, exclusión de continuaciones y deduplicación entre ejecuciones.
-  - Con `DCR_SH4_INTERP=0`, y para objetivos fuera de la RAM principal, se conserva el error histórico.
-- `tools/interp/e2e_aot_interp_check.py`: prueba de punta a punta con el pipeline real (`dc_raw_recomp` → guest modular → runtime). Sin intérprete, el programa aborta con el error histórico. Con intérprete, las 6 entradas alcanzables solo por punteros a función se interpretan con resultados idénticos al host. Tras recompilar con las semillas aprendidas, la ejecución ya no interpreta nada.
-- Contraste instrucción por instrucción con `qemu-sh4`: coinciden todas, salvo casos donde qemu 8.2 tiene errores conocidos (`ADDV`/`SUBV`/`ROTL`/`ROTR`) y `DIV1` con divisor cero.
-- Rendimiento medido en Linux: unos 120 MIPS con `--sh4-tick-batch=256`. Es comparable a la tasa efectiva de un SH-4 real y suficiente para código frío. El código caliente pasa a AOT tras la siguiente preparación.
+- `runtime/tests_sh4_interp.cpp` (CTest `dcr_sh4_interp_tests`, 271 assertions):
+  - **Differential tests:** the same real C corpus (`tests/interp/interp_corpus.c`), cross-compiled with GCC for SH-4 (`-ml -m4`), runs through the interpreter and must match a native host build. It covers arithmetic, libgcc division, 64-bit calculations, jump tables, recursion, function pointers, bitfields, floating-point values, FPSCR.PR changes, and conversions.
+  - **Mixed execution:** functions registered as AOT test interpreted-to-AOT calls, AOT-to-interpreted calls, and tail branches to AOT.
+  - **Assembly probes** (`tests/interp/interp_asm.S`): delay slots (including `BT/S` with T modified in the slot, `RTS` / `BSR`), GBR forms, saturated and unsaturated `MAC.W` / `MAC.L`, mid-function interrupts with unwind/resume, `SLEEP`, and `TRAPA`.
+  - Seed-file checks: verified entries, `runtime-code`, continuation exclusion, and cross-session deduplication.
+  - `DCR_SH4_INTERP=0` and targets outside guest main RAM retain the historical failure.
+- `tools/interp/e2e_aot_interp_check.py` runs the full pipeline (`dc_raw_recomp` → modular guest → runtime). Without the interpreter the program aborts at the historical error. With the interpreter, six function-pointer-only entries execute with results identical to the host. After native recompilation using the learned seeds, those entries no longer require interpretation.
+- Instruction-by-instruction comparison with `qemu-sh4` agrees except for known QEMU 8.2 issues involving `ADDV` / `SUBV` / `ROTL` / `ROTR` and `DIV1` with a zero divisor.
+- Linux performance was measured at approximately **120 MIPS** using `--sh4-tick-batch=256`, comparable to the effective rate of a real SH-4 for cold paths. Frequently executed paths can move to AOT at the next preparation step.
 
-**Pendiente en Windows/MSVC:** compilar el runtime, correr `run_tests.bat` y probar con juegos reales.
+**Windows/MSVC remained to be tested in the original report:** build the runtime, run `run_tests.bat`, and test real games.
 
-### Regenerar los fixtures SH-4
+### Regenerating SH-4 fixtures
 
-`tests/interp/interp_fixtures.inc` está versionado, así que Windows no necesita compilador cruzado. Para regenerarlo (Linux):
+`tests/interp/interp_fixtures.inc` is versioned, so Windows does not need a cross-compiler. To regenerate it on Linux:
 
 ```sh
 sudo apt install gcc-sh4-linux-gnu
 python3 tools/interp/build_interp_fixtures.py
 ```
 
-## Hallazgo lateral
+## Additional finding
 
-`DIV1 Rn,Rn` (mismo registro como divisor y dividendo) debe leer Rm *después* de desplazar Rn. El intérprete lo hace así; la versión AOT (`cpp_emitter.cpp`, `DCIROp::Div1`) lee el valor anterior. Los compiladores no generan esa forma, así que no afecta a juegos conocidos, pero conviene alinearlo en la próxima revisión del emisor.
+For `DIV1 Rn,Rn` (the same register as divisor and dividend), Rm must be read **after** Rn is shifted. The interpreter does this correctly, whereas the original AOT implementation (`cpp_emitter.cpp`, `DCIROp::Div1`) reads the previous value. Compilers do not normally generate this form, so known games were not affected, but the emitter should eventually be aligned.
 
-## Limitaciones conocidas
+## Known limitations
 
-- El runtime heredado embebido en `cpp_emitter.cpp` (modo no modular) no incluye el intérprete. Los juegos comerciales usan el runtime modular (`runtime/`), que sí lo incluye.
-- Si un puntero corrupto apunta dentro de la RAM principal, se ejecuta lo que haya allí hasta encontrar una instrucción ilegal. El error indica la entrada interpretada y desde dónde se llegó. `--no-interp` restaura el corte inmediato.
-- Las instrucciones PC-relativas dentro de un delay slot usan la dirección del slot, igual que el AOT. Se cuentan en las estadísticas (`pc_relative_in_delay_slot`) para detectarlas si aparecieran.
+- The older embedded, non-modular runtime in `cpp_emitter.cpp` does not include this interpreter. Commercial game paths use the modular `runtime/` implementation, which does.
+- A corrupted function pointer inside guest main RAM may execute arbitrary bytes until an illegal instruction is reached. The resulting error reports both the interpreted entry and its caller. `--no-interp` restores immediate failure on an unsupported target.
+- PC-relative instructions in a delay slot use the slot's own address, as they do in AOT. Occurrences are counted in `pc_relative_in_delay_slot` diagnostics.
