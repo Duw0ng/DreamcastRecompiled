@@ -12,6 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Test an isolated, local inference model for archived docs
         run: |
+          python -m pip install -q torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install -q 'transformers==4.44.2' sentencepiece sacremoses
           python - <<'PY'
           from transformers import MarianTokenizer, MarianMTModel
