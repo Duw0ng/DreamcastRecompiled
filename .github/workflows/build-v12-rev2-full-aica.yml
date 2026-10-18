@@ -1,0 +1,69 @@
+name: Build full DreamcastRecompiled v1.2 Rev 2 AICA Windows tester
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [dcr-v1.2-rev2-full-aica-ct2-perf]
+    paths:
+      - 'runtime/**'
+      - 'tools/release/repack_full_v12_audio_rev2.py'
+      - 'scripts/perf/TEST_CRAZY_TAXI_2_FPS.bat'
+      - 'docs/DCRV12_REV2_FULL_AUDIO_CT2_TEST.md'
+      - '.github/workflows/build-v12-rev2-full-aica.yml'
+
+jobs:
+  full-aica:
+    runs-on: windows-2022
+    permissions:
+      contents: read
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build AICA Rev 2 Windows runtime and regression tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake -S runtime -B build-rev2-aica -A x64 -DDCR_HOST_AVX2=OFF
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime CMake configure failed' }
+          cmake --build build-rev2-aica --config Release --target DreamcastRuntime dcr_aica_one_shot_keyon_tests dcr_aica_arm_bus_tests dcr_portable_ipbin_stage_tests --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime compilation failed' }
+          ctest --test-dir build-rev2-aica -C Release -R 'dcr_aica_one_shot_keyon_tests|dcr_aica_arm_bus_tests|dcr_portable_ipbin_stage_tests' --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'AICA/boot regression failed' }
+
+      - name: Download and authenticate original full v1.2 Stable ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh release download v1.2 --repo $env:GITHUB_REPOSITORY --pattern 'DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip' --dir source-v12
+          if ($LASTEXITCODE -ne 0) { throw 'Stable ZIP download failed' }
+          $original = 'source-v12/DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip'
+          $expected = '42d08b83ad718214ef19a597332d690c4b5f446fdb7422dd8455df55cca1c127'
+          $actual = (Get-FileHash $original -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $expected) { throw "Published Stable ZIP changed: $actual" }
+          Write-Host "Authenticated original Stable ZIP: $actual"
+
+      - name: Repack full Aqua tester with compiled Rev 2 audio runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = 'dist/DCRV1.2_Rev2_FULL_AICA_AUDIO_TEST_WIN64.zip'
+          python tools/release/repack_full_v12_audio_rev2.py --stable 'source-v12/DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip' --runtime 'build-rev2-aica/Release/DreamcastRuntime.dll' --output $out --repository '.'
+          if ($LASTEXITCODE -ne 0) { throw 'Full ZIP repack verification failed' }
+          if (-not (Test-Path $out) -or -not (Test-Path "$out.sha256")) { throw 'Output ZIP/checksum missing' }
+          $sha = (Get-FileHash $out -Algorithm SHA256).Hash.ToLower()
+          $check = (Get-Content "$out.sha256" -Raw).Trim().Split(' ')[0].ToLower()
+          if ($sha -ne $check) { throw 'Final ZIP checksum mismatch' }
+          Write-Host "Verified complete DCR v1.2 Rev 2: $sha"
+
+      - name: Upload full Windows AICA Rev 2 tester (not Stable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: DCRV1.2_Rev2_FULL_AICA_AUDIO_TEST_WIN64
+          path: |
+            dist/DCRV1.2_Rev2_FULL_AICA_AUDIO_TEST_WIN64.zip
+            dist/DCRV1.2_Rev2_FULL_AICA_AUDIO_TEST_WIN64.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
