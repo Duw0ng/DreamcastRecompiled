@@ -92,3 +92,69 @@ observer fast path only if independently validated.
 **Boundary:** Even a perfect host-sync optimization is not likely by itself
 to increase CT2 from ~28 FPS to 60 FPS. The indirect callback's work and
 SH-4 scheduling still require deeper inspection and targeted benchmark data.
+
+
+## Direct SH-4 analysis of `sub_8C157720`
+
+The actual binary disassembly (using this repository's own SH-4 decoder) shows:
+
+- `0x8C15786A`: stores zero to `0x0C300C40` before entering the
+  first callback loop when `0x0C300C44` is nonzero.
+- `0x8C157878–0x8C15787E`: loads the **mutable** function pointer from
+  `0x0C300B38`, passes the adjacent `0x0C300B3C` as R4, calls `JSR @R2`.
+  `0x8C157880` is the return PC.
+- `0x8C157880–0x8C157898`: reads the values at `0x0C300AF4`,
+  `0x0C300AF8`, `0x0C300C40`; compares the *unsigned* counter
+  `C40 > AF4 + AF8 + 1` (SH-4 32-bit wraparound). This may set R12.
+  The callback is otherwise repeated while `0x0C300C44 != 0`.
+- `0x8C1578B8–0x8C157926`: a second callback loop is bounded by
+  `C40 > 20` or the continuation flag clearing; it is **not** safe to
+  skip this loop by forcing counter progress.
+- `0x8C15793A–0x8C15793E`: increments `0x0C300C2C` and masks it
+  modulo 4. The later section also calls `0x8C156D04`, a helper that
+  writes to the PVR MMIO area `A05F8000` using an offset.
+- Nearby `sub_8C149B2E` and `sub_8C157A60` reuse the same callback
+  pointer and stop flags, confirming this is a recurring coordination
+  mechanism, not a dead temporary loop.
+
+**Interpretation, not a proved symbol name:** this resembles a rendering /
+event synchronization pump. It interacts with state changed by other game
+routines and PVR code, but without the live target and event timing we cannot
+prove whether the callback polls hardware, pumps tasks, or performs useful
+per-frame work. In HOTPC, both `ctx.pc` and `ctx.pr` spend much of the time
+at `0x8C157880`, consistent with an indirect-call return site; it does
+not provide a timed call graph.
+
+### Exact next diagnostic
+
+The experimental runtime adds an opt-in, **sampled** callback probe. It
+does not alter the guest code, SH-4 cycles, interrupt order or persistent
+save data. Run:
+
+```bat
+TEST_CRAZY_TAXI_2_FPS.bat "C:\\Games\\Crazy Taxi 2.cdi" --callback-probe
+```
+
+The `--callback-probe` option turns on low-frequency HOTPC sampling and
+`DCR_CT2_CALLBACK_PROBE=1`. Log entries look like:
+
+```text
+[DCR CT2 CALLBACK] sampled=N return-pc=N flag-active=N above-gate=N ... | callback-ptr=0xXXXXXXXX:count@percent
+```
+
+- `callback-ptr` is a **live memory snapshot after or during a callback**;
+  the callback itself is allowed to change the pointer, so this does *not*
+  prove that every listed pointer was the one actually invoked.
+- `flag-active` counts the samples with `0x0C300C44 != 0`.
+- `above-gate` counts snapshots where `0x0C300C40` exceeds the unsigned
+  comparison threshold `0x0C300AF4 + 0x0C300AF8 + 1`.
+- An empty or zero pointer should be checked against a later heartbeat,
+  but never assumed valid and called by the tooling.
+- Only samples whose `ctx.pc` or `ctx.pr` equal `0x8C157880`
+  are collected. This is an intentional biased *diagnostic* sample,
+  not a statistically valid CPU-time fraction.
+- Never benchmark FPS with `--callback-probe` or `--profile` enabled.
+
+Then resolve the most common `callback-ptr` values in the provided
+`function_map.csv` and inspect the called SH-4 code. Only after this
+can a callback-specific, side-effect-preserving optimization be designed.
