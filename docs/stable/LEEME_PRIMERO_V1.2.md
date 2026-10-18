@@ -1,40 +1,43 @@
 # Dreamcast Recompiled v1.2
 
-**Edicion estable oficial — cpp38e HOT_BLOCK_RECOVERY (congelada el 7 de octubre de 2026).**
+**Official stable baseline — cpp38e HOT_BLOCK_RECOVERY, frozen October 7, 2026.**
 
-Esta entrega parte del archivo autentico `DreamcastRecomp_v1.2_STABLE_cpp38e_HOT_BLOCK_RECOVERY.zip`, verificado por SHA-256:
-`1f3722dfa1f962c95b5d9594eb4f88dbb4a25860961869ef03a9bf1f5e4e7f06`.
+This release is based on the authentic archive `DreamcastRecomp_v1.2_STABLE_cpp38e_HOT_BLOCK_RECOVERY.zip`, originally checked with SHA-256:
 
-## Para jugar desde Windows
-
-Con PowerShell dentro de esta carpeta:
-
-```powershell
-.\INICIAR_DREAMCAST_RECOMPILED_V1_2.bat "C:\ruta\ccr.cdi"
+```text
+1f3722dfa1f962c95b5d9594eb4f88dbb4a25860961869ef03a9bf1f5e4e7f06
 ```
 
-Tambien se puede arrastrar un CDI sobre `INICIAR_DREAMCAST_RECOMPILED_V1_2.bat`.
+## Launch on Windows
 
-La ejecucion utiliza el mismo `TEST_CPP38E_FAST.bat` de la version estable: `--reuse --spg-ff-on --hotpc-off --hot-recovery-on --no-portable-sync --no-pause`. Para cargar otro titulo por primera vez o generar el cache del guest, usa `run_game.bat "C:\ruta\juego.cdi"`, consultando antes `README.md`.
+From PowerShell in this directory:
 
-## Qué se mantiene intacto
+```powershell
+.\INICIAR_DREAMCAST_RECOMPILED_V1_2.bat "C:\path\ccr.cdi"
+```
 
-- Codigo C++ de recompilador, SH-4, PVR heredado, AICA, GD-ROM, Maple y red original cpp38e.
-- `run_game.bat`, `TEST_CPP38E_FAST.bat`, `APPLY_CPP38E_HOT_BLOCK_RECOVERY.bat` y los demas BAT preexistentes.
-- Guest ABI1 `safe_guests/CHUCHU_ROCKET/dcr_game_module.dll` y perfiles originales.
-- Identificadores de recompilacion y cache (`DCR_RUNTIME_BUILD_ID`, `DCR_GUEST_IMPL_REV`): **no** se cambian por el nombre comercial.
-- El modo base sigue con perfilador HOTPC desactivado por defecto.
+You can also drag a CDI file onto `INICIAR_DREAMCAST_RECOMPILED_V1_2.bat`.
 
-## Cambios realizados para la presentacion
+This uses the same stable `TEST_CPP38E_FAST.bat` workflow with flags `--reuse --spg-ff-on --hotpc-off --hot-recovery-on --no-portable-sync --no-pause`. To load another title for the first time or generate its guest cache, use `run_game.bat "C:\path\game.cdi"` after consulting the main README.
 
-- Nombre visible de entrega, carpeta y lanzador: **Dreamcast Recompiled v1.2**.
-- Textos visibles del lanzador portable `portable/DreamcastRecompiled.exe` recompilado desde Go y su fuente `portable/launcher/main_windows.go`. Solamente cambiaron cadenas de titulo/interfaz; se conserva la configuracion de carga interna de la version original.
-- Este documento. Ningun cambio a las rutinas de juego, velocidad de reloj, renderizado o audio.
+## What remains unchanged
 
-El ejecutable portable esta incluido, pero la prueba de rendimiento estable confirmada previamente corresponde al flujo `TEST_CPP38E_FAST.bat`. La recompilacion de la interfaz portable se valido cruzadamente para Windows x64, **no se ejecuto en Windows** aqui.
+- The original cpp38e C++ recompiler, SH-4, legacy PVR, AICA, GD-ROM, Maple, and networking code.
+- Existing `run_game.bat`, `TEST_CPP38E_FAST.bat`, `APPLY_CPP38E_HOT_BLOCK_RECOVERY.bat`, and other batch files.
+- The ABI1 guest `safe_guests/CHUCHU_ROCKET/dcr_game_module.dll` and original profiles.
+- Recompiler/cache identifiers (`DCR_RUNTIME_BUILD_ID` and `DCR_GUEST_IMPL_REV`), which **must not be changed** merely for public branding.
+- HOTPC profiling remains disabled by default in the baseline configuration.
 
-## Antes de reemplazar tu copia experimental
+## Presentation changes in the original snapshot
 
-No mezcles archivos cpp38az/cpp38ba con esta carpeta. Extrae el ZIP en su propia carpeta. Los datos por juego se guardan en `%LOCALAPPDATA%\DreamcastRecompiled\games`; el codigo fuente cpp38e no borra esos datos por el simple hecho de extraer el ZIP. Si tienes una cache mezclada, respaldala antes de repararla, y evita `--clean` si deseas conservarla.
+- The public folder, delivery, and launcher name became **Dreamcast Recompiled v1.2**.
+- The visible UI/title strings in the Go-built launcher `portable/DreamcastRecompiled.exe` and its source `portable/launcher/main_windows.go` were revised. The original internal loading configuration remained unchanged.
+- This document was added. No game logic, clock rate, rendering, or audio routines were changed for that branding step.
 
-Historial tecnico del snapshot: `STABLE_BASE_CPP38E.md`, `CPP38E_HOT_BLOCK_RECOVERY.md`, `RELEASE_NOTES_CPP38E.md`.
+The portable executable was included, but the earlier confirmed stable performance measurement concerned the `TEST_CPP38E_FAST.bat` path. The portable UI was cross-built for Windows x64; **it was not run on Windows in that original validation session**.
+
+## Before replacing an experimental copy
+
+Do not mix cpp38az/cpp38ba files into this directory. Extract the ZIP into its own folder. Per-game data is stored in `%LOCALAPPDATA%\DreamcastRecompiled\games`; merely extracting cpp38e sources does not erase that data. Back up any mixed cache before repairing it, and avoid `--clean` if you intend to preserve existing cache entries.
+
+Original snapshot history: `STABLE_BASE_CPP38E.md`, `CPP38E_HOT_BLOCK_RECOVERY.md`, and `RELEASE_NOTES_CPP38E.md`.
