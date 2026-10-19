@@ -17444,6 +17444,8 @@ bool dc_sh4_dynamic_try_resolve(DCRuntime& runtime,std::uint32_t wanted) {
 // regenerating proprietary code. Enabled exclusively with DCR_SH4_RETFAST=1.
 // The only accepted guest body is RTS (000B), NOP (0009), represented by the
 // generator as a 3-cycle pure RETURN. Never infer a no-op from call frequency.
+bool dc_ct2_wait_coalesce_enabled() noexcept;
+void dc_ct2_wait_coalesce(SH4Context&, DCRuntime&, std::uint32_t);
 bool sh4_trivial_ret_enabled() noexcept {
     static const bool enabled = []() {
         const char* value = std::getenv("DCR_SH4_RETFAST");
@@ -17472,6 +17474,7 @@ void sh4_trivial_ret_3cycles(SH4Context& ctx, DCRuntime& runtime) {
         // Match the generated AOT leaf exactly: scheduler and asynchronous
         // redirects must be observed at the original three-cycle boundary.
         if (dc_runtime_tick_fast(ctx, runtime, 3u)) return;
+        dc_ct2_wait_coalesce(ctx, runtime, target);
         ctx.pc = ctx.pr;
         return;
     }
@@ -17498,7 +17501,8 @@ RecompiledFunction sh4_trivial_ret_select(DCRuntime& runtime,
                                           std::uint32_t relocation_source,
                                           std::uint32_t relocation_target,
                                           RecompiledFunction original) {
-    if (!sh4_trivial_ret_enabled() || !runtime.commercial_boot_active ||
+    const bool ct2_candidate = dc_ct2_wait_coalesce_enabled() && resolved_target == 0x8C1560B0u;
+    if ((!sh4_trivial_ret_enabled() && !ct2_candidate) || !runtime.commercial_boot_active ||
         relocation_source != 0u || relocation_target != 0u ||
         original == nullptr || original == &sh4_trivial_ret_3cycles ||
         (requested_target & 1u) != 0u)
