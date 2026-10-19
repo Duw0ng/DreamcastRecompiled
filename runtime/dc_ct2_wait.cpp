@@ -53,7 +53,7 @@ void dc_ct2_wait_coalesce(SH4Context& ctx, DCRuntime& runtime, std::uint32_t tar
         std::cerr << "[DCR CT2 WAIT] batches=" << batches
                   << " skipped-iterations=" << skipped
                   << " cycles=" << skipped * kIterationCycles
-                  << " | scheduler-boundary=256\\n";
+                  << " | scheduler-boundary=256\n";
 }
 
 }
