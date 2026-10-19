@@ -1,5 +1,8 @@
 #include "dc_runtime.hpp"
 #include <cstdlib>
+#include <algorithm>
+#include <cstdint>
+#include <iostream>
 namespace dcrecomp_generated {
 bool dc_ct2_wait_coalesce_enabled() noexcept {
   const char* v=std::getenv("DCR_CT2_WAIT_COALESCE");
@@ -31,6 +34,26 @@ void dc_ct2_wait_coalesce(SH4Context& ctx, DCRuntime& runtime, std::uint32_t tar
     const std::uint32_t bound =
         read32(0x0C300AF4u) + read32(0x0C300AF8u) + 1u;
     if (read32(0x0C300C40u) > bound) return;
+    constexpr std::uint64_t kIterationCycles = 22u;
+    const std::uint64_t quantum = runtime.sh4_tick_batch_cycles != 0u
+        ? std::min<std::uint64_t>(runtime.sh4_tick_batch_cycles, 256u) : 1u;
+    const std::uint64_t pending = runtime.sh4_tick_pending_cycles;
+    if (pending >= quantum || quantum - pending <= kIterationCycles + 1u) return;
+    const std::uint64_t count = (quantum - pending - 1u) / kIterationCycles;
+    if (count == 0u) return;
+    runtime.sh4_tick_pending_cycles += count * kIterationCycles;
+#if !defined(DCR_DISABLE_HOT_TICK_CALL_COUNTER)
+    runtime.sh4_tick_calls += count * 4u;
+#endif
+    static std::uint64_t batches = 0u;
+    static std::uint64_t skipped = 0u;
+    ++batches;
+    skipped += count;
+    if ((batches & (batches - 1u)) == 0u)
+        std::cerr << "[DCR CT2 WAIT] batches=" << batches
+                  << " skipped-iterations=" << skipped
+                  << " cycles=" << skipped * kIterationCycles
+                  << " | scheduler-boundary=256\\n";
 }
 
 }
