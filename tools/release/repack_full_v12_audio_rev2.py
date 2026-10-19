@@ -25,6 +25,8 @@ RUNTIME_SOURCE_EXTENSIONS = {".cpp", ".hpp", ".h", ".md", ".txt"}
 ADD_FILES = {
     "TEST_CRAZY_TAXI_2_FPS.bat": "scripts/perf/TEST_CRAZY_TAXI_2_FPS.bat",
     "REV2_AICA_FULL_TEST_README.md": "docs/DCRV12_REV2_FULL_AUDIO_CT2_TEST.md",
+    "scripts/perf/PROBE_CT2_CALLBACK.bat": "scripts/perf/PROBE_CT2_CALLBACK.bat",
+    "docs/CT2_CALLBACK_PROBE_V1.2.md": "docs/CT2_CALLBACK_PROBE_V1.2.md",
 }
 GAME_IMAGES = (".cdi", ".gdi", ".chd", ".iso", ".nrg", ".mdf", ".mds")
 
@@ -134,6 +136,8 @@ def main() -> None:
         assert b"aica_native_stop_finished_slot" in done.read("runtime/dc_runtime.cpp")
         assert "TEST_CRAZY_TAXI_2_FPS.bat" in done.namelist()
         assert "REV2_AICA_FULL_TEST_README.md" in done.namelist()
+        assert "scripts/perf/PROBE_CT2_CALLBACK.bat" in done.namelist()
+        assert "docs/CT2_CALLBACK_PROBE_V1.2.md" in done.namelist()
 
     result_sha=sha(args.output.read_bytes())
     checksum=args.output.with_name(args.output.name+".sha256")

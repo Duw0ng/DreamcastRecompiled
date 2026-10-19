@@ -745,6 +745,127 @@ bool main_ram_range(std::uint32_t address, std::size_t width, std::size_t& index
     return true;
 }
 
+// Crazy Taxi 2 callback probe (runtime-only, opt-in). The already-compiled
+// ABI1 guest records indirect calls in the existing 32-entry trace history;
+// consume them at device-tick boundaries without rebuilding its native DLL.
+// This probe is observational: no SH-4 PC, timer, IRQ or dispatch edits.
+struct Ct2CallbackProbeState {
+    DCRuntime* owner{};
+    bool enabled{};
+    bool warned_trace_disabled{};
+    bool saw_pointer{};
+    std::uint32_t last_pointer{};
+    std::uint64_t seen_trace_calls{};
+    std::uint64_t trace_events_overwritten{};
+    std::uint64_t in_range_ticks{};
+    std::uint64_t callback_calls{};
+    std::unordered_map<std::uint32_t, std::uint64_t> target_counts{};
+};
+thread_local Ct2CallbackProbeState g_ct2_callback_probe{};
+
+std::uint32_t ct2_probe_ram_u32(const DCRuntime& runtime, std::uint32_t address) {
+    std::size_t offset = 0u;
+    if (!main_ram_range(address, 4u, offset)) return 0xFFFFFFFFu;
+    const auto* b = runtime.main_ram.data() + offset;
+    return static_cast<std::uint32_t>(b[0]) |
+           (static_cast<std::uint32_t>(b[1]) << 8u) |
+           (static_cast<std::uint32_t>(b[2]) << 16u) |
+           (static_cast<std::uint32_t>(b[3]) << 24u);
+}
+
+void ct2_callback_probe_tick(const SH4Context& ctx, DCRuntime& runtime) {
+    auto& s = g_ct2_callback_probe;
+    if (s.owner != &runtime || runtime.trace_call_count < s.seen_trace_calls) {
+        s = {};
+        s.owner = &runtime;
+        const char* flag = std::getenv("DCR_CT2_CALLBACK_PROBE");
+        s.enabled = flag && flag[0] == '1';
+        if (s.enabled)
+            std::cerr << "[DCR CT2 CALLBACK] enabled | range=0x8C157720-0x8C1578FF"
+                      << " | slot=0x0C300B38 | counters=0x0C300C40/0x0C300C44"
+                      << " | guest-abi=unchanged\n";
+    }
+    if (!s.enabled) return;
+    if (!runtime.trace_history_enabled) {
+        if (!s.warned_trace_disabled) {
+            std::cerr << "[DCR CT2 CALLBACK] trace history disabled; cannot identify dynamic targets\n";
+            s.warned_trace_disabled = true;
+        }
+        return;
+    }
+    constexpr std::uint32_t kFirst = 0x8C157720u;
+    constexpr std::uint32_t kEnd = 0x8C1578FFu;
+    const bool in_range = ctx.pc >= kFirst && ctx.pc <= kEnd;
+    if (in_range) {
+        ++s.in_range_ticks;
+        const auto pointer = ct2_probe_ram_u32(runtime, 0x0C300B38u);
+        if (!s.saw_pointer || pointer != s.last_pointer || s.in_range_ticks <= 4u) {
+            s.saw_pointer = true;
+            s.last_pointer = pointer;
+            std::cerr << "[DCR CT2 SLOT] pc=0x" << std::hex << std::uppercase << ctx.pc
+                      << " PR=0x" << ctx.pr << " slot=0x" << pointer
+                      << " count40=0x" << ct2_probe_ram_u32(runtime, 0x0C300C40u)
+                      << " count44=0x" << ct2_probe_ram_u32(runtime, 0x0C300C44u)
+                      << " R0=0x" << ctx.r[0] << " R1=0x" << ctx.r[1]
+                      << " R2=0x" << ctx.r[2] << " R3=0x" << ctx.r[3]
+                      << std::dec << "\n";
+        }
+    }
+    const std::uint64_t total = runtime.trace_call_count;
+    const std::size_t capacity = runtime.trace_history.size();
+    const std::size_t count = runtime.trace_history_size;
+    if (total == s.seen_trace_calls || count == 0u) return;
+    const std::uint64_t oldest = total - count + 1u;
+    const std::uint64_t first = std::max(s.seen_trace_calls + 1u, oldest);
+    if (first > s.seen_trace_calls + 1u)
+        s.trace_events_overwritten += first - (s.seen_trace_calls + 1u);
+    const std::size_t oldest_index =
+        (runtime.trace_history_next + capacity - count) % capacity;
+    for (std::uint64_t seq = first; seq <= total; ++seq) {
+        const auto& event = runtime.trace_history[
+            (oldest_index + static_cast<std::size_t>(seq - oldest)) % capacity];
+        if (event.caller < kFirst || event.caller > kEnd) continue;
+        ++s.callback_calls;
+        ++s.target_counts[event.target];
+        // Bounded exponential log volume: first 16, then powers of two.
+        if (s.callback_calls <= 16u ||
+            (s.callback_calls & (s.callback_calls - 1u)) == 0u) {
+            std::cerr << "[DCR CT2 CALL] #" << s.callback_calls
+                      << " caller=0x" << std::hex << std::uppercase << event.caller
+                      << " target=0x" << event.target << " r8=0x" << event.r8
+                      << " sp=0x" << event.sp
+                      << " slot=0x" << ct2_probe_ram_u32(runtime, 0x0C300B38u)
+                      << " count40=0x" << ct2_probe_ram_u32(runtime, 0x0C300C40u)
+                      << " count44=0x" << ct2_probe_ram_u32(runtime, 0x0C300C44u)
+                      << std::dec << "\n";
+        }
+    }
+    s.seen_trace_calls = total;
+}
+
+void ct2_callback_probe_report(DCRuntime& runtime) {
+    const auto& s = g_ct2_callback_probe;
+    if (!s.enabled || s.owner != &runtime ||
+        runtime.diag_heartbeat_count % 10u != 0u) return;
+    std::uint32_t top_target = 0u;
+    std::uint64_t top_calls = 0u;
+    for (const auto& entry : s.target_counts) {
+        if (entry.second > top_calls) {
+            top_target = entry.first;
+            top_calls = entry.second;
+        }
+    }
+    std::cerr << "[DCR CT2 SUMMARY] ticks=" << s.in_range_ticks
+              << " calls=" << s.callback_calls
+              << " unique-targets=" << s.target_counts.size()
+              << " overwritten-trace-events=" << s.trace_events_overwritten
+              << " top=0x" << std::hex << std::uppercase << top_target
+              << std::dec << ":" << top_calls
+              << " | count40=0x" << std::hex << ct2_probe_ram_u32(runtime, 0x0C300C40u)
+              << " count44=0x" << ct2_probe_ram_u32(runtime, 0x0C300C44u)
+              << std::dec << "\n";
+}
+
 bool bios_font_range(std::uint32_t address, std::size_t width, std::size_t& index) {
     const std::uint32_t physical = physical29(address);
     if (physical < DCRuntime::kBiosFontPhysicalBase ||
@@ -11780,6 +11901,10 @@ DCRuntime::DCRuntime()
         hot_trace_enabled = !(hot[0] == '0' || hot[0] == 'n' || hot[0] == 'N' || hot[0] == 'f' || hot[0] == 'F');
     if (const char* trace = std::getenv("DCR_TRACE_HISTORY"))
         trace_history_enabled = trace[0] == '1' || trace[0] == 'y' || trace[0] == 'Y' || trace[0] == 't' || trace[0] == 'T';
+    // The CT2 probe reuses the ABI1 call history already in native guests.
+    // The normal trace setting remains off for all non-diagnostic launches.
+    if (const char* probe = std::getenv("DCR_CT2_CALLBACK_PROBE"); probe && probe[0] == '1')
+        trace_history_enabled = true;
     if (const char* threshold = std::getenv("DCR_HOT_TRACE_THRESHOLD")) {
         const unsigned long parsed = std::strtoul(threshold, nullptr, 10);
         if (parsed != 0ul) hot_trace_threshold = static_cast<std::uint32_t>(std::min<unsigned long>(parsed, 65535ul));
@@ -13239,6 +13364,7 @@ bool sh4_try_holly_interrupt(SH4Context& ctx, DCRuntime& runtime) {
 bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4_cycles) {
     g_last_sh4_context = &ctx;
     runtime.current_pc = ctx.pc;
+    ct2_callback_probe_tick(ctx, runtime);
     // cpp34e: observe game execution and restore IP.BIN only after boot-safe arming
     // executes bootstrap code. This also covers direct/non-call PC redirects.
     ipbin_observe_game_execution(runtime, ctx.pc, "tick");
@@ -13907,6 +14033,7 @@ bool dc_runtime_tick_full(SH4Context& ctx, DCRuntime& runtime, std::uint64_t sh4
 #endif
                       << "\n";
             cpp38d_hotpc_report(runtime);
+            ct2_callback_probe_report(runtime);
             runtime.maple_buttons_seen_interval = 0u;
             }
         }
