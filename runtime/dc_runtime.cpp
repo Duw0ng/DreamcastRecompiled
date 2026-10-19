@@ -17438,6 +17438,87 @@ bool dc_sh4_dynamic_try_resolve(DCRuntime& runtime,std::uint32_t wanted) {
     return false;
 }
 
+
+// DCR V1.2 experimental SH-4 trivial-return fast path (ABI1 unchanged).
+// A runtime-only opt-in allows precompiled game DLLs to be benchmarked without
+// regenerating proprietary code. Enabled exclusively with DCR_SH4_RETFAST=1.
+// The only accepted guest body is RTS (000B), NOP (0009), represented by the
+// generator as a 3-cycle pure RETURN. Never infer a no-op from call frequency.
+bool sh4_trivial_ret_enabled() noexcept {
+    static const bool enabled = []() {
+        const char* value = std::getenv("DCR_SH4_RETFAST");
+        return value != nullptr && value[0] == '1' && value[1] == '\0';
+    }();
+    return enabled;
+}
+
+bool sh4_trivial_ret_code_matches(const DCRuntime& runtime, std::uint32_t target) noexcept {
+    const std::uint32_t physical = target & 0x1FFFFFFFu;
+    if (physical < DCRuntime::kMainRamPhysicalBase ||
+        physical > DCRuntime::kMainRamPhysicalBase + DCRuntime::kMainRamSize - 4u)
+        return false;
+    const std::size_t offset = physical - DCRuntime::kMainRamPhysicalBase;
+    // One host load/compare instead of four byte comparisons in the hot call.
+    // memcpy avoids aliasing/alignment UB and compiles to a 32-bit load on x64.
+    std::uint32_t opcode_pair = 0u;
+    std::memcpy(&opcode_pair, runtime.main_ram.data() + offset, sizeof(opcode_pair));
+    return opcode_pair == 0x0009000Bu;
+}
+
+void sh4_trivial_ret_3cycles(SH4Context& ctx, DCRuntime& runtime) {
+    const std::uint32_t target = ctx.pc;
+    if (sh4_trivial_ret_code_matches(runtime, target)) {
+        DCR_SYNC_CURRENT_PC(runtime, ctx);
+        // Match the generated AOT leaf exactly: scheduler and asynchronous
+        // redirects must be observed at the original three-cycle boundary.
+        if (dc_runtime_tick_fast(ctx, runtime, 3u)) return;
+        ctx.pc = ctx.pr;
+        return;
+    }
+    // The guest overwrote its code after the cache entry was installed.
+    // Restore the original AOT function pointers (not a stale shortcut) and
+    // execute that original target for this call.
+    const auto original = runtime.targets.find(target);
+    if (original == runtime.targets.end() || original->second == nullptr ||
+        original->second == &sh4_trivial_ret_3cycles)
+        throw std::runtime_error("SH4 trivial-return fallback has no original AOT target");
+    for (auto& slot : runtime.dispatch_cache) {
+        if (slot.target == target && slot.function == &sh4_trivial_ret_3cycles)
+            slot.function = original->second;
+    }
+    std::cerr << "[DCR SH4 RETFAST] invalidated changed guest bytes at 0x"
+              << std::hex << std::uppercase << target << std::dec
+              << " | restored original native function\n";
+    original->second(ctx, runtime);
+}
+
+RecompiledFunction sh4_trivial_ret_select(DCRuntime& runtime,
+                                          std::uint32_t requested_target,
+                                          std::uint32_t resolved_target,
+                                          std::uint32_t relocation_source,
+                                          std::uint32_t relocation_target,
+                                          RecompiledFunction original) {
+    if (!sh4_trivial_ret_enabled() || !runtime.commercial_boot_active ||
+        relocation_source != 0u || relocation_target != 0u ||
+        original == nullptr || original == &sh4_trivial_ret_3cycles ||
+        (requested_target & 1u) != 0u)
+        return original;
+    // Only replace actual registered AOT function pointers, never interpreter
+    // fallback, an HLE API, alias/rebound code or an incremental unknown block.
+    const auto registered = runtime.targets.find(resolved_target);
+    if (registered == runtime.targets.end() || registered->second != original ||
+        !sh4_trivial_ret_code_matches(runtime, resolved_target))
+        return original;
+    static unsigned reports = 0u;
+    if (reports++ < 32u) {
+        std::cout << "[DCR SH4 RETFAST] installed pure RTS/NOP leaf target=0x"
+                  << std::hex << std::uppercase << resolved_target
+                  << " requested=0x" << requested_target << std::dec
+                  << " | cycles=3 | live-code-guard=on\n";
+    }
+    return &sh4_trivial_ret_3cycles;
+}
+
 void call_recompiled(SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) {
     dc_sh4_native_patches_load(runtime);
     // cpp34f: SH-4 instructions are 16-bit aligned. An odd dynamic destination
@@ -17625,7 +17706,9 @@ void call_recompiled(SH4Context& ctx, DCRuntime& runtime, std::uint32_t target) 
         cached.target = target;
         cached.relocation_source = relocation_source;
         cached.relocation_target = relocation_target;
-        cached.function = function;
+        cached.function = sh4_trivial_ret_select(runtime, requested_target, target,
+                                                       relocation_source, relocation_target, function);
+        function = cached.function;
     }
     if (runtime.trace_calls && target != requested_target) {
         std::cerr << "[ALIAS] 0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0')
