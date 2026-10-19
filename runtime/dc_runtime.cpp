@@ -783,12 +783,12 @@ void ct2_callback_probe_tick(const SH4Context& ctx, DCRuntime& runtime) {
         if (s.enabled)
             std::cerr << "[DCR CT2 CALLBACK] enabled | range=0x8C157720-0x8C1578FF"
                       << " | slot=0x0C300B38 | counters=0x0C300C40/0x0C300C44"
-                      << " | guest-abi=unchanged\\n";
+                      << " | guest-abi=unchanged\n";
     }
     if (!s.enabled) return;
     if (!runtime.trace_history_enabled) {
         if (!s.warned_trace_disabled) {
-            std::cerr << "[DCR CT2 CALLBACK] trace history disabled; cannot identify dynamic targets\\n";
+            std::cerr << "[DCR CT2 CALLBACK] trace history disabled; cannot identify dynamic targets\n";
             s.warned_trace_disabled = true;
         }
         return;
@@ -808,7 +808,7 @@ void ct2_callback_probe_tick(const SH4Context& ctx, DCRuntime& runtime) {
                       << " count44=0x" << ct2_probe_ram_u32(runtime, 0x0C300C44u)
                       << " R0=0x" << ctx.r[0] << " R1=0x" << ctx.r[1]
                       << " R2=0x" << ctx.r[2] << " R3=0x" << ctx.r[3]
-                      << std::dec << "\\n";
+                      << std::dec << "\n";
         }
     }
     const std::uint64_t total = runtime.trace_call_count;
@@ -837,7 +837,7 @@ void ct2_callback_probe_tick(const SH4Context& ctx, DCRuntime& runtime) {
                       << " slot=0x" << ct2_probe_ram_u32(runtime, 0x0C300B38u)
                       << " count40=0x" << ct2_probe_ram_u32(runtime, 0x0C300C40u)
                       << " count44=0x" << ct2_probe_ram_u32(runtime, 0x0C300C44u)
-                      << std::dec << "\\n";
+                      << std::dec << "\n";
         }
     }
     s.seen_trace_calls = total;
@@ -863,7 +863,7 @@ void ct2_callback_probe_report(DCRuntime& runtime) {
               << std::dec << ":" << top_calls
               << " | count40=0x" << std::hex << ct2_probe_ram_u32(runtime, 0x0C300C40u)
               << " count44=0x" << ct2_probe_ram_u32(runtime, 0x0C300C44u)
-              << std::dec << "\\n";
+              << std::dec << "\n";
 }
 
 bool bios_font_range(std::uint32_t address, std::size_t width, std::size_t& index) {
