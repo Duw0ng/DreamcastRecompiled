@@ -1,16 +1,18 @@
-name: DCR V1.2 CT2 callback Windows diagnostic
+name: DCR V1.2 CT2 wait coalescing A/B experiment
 on:
   pull_request:
     paths:
       - 'runtime/**'
-      - 'scripts/perf/PROBE_CT2_CALLBACK.bat'
+      - 'scripts/perf/**'
       - 'docs/CT2_CALLBACK_PROBE_V1.2.md'
+      - 'docs/CT2_RETFAST_AB_V1.2.md'
+      - 'docs/CT2_WAIT_COALESCE_V1.2.md'
       - 'tools/release/repack_full_v12_audio_rev2.py'
       - '.github/workflows/build-ct2-callback-probe.yml'
   workflow_dispatch:
 
 jobs:
-  windows-ct2-probe:
+  windows-ct2-wait:
     runs-on: windows-2022
     timeout-minutes: 40
     permissions:
@@ -21,11 +23,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          cmake -S runtime -B build-ct2-probe -A x64 -DDCR_HOST_AVX2=OFF
+          cmake -S runtime -B build-ct2-wait -A x64 -DDCR_HOST_AVX2=OFF
           if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
-          cmake --build build-ct2-probe --config Release --target DreamcastRuntime dcr_aica_one_shot_keyon_tests dcr_aica_arm_bus_tests dcr_portable_ipbin_stage_tests --parallel 2
+          cmake --build build-ct2-wait --config Release --target DreamcastRuntime dcr_aica_one_shot_keyon_tests dcr_aica_arm_bus_tests dcr_portable_ipbin_stage_tests dcr_sh4_trivial_ret_tests dcr_ct2_wait_tests --parallel 2
           if ($LASTEXITCODE -ne 0) { throw 'Windows runtime build failed' }
-          ctest --test-dir build-ct2-probe -C Release -R 'dcr_aica_one_shot_keyon_tests|dcr_aica_arm_bus_tests|dcr_portable_ipbin_stage_tests' --output-on-failure
+          ctest --test-dir build-ct2-wait -C Release -R 'dcr_aica_one_shot_keyon_tests|dcr_aica_arm_bus_tests|dcr_portable_ipbin_stage_tests|dcr_sh4_trivial_ret_off|dcr_sh4_trivial_ret_on|dcr_ct2_wait_off|dcr_ct2_wait_on' --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'Runtime smoke tests failed' }
       - name: Fetch and verify original v1.2 Stable ZIP
         env:
@@ -39,20 +41,20 @@ jobs:
           $expected = '42d08b83ad718214ef19a597332d690c4b5f446fdb7422dd8455df55cca1c127'
           $actual = (Get-FileHash $stable -Algorithm SHA256).Hash.ToLower()
           if ($actual -ne $expected) { throw "Published Stable ZIP changed: $actual" }
-      - name: Assemble complete portable CT2 probe ZIP
+      - name: Assemble complete portable CT2 scheduler-aware wait A/B ZIP
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $out = 'dist/DCRV1.2_CT2_CALLBACK_PROBE_WIN64.zip'
-          python tools/release/repack_full_v12_audio_rev2.py --stable 'source-v12/DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip' --runtime 'build-ct2-probe/Release/DreamcastRuntime.dll' --output $out --repository '.'
+          $out = 'dist/DCRV1.2_CT2_WAIT_AB_WIN64.zip'
+          python tools/release/repack_full_v12_audio_rev2.py --stable 'source-v12/DCRV1.2_Stable_WIN64_ES_EN_VMU_FIXED.zip' --runtime 'build-ct2-wait/Release/DreamcastRuntime.dll' --output $out --repository '.'
           if ($LASTEXITCODE -ne 0) { throw 'Full ZIP repack/validation failed' }
           if (-not (Test-Path $out) -or -not (Test-Path "$out.sha256")) { throw 'Output ZIP/hash missing' }
-      - name: Upload full CT2 test build (not Stable)
+      - name: Upload full CT2 wait test build (not Stable)
         uses: actions/upload-artifact@v4
         with:
-          name: DCRV1.2_CT2_CALLBACK_PROBE_WIN64
+          name: DCRV1.2_CT2_WAIT_AB_WIN64
           path: |
-            dist/DCRV1.2_CT2_CALLBACK_PROBE_WIN64.zip
-            dist/DCRV1.2_CT2_CALLBACK_PROBE_WIN64.zip.sha256
+            dist/DCRV1.2_CT2_WAIT_AB_WIN64.zip
+            dist/DCRV1.2_CT2_WAIT_AB_WIN64.zip.sha256
           if-no-files-found: error
           retention-days: 30
