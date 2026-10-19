@@ -10,6 +10,7 @@ set(DCR_RUNTIME_OUTPUT_DIR "${CMAKE_BINARY_DIR}" CACHE PATH "Directory shared wi
 
 add_library(DreamcastRuntime SHARED
     dc_runtime.cpp
+    dc_ct2_wait.cpp
     dc_sh4_interp.cpp
     dc_arm7.cpp
     dc_native_overrides.cpp
