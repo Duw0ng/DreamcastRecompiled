@@ -150,6 +150,15 @@ if(BUILD_TESTING)
     add_test(NAME dcr_sh4_trivial_ret_on COMMAND dcr_sh4_trivial_ret_tests)
     set_tests_properties(dcr_sh4_trivial_ret_on PROPERTIES ENVIRONMENT "DCR_SH4_RETFAST=1")
 
+    # CT2 loop coalescing must stay within the existing 256-cycle scheduler quantum.
+    add_executable(dcr_ct2_wait_tests tests_ct2_wait.cpp)
+    target_include_directories(dcr_ct2_wait_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    target_link_libraries(dcr_ct2_wait_tests PRIVATE DreamcastRuntime)
+    add_test(NAME dcr_ct2_wait_off COMMAND dcr_ct2_wait_tests)
+    set_tests_properties(dcr_ct2_wait_off PROPERTIES ENVIRONMENT "DCR_CT2_WAIT_COALESCE=0;DCR_SH4_RETFAST=0")
+    add_test(NAME dcr_ct2_wait_on COMMAND dcr_ct2_wait_tests)
+    set_tests_properties(dcr_ct2_wait_on PROPERTIES ENVIRONMENT "DCR_CT2_WAIT_COALESCE=1;DCR_SH4_RETFAST=0")
+
     add_executable(dcr_portable_ipbin_stage_tests tests_portable_ipbin_stage.cpp)
     target_include_directories(dcr_portable_ipbin_stage_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
     target_link_libraries(dcr_portable_ipbin_stage_tests PRIVATE DreamcastRuntime)
