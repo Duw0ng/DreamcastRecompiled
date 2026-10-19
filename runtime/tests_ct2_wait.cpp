@@ -23,6 +23,7 @@ int main() {
     const bool enabled=opt && opt[0]=='1' && opt[1]=='\0';
     DCRuntime rt{};
     rt.commercial_boot_active=true;
+    rt.fast_dispatch_enabled=true;
     rt.fast_dynamic_dispatch_ready=true;
     rt.sh4_tick_batch_cycles=256u;
     constexpr auto target=0x8C1560B0u;
