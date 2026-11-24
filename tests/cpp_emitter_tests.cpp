@@ -103,8 +103,8 @@ int main(int argc, char** argv) {
             "v0.1.1 pre-scans CT2 compatibility before commercial bootstrap setup");
     require(runtime.find("staged scrambled commercial executable") != std::string::npos &&
             runtime.find("BootRand") != std::string::npos &&
-            runtime.find("if (runtime.ct2_compat)") != std::string::npos,
-            "v0.1.1 emits CT2 32-byte-slice commercial boot staging");
+            runtime.find("if (stage_scrambled && runtime.commercial_boot_image_size != 0u)") != std::string::npos,
+            "v1.2 Rev2 emits universal plain/scrambled 32-byte-slice commercial boot staging");
 
     require(runtime.find("const std::uint64_t raster = runtime.pvr_spg_status_reads++") == std::string::npos,
             "0.0.191 must not advance SPG raster from SPG_STATUS reads");
@@ -236,9 +236,9 @@ int main(int argc, char** argv) {
     require(runtime.find("DXGI_FORMAT_B8G8R8A8_UNORM") != std::string::npos, "PVR GPU target preserves packed BGRA/ARGB framebuffer layout");
     require(runtime.find(" | pvr-gpu=") != std::string::npos, "heartbeat reports GPU PVR frames/fallback/timing");
     require(runtime.find(" | pvr-gbind=") != std::string::npos, "heartbeat reports deduplicated D3D11 constant/state binds");
-    require(runtime.find("vertex_scratch") != std::string::npos && runtime.find("index_scratch") != std::string::npos &&
+    require(runtime.find("index_scratch") != std::string::npos &&
             runtime.find("run_scratch") != std::string::npos,
-            "D3D11 renderer reuses persistent per-frame vertex/index/run scratch buffers");
+            "D3D11 renderer reuses persistent per-frame index/run scratch buffers (vertices no longer need scratch)");
     require(runtime.find("IASetIndexBuffer") != std::string::npos && runtime.find("DrawIndexed") != std::string::npos,
             "0.0.136 GPU path submits the shared vertex arena through a 32-bit index buffer");
     require(runtime.find("pvr_deferred_vertices") != std::string::npos && runtime.find(" | pvr-idx=arena32/r32/") != std::string::npos,
@@ -393,7 +393,7 @@ int main(int argc, char** argv) {
             runtime.find("0x00090639u") != std::string::npos,
             "0.0.148 initializes Flycast-aligned PowerVR2 reset defaults");
     require(runtime.find("D3D11_CULL_NONE, D3D11_CULL_NONE, D3D11_CULL_NONE, D3D11_CULL_NONE") != std::string::npos &&
-            runtime.find("rasterizer_states[state.cull_mode & 3u]") != std::string::npos,
+            runtime.find("rasterizer_states[st.cull_mode & 3u]") != std::string::npos,
             "0.0.183 keeps CullMode state identity while disabling unproven D3D11 face culling");
     require(runtime.find("pvr_gpu_upload_cpu_scanout") != std::string::npos &&
             runtime.find("pvr-gcpu-scanout=") != std::string::npos,

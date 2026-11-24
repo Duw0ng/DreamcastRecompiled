@@ -17,7 +17,7 @@ foreach(needle
     message(FATAL_ERROR "Controller tester missing required marker: ${needle}")
   endif()
 endforeach()
-file(READ "${DCR_SOURCE_DIR}/run_controller_test.bat" LAUNCHER)
+file(READ "${DCR_SOURCE_DIR}/scripts/controller/run_controller_test.bat" LAUNCHER)
 string(FIND "${LAUNCHER}" "DreamcastControllerTest.ps1" pos)
 if(pos EQUAL -1)
   message(FATAL_ERROR "Controller tester launcher is not wired to the visual tester")
