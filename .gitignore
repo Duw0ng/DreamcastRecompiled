@@ -26,3 +26,7 @@ dist/
 DreamcastRecompiled.exe
 games/*/bin/
 safe_guests/*/bin/
+
+# Local build trees and stale runtime copies
+build-*/
+hotpatch_cpp22/

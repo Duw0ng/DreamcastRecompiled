@@ -62,7 +62,8 @@ int main(int argc, char** argv) {
                 generated.find("rfc_fr_bank") != std::string::npos,
                 "0.0.155 retains the proven per-region FPU cache baseline");
         require(generated.find("runtime.fpu_block_cache_hits") != std::string::npos &&
-                generated.find("++runtime.fpu_block_cache_fallbacks") != std::string::npos,
+                (generated.find("++runtime.fpu_block_cache_fallbacks") != std::string::npos ||
+                 generated.find("DCR_FPU_METRIC_INC(runtime.fpu_block_cache_fallbacks)") != std::string::npos),
                 "0.0.155 keeps cache coverage telemetry and exact fallback");
         require(generated.find("fc_fr_valid") == std::string::npos &&
                 generated.find("fc_fr_dirty") == std::string::npos,
@@ -73,7 +74,8 @@ int main(int argc, char** argv) {
                 "0.0.170 Region+ restores the proven uint32 FR local cache");
         require(generated.find("dc_host_fma(std::bit_cast<float>(rfc_fr0)") != std::string::npos,
                 "0.0.170 Region+ keeps host FMA3 on top of the proven cache");
-        require(generated.find("runtime.fpu_aot_mode != 3u || runtime.fpu_region_metrics") != std::string::npos,
+        require((generated.find("runtime.fpu_aot_mode != 3u || runtime.fpu_region_metrics") != std::string::npos ||
+                 generated.find("DCR_FPU_REGION_METRICS_ENABLED(runtime)") != std::string::npos),
                 "0.0.170 Region+ gates expensive per-region telemetry in production");
         const auto runtime_hpp = read_all(emitted.runtime_header);
         require(runtime_hpp.find("dc_host_fma") != std::string::npos &&

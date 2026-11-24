@@ -19,7 +19,9 @@ jobs:
       - name: Build recompilation CLI for Linux
         run: |
           cmake -S . -B .build-linux-core -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build .build-linux-core --target dc_recomp dc_analyzer -j 2
+          cmake --build .build-linux-core -j 2
+      - name: Run core test suite
+        run: ctest --test-dir .build-linux-core --output-on-failure -j 2
       - name: Build runtime and Maple/GD-ROM/network .so
         run: |
           cmake -S runtime -B .build-linux-runtime -G Ninja -DCMAKE_BUILD_TYPE=Release

@@ -2746,6 +2746,7 @@ std::string runtime_cpp() {
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <deque>
 #include <random>
